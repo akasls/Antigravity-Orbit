@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "scan_interval": 3.0,
+  "lock_port": 49222,
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
+      "chat_id": "YOUR_CHAT_ID",
+      "proxy": "http://127.0.0.1:7890"
+    },
+    "feishu": {
+      "enabled": false,
+      "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx"
+    },
+    "wecom": {
+      "enabled": false,
+      "webhook_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx"
+    }
+  }
+}

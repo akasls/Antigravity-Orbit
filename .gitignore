@@ -1,0 +1,30 @@
+# 敏感凭据与本地配置文件 (切勿上传至 GitHub)
+config.json
+telegram.json
+.env
+*.local.json
+
+# 状态记录与运行日志
+watch_state.json
+watch_log.txt
+*.log
+
+# Python 编译缓存
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# IDE 与操作系统临时文件
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 汉化临时文件与备份
+_temp_asar/
+*.bak
+.localization_info.json
+
