@@ -27,4 +27,5 @@ Thumbs.db
 _temp_asar/
 *.bak
 .localization_info.json
+.daemon.pid
 
