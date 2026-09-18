@@ -143,8 +143,8 @@ class LocalizationEngine {
     /**
      * 读取项目 config.json 中的自定义配置
      */
-    loadCustomConfig() {
-        const configPath = path.resolve(LOCALIZATION_ROOT, '..', 'config.json');
+    loadCustomConfig(customConfigFile = null) {
+        const configPath = customConfigFile ? path.resolve(customConfigFile) : path.resolve(LOCALIZATION_ROOT, '..', 'config.json');
         try {
             if (fs.existsSync(configPath)) {
                 const raw = fs.readFileSync(configPath, 'utf-8');
@@ -169,13 +169,13 @@ class LocalizationEngine {
     /**
      * 生成注入用的 runtime 脚本
      */
-    generateRuntimeScript(isTraditional = false, customConfig = null, isEnglish = false) {
+    generateRuntimeScript(isTraditional = false, customConfig = null, isEnglish = false, customConfigFile = null) {
         const dict = this.loadDictionary(isTraditional, isEnglish);
         // 按英文短语长度从长到短排序
         const phraseEntries = Object.entries(dict).filter(([k]) => k.length >= 15);
         phraseEntries.sort((a, b) => b[0].length - a[0].length);
 
-        const cfg = customConfig || this.loadCustomConfig();
+        const cfg = customConfig || this.loadCustomConfig(customConfigFile);
 
         let template = fs.readFileSync(this.runtimeTemplatePath, 'utf-8');
         const configCode = `
@@ -303,11 +303,11 @@ class LocalizationEngine {
         }
 
         const resDir = this.getResourcesDir(installDir);
-        const customConfig = options.customConfig || this.loadCustomConfig();
+        const customConfig = options.customConfig || this.loadCustomConfig(options.configFile);
         const patcher = new AsarPatcher(resDir, { ...options, customConfig });
         const isEnglish = !!options.en || (customConfig && customConfig.language === 'en');
         const isTw = !!options.tw || (customConfig && customConfig.language === 'zh-TW');
-        const runtimeJs = this.generateRuntimeScript(isTw, customConfig, isEnglish);
+        const runtimeJs = this.generateRuntimeScript(isTw, customConfig, isEnglish, options.configFile);
 
         const ok = patcher.install(runtimeJs);
         if (ok && wasRunning && !options.noKill) {

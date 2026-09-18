@@ -7,9 +7,10 @@ import subprocess
 from pathlib import Path
 from typing import Dict, Any, Tuple, Optional
 
-# 项目根目录与本地化目录
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-LOCALIZATION_DIR = PROJECT_ROOT / "localization"
+from core.config import RESOURCE_DIR, CONFIG_FILE
+
+# 项目静态资源目录与本地化目录
+LOCALIZATION_DIR = RESOURCE_DIR / "localization"
 ENGINE_SCRIPT = LOCALIZATION_DIR / "engine.js"
 
 class LocalizationManager:
@@ -48,10 +49,12 @@ class LocalizationManager:
         # 如果 node 可用且 engine.js 存在，优先调用 engine.js 获取最权威状态
         if node_ok and ENGINE_SCRIPT.exists():
             cmd = ["node", str(ENGINE_SCRIPT), "--status", "--json"]
+            if CONFIG_FILE.exists():
+                cmd.extend(["--config-file", str(CONFIG_FILE)])
             if install_dir:
                 cmd.extend(["--install-dir", install_dir])
             try:
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=10, cwd=str(PROJECT_ROOT))
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=10, cwd=str(RESOURCE_DIR))
                 if res.returncode == 0:
                     data = json.loads(res.stdout.strip())
                     status["installed"] = data.get("installed", False)
@@ -121,6 +124,8 @@ class LocalizationManager:
             cmd.append("--tw")
         elif en:
             cmd.append("--en")
+        if CONFIG_FILE.exists():
+            cmd.extend(["--config-file", str(CONFIG_FILE)])
         if install_dir:
             cmd.extend(["--install-dir", install_dir])
         if no_kill:
@@ -128,10 +133,10 @@ class LocalizationManager:
 
         try:
             if stream_output:
-                res = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
+                res = subprocess.run(cmd, cwd=str(RESOURCE_DIR))
                 return (res.returncode == 0, "汉化安装成功！" if res.returncode == 0 else f"汉化安装失败 (退出码: {res.returncode})")
             else:
-                res = subprocess.run(cmd, cwd=str(PROJECT_ROOT), capture_output=True, text=True)
+                res = subprocess.run(cmd, cwd=str(RESOURCE_DIR), capture_output=True, text=True)
                 output = res.stdout + ("\n" + res.stderr if res.stderr else "")
                 return (res.returncode == 0, output.strip())
         except Exception as e:
@@ -160,10 +165,10 @@ class LocalizationManager:
 
         try:
             if stream_output:
-                res = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
+                res = subprocess.run(cmd, cwd=str(RESOURCE_DIR))
                 return (res.returncode == 0, "官方原版英文已成功恢复！" if res.returncode == 0 else f"恢复失败 (退出码: {res.returncode})")
             else:
-                res = subprocess.run(cmd, cwd=str(PROJECT_ROOT), capture_output=True, text=True)
+                res = subprocess.run(cmd, cwd=str(RESOURCE_DIR), capture_output=True, text=True)
                 output = res.stdout + ("\n" + res.stderr if res.stderr else "")
                 return (res.returncode == 0, output.strip())
         except Exception as e:

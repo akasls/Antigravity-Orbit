@@ -2,13 +2,34 @@ import os
 import json
 from pathlib import Path
 
+import sys
+import platform
+
 # Antigravity 核心系统路径 (跨平台动态解析用户家目录)
 GEMINI_DIR = Path.home() / ".gemini" / "antigravity"
 BRAIN_DIR = GEMINI_DIR / "brain"
 DB_PATH = GEMINI_DIR / "conversation_summaries.db"
 
+def get_app_dir() -> Path:
+    """获取用户数据与可写配置存储目录 (支持源码运行与 PyInstaller 打包)"""
+    if getattr(sys, "frozen", False):
+        if platform.system().lower() == "darwin":
+            user_dir = Path.home() / ".antigravity-orbit"
+            user_dir.mkdir(parents=True, exist_ok=True)
+            return user_dir
+        else:
+            return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+def get_resource_dir() -> Path:
+    """获取静态资源根目录 (只读资源如字典、脚本)"""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent.parent
+
 # 本地数据存储路径
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = get_app_dir()
+RESOURCE_DIR = get_resource_dir()
 CONFIG_FILE = BASE_DIR / "config.json"
 STATE_FILE = BASE_DIR / "watch_state.json"
 LOG_FILE = BASE_DIR / "watch_log.txt"

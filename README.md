@@ -109,27 +109,40 @@
 
 ## ⚡ 快速开始 (1 分钟上手)
 
-### 方式一：独立桌面可视化控制中心（原生软件，强烈推荐）
+### 方式零：直接下载免安装预编译客户端（最省心，无需 Python / Git）
 
-1. 双击运行根目录下的 **`gui.bat`**（或在命令行输入 `python main.py gui`）。
-2. 在弹出的桌面控制中心窗口中：
+前往 [GitHub Releases 发布页](https://github.com/akasls/Antigravity-Orbit/releases) 下载官方自动打包好的开箱即用版本：
+- **Windows 用户**：下载 `Antigravity-Orbit-Windows-x64.zip`，解压后直接双击 **`Antigravity-Orbit.exe`** 即可打开！
+- **macOS 用户**：下载 `Antigravity-Orbit-macOS.zip`，解压后运行 **`Antigravity-Orbit.app`** 即可！
+
+---
+
+### 方式一：克隆源码并运行独立桌面客户端
+
+1. 下载或克隆本项目到本地：
+   ```bash
+   git clone https://github.com/akasls/Antigravity-Orbit.git
+   cd Antigravity-Orbit
+   ```
+2. 双击运行根目录下的 **`gui.bat`**（或命令行运行 `python main.py gui`）。
+3. 在极简桌面控制中心中：
    - 切换界面语言（简体中文 / 繁体中文 / 官方英文）。
-   - 勾选是否开启【顶栏实时模型额度胶囊】与刷新频率。
-   - 勾选【GPU 硬件加速】、【后台防降频】与【全栈遥测阻断】。
-   - 配置 Telegram / 飞书 / 企业微信机器人并在线发送测试。
-3. 点击右下角 **【⚡ 保存并应用配置到 Antigravity】**，即刻完成一键热部署！
-4. 点击 **【🚀 重启 Antigravity】** 即可实时查看崭新的汉化与顶栏额度胶囊！
+   - 自由开关【顶栏实时模型额度胶囊】与自定义刷新频率。
+   - 一键启用【GPU 硬件加速】、【后台防降频】与【全栈遥测阻断】。
+   - 配置 Telegram / 飞书 / 企业微信机器人并在线测试。
+4. 点击右下角 **【保存并应用配置】**，即刻完成一键热部署！
+5. 点击 **【重启客户端】** 实时查看崭新效果！
 
 ---
 
 ### 方式二：命令行交互式向导
 
-1. 双击运行根目录下的 **`install.bat`**，选择 `[2]` 运行命令行向导。
-2. 按照控制台向导逐步完成汉化与通知设置。
+1. 双击运行根目录下的 **`install.bat`**，选择 `[2]` 运行控制台向导。
+2. 按照交互向导逐步完成汉化与通知设置。
 
 ---
 
-### 方式三：macOS / Linux 用户
+### 方式三：macOS / Linux 源码运行
 
 ```bash
 git clone https://github.com/akasls/Antigravity-Orbit.git
@@ -199,6 +212,13 @@ python main.py stop
 python main.py autostart status    # 查看自启状态
 python main.py autostart enable    # 启用开机自启
 python main.py autostart disable   # 禁用开机自启
+```
+
+### 📦 5. 跨平台独立打包构建
+
+```bash
+# 自动编译生成 Windows 单文件 (.exe) 或 macOS 应用包 (.app / .zip)
+python scripts/build.py
 ```
 
 ---

@@ -51,6 +51,13 @@ function parseArgs() {
             opts.en = true;
         } else if (a === '--no-kill') {
             opts.noKill = true;
+        } else if (a === '--config' || a === '--config-file') {
+            opts.configFile = args[i + 1] || null;
+            i++;
+        } else if (a.startsWith('--config=')) {
+            opts.configFile = a.slice('--config='.length);
+        } else if (a.startsWith('--config-file=')) {
+            opts.configFile = a.slice('--config-file='.length);
         } else if (a === '--install-dir') {
             opts.installDir = args[i + 1] || null;
             i++;
