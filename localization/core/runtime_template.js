@@ -489,6 +489,42 @@
 
     /**
      * =========================================================================
+     * 紧凑代码视野排版模式 (Compact UI Mode)
+     * =========================================================================
+     */
+    function injectCompactUiStyle(doc = document) {
+        if (!doc || !doc.head || doc.getElementById('antigravity-compact-ui-style')) return;
+        try {
+            const style = doc.createElement('style');
+            style.id = 'antigravity-compact-ui-style';
+            style.textContent = `
+                /* Antigravity Compact UI Mode - 紧凑代码视野排版模式 */
+                .agent-response-content, .user-query-content {
+                    padding-top: 6px !important;
+                    padding-bottom: 6px !important;
+                }
+                [data-testid*="tool-call"], .tool-call-container, .thinking-container, div[class*="tool-call-"], div[class*="thinking-"] {
+                    margin-top: 4px !important;
+                    margin-bottom: 4px !important;
+                    padding-top: 4px !important;
+                    padding-bottom: 4px !important;
+                }
+                pre, code, .monaco-editor {
+                    line-height: 1.45 !important;
+                }
+                [data-testid*="chat-message"], div[class*="message-wrapper"], div[class*="chat-item"] {
+                    padding-top: 4px !important;
+                    padding-bottom: 4px !important;
+                    margin-top: 2px !important;
+                    margin-bottom: 2px !important;
+                }
+            `;
+            doc.head.appendChild(style);
+        } catch (e) {}
+    }
+
+    /**
+     * =========================================================================
      * 顶部标题栏实时模型额度胶囊组件 (Top-Right Live Model Quota Badge)
      * =========================================================================
      */
@@ -959,6 +995,10 @@
             removeIdeHeaderButtons(root);
         }
 
+        if (cfg.compact_ui_mode) {
+            injectCompactUiStyle(document);
+        }
+
         if (cfg.show_quota_badge !== false) {
             mountQuotaBadge();
         }
@@ -966,6 +1006,9 @@
         const observer = new MutationObserver((mutations) => {
             if (cfg.hide_ide_buttons !== false) {
                 removeIdeHeaderButtons(root);
+            }
+            if (cfg.compact_ui_mode && !document.getElementById('antigravity-compact-ui-style')) {
+                injectCompactUiStyle(document);
             }
             if (cfg.show_quota_badge !== false && !document.getElementById('antigravity-quota-root')) {
                 mountQuotaBadge();
@@ -998,6 +1041,9 @@
                 if (cfg.hide_ide_buttons !== false) {
                     injectIdeHidingStyle(shadowRoot);
                     removeIdeHeaderButtons(shadowRoot);
+                }
+                if (cfg.compact_ui_mode) {
+                    injectCompactUiStyle(shadowRoot);
                 }
                 observer.observe(shadowRoot, config);
                 translateNode(shadowRoot);

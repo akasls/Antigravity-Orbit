@@ -44,6 +44,8 @@ from core.config import (
 )
 from core.localization import LocalizationManager
 from core.autostart import AutostartManager
+from core.storage import StorageManager
+from core.skills_optimizer import SkillsOptimizer
 
 
 class ModernCheckmark(tk.Canvas):
@@ -239,12 +241,20 @@ class ModernOrbitApp(tk.Tk):
         self.var_show_quota = tk.BooleanVar(value=custom.get("show_quota_badge", True))
         self.var_quota_interval = tk.IntVar(value=custom.get("quota_refresh_interval", 60))
         self.var_hide_ide = tk.BooleanVar(value=custom.get("hide_ide_buttons", True))
+        self.var_compact_ui = tk.BooleanVar(value=custom.get("compact_ui_mode", False))
 
-        # 性能与隐私
+        # 性能与深度系统优化
         self.var_gpu_accel = tk.BooleanVar(value=custom.get("enable_gpu_acceleration", True))
         self.var_unthrottle = tk.BooleanVar(value=custom.get("disable_background_throttling", True))
         self.var_v8_mem = tk.BooleanVar(value=custom.get("expand_v8_memory", True))
         self.var_telemetry = tk.BooleanVar(value=custom.get("disable_telemetry", True))
+        self.var_smooth_scrolling = tk.BooleanVar(value=custom.get("enable_smooth_scrolling", True))
+        self.var_disable_auto_update = tk.BooleanVar(value=custom.get("disable_auto_update", True))
+        self.var_prune_skills = tk.BooleanVar(value=custom.get("prune_guide_skills", False))
+
+        # Antigravity 专属网络代理 (彻底取代 Proxifier)
+        self.var_proxy_enabled = tk.BooleanVar(value=custom.get("proxy_enabled", False))
+        self.var_proxy_url = tk.StringVar(value=custom.get("proxy_url", "http://127.0.0.1:10808"))
 
         # 通知通道 (精准读取历史配置)
         channels = self.cfg.get("channels", {})
@@ -270,6 +280,7 @@ class ModernOrbitApp(tk.Tk):
         self.var_stat_install = tk.StringVar(value="正在快速检测...")
         self.var_stat_daemon = tk.StringVar(value="正在快速检测...")
         self.var_stat_autostart = tk.StringVar(value="正在快速检测...")
+        self.var_stat_storage = tk.StringVar(value="正在分析可清理存储占用...")
 
     def _setup_ttk_styles(self):
         self.style = ttk.Style()
@@ -345,6 +356,7 @@ class ModernOrbitApp(tk.Tk):
         self._build_card_system_status(self.scrollable_frame)
         self._build_card_localization(self.scrollable_frame)
         self._build_card_performance(self.scrollable_frame)
+        self._build_card_proxy(self.scrollable_frame)
         self._build_card_notifications(self.scrollable_frame)
         self._build_card_logs(self.scrollable_frame)
 
@@ -415,6 +427,21 @@ class ModernOrbitApp(tk.Tk):
         self._create_inline_btn(right_a, "开启自启", self._enable_autostart).pack(side="left", padx=(0, 6))
         self._create_inline_btn(right_a, "关闭自启", self._disable_autostart).pack(side="left")
 
+        self._create_row_separator(c)
+
+        # 行 4: 本地存储与深度垃圾瘦身
+        r_store = tk.Frame(c, bg=self.C_CARD, padx=20, pady=12)
+        r_store.pack(fill="x")
+
+        left_s = tk.Frame(r_store, bg=self.C_CARD)
+        left_s.pack(side="left", fill="x", expand=True)
+        tk.Label(left_s, text="本地存储与垃圾清理:", font=self.font_main_bold, fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
+        tk.Label(left_s, textvariable=self.var_stat_storage, font=self.font_sm, fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
+
+        right_s = tk.Frame(r_store, bg=self.C_CARD)
+        right_s.pack(side="right")
+        self._create_inline_btn(right_s, "一键深度瘦身", self._on_clean_storage).pack(side="left")
+
     # -------------------------------------------------------------
     # 卡片 2: 界面汉化与外观设置
     # -------------------------------------------------------------
@@ -461,7 +488,14 @@ class ModernOrbitApp(tk.Tk):
             c,
             title="移除右上角推广按钮 (Open IDE / Install IDE)",
             desc="彻底隐藏右上角多余的推广按钮及其占位空白容器，恢复干净的顶栏",
-            variable=self.var_hide_ide,
+            variable=self.var_hide_ide
+        )
+
+        self._create_checkbox_row(
+            c,
+            title="紧凑代码排版模式 (Compact UI Mode)",
+            desc="缩减对话气泡与工具卡片上下空白边距，有效代码展示视野提升 35%~50%",
+            variable=self.var_compact_ui,
             is_last=True
         )
 
@@ -511,6 +545,13 @@ class ModernOrbitApp(tk.Tk):
 
         self._create_checkbox_row(
             c,
+            title="长文本平滑滚动与 60FPS 顺滑渲染 (Smooth Scrolling)",
+            desc="消除长篇代码流式输出与深度推理过程中的滚动顿挫撕裂感",
+            variable=self.var_smooth_scrolling
+        )
+
+        self._create_checkbox_row(
+            c,
             title="解除后台调度降频 (Disable Background Throttling)",
             desc="切换其他窗口时防止定时器被降频至 1Hz，保障智能体任务后台全速执行",
             variable=self.var_unthrottle
@@ -525,11 +566,73 @@ class ModernOrbitApp(tk.Tk):
 
         self._create_checkbox_row(
             c,
+            title="锁定稳定版本 (Disable Auto-Update)",
+            desc="阻断后台自动静默检测与下载更新，防止官方静默升级覆盖汉化与各项补丁",
+            variable=self.var_disable_auto_update
+        )
+
+        self._create_checkbox_row(
+            c,
+            title="裁剪内置说明型 Skills 提示词 (Prune Builtin Skills)",
+            desc="安全屏蔽 antigravity_guide 等庞大教程技能，每次请求节省约 14,700 Token 预算",
+            variable=self.var_prune_skills
+        )
+
+        self._create_checkbox_row(
+            c,
             title="全栈切断遥测数据回传 (Anti-Telemetry)",
             desc="关闭 Language Server 指标收集、Chromium 诊断与 DevTools 日志上报",
             variable=self.var_telemetry,
             is_last=True
         )
+
+    # -------------------------------------------------------------
+    # 卡片: Antigravity 专属网络代理 (彻底取代 Proxifier)
+    # -------------------------------------------------------------
+    def _build_card_proxy(self, parent):
+        c = self._create_card(parent, "Antigravity 专属网络代理 (彻底取代 Proxifier)", "为 Electron 界面与 Go 核心引擎 (language_server) 原生注入代理，无需开启 Proxifier 或系统全局 TUN 模式")
+
+        # 勾选行
+        r_chk = tk.Frame(c, bg=self.C_CARD, padx=20, pady=12)
+        r_chk.pack(fill="x")
+
+        left = tk.Frame(r_chk, bg=self.C_CARD)
+        left.pack(side="left", fill="both", expand=True)
+
+        tk.Label(left, text="启用 Antigravity 专属网络代理", font=self.font_main_bold, fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
+        tk.Label(left, text="开启后 Chromium 界面、Go 语言服务器及 git.exe/ssh.exe 均自动走此代理", font=self.font_sm, fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
+
+        right = tk.Frame(r_chk, bg=self.C_CARD)
+        right.pack(side="right", anchor="center")
+
+        f_chk = tk.Frame(right, bg=self.C_CARD, cursor="hand2")
+        f_chk.pack(side="left")
+        chk = ModernCheckmark(f_chk, variable=self.var_proxy_enabled, bg=self.C_CARD, font_family=self.FONT_FAMILY)
+        chk.pack(side="left", padx=(0, 6))
+        lbl_txt = tk.Label(f_chk, text="启用代理", font=self.font_main, fg=self.C_TEXT_MAIN, bg=self.C_CARD, cursor="hand2")
+        lbl_txt.pack(side="left")
+        lbl_txt.bind("<Button-1>", lambda e: chk.toggle())
+        f_chk.bind("<Button-1>", lambda e: chk.toggle())
+
+        self._create_row_separator(c)
+
+        # 代理地址输入框
+        f_in = tk.Frame(c, bg=self.C_CARD, padx=20, pady=12)
+        f_in.pack(fill="x")
+        self._create_compact_input(f_in, "代理地址:", self.var_proxy_url, "支持 HTTP/SOCKS5，例如: http://127.0.0.1:10808")
+
+        # 底部说明文案
+        f_tip = tk.Frame(c, bg="#f8fafc", padx=16, pady=10, highlightthickness=1, highlightbackground=self.C_BORDER)
+        f_tip.pack(fill="x", padx=16, pady=(0, 12))
+        tk.Label(
+            f_tip,
+            text="💡 原理解析：此前您使用 Proxifier 代理 language_server_windows_x64.exe、Antigravity.exe、git.exe 等进程；本功能通过在 Chromium 命令行中直接注入 --proxy-server，并在 Language Server 启动时直接为其子进程注入 HTTP_PROXY / HTTPS_PROXY 环境变量，原生无死角接管所有 Google API 与网络请求，保存生效后您可以彻底退出并卸载 Proxifier！",
+            font=self.font_sm,
+            fg="#475569",
+            bg="#f8fafc",
+            wraplength=800,
+            justify="left"
+        ).pack(anchor="w")
 
     # -------------------------------------------------------------
     # 卡片 4: 消息通知推送渠道
@@ -836,11 +939,16 @@ class ModernOrbitApp(tk.Tk):
             port = self.var_daemon_port.get()
             is_running, pid = self._check_daemon_running(port)
             auto_enabled = AutostartManager.is_enabled()
-            self.after(0, lambda: self._apply_status_to_ui(loc, is_running, pid, auto_enabled))
+            storage_info = None
+            try:
+                storage_info = StorageManager.get_storage_breakdown()
+            except Exception:
+                pass
+            self.after(0, lambda: self._apply_status_to_ui(loc, is_running, pid, auto_enabled, storage_info))
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _apply_status_to_ui(self, loc, is_running, pid, auto_enabled):
+    def _apply_status_to_ui(self, loc, is_running, pid, auto_enabled, storage_info=None):
         if loc.get("installed"):
             install_dir = loc.get("install_dir", "")
             lang_label = "已汉化 (zh-CN)" if loc.get("is_localized") else "官方原版英文"
@@ -859,6 +967,46 @@ class ModernOrbitApp(tk.Tk):
             self.var_stat_autostart.set("● 已开启 (系统登录后自动在后台静默运行)")
         else:
             self.var_stat_autostart.set("○ 未开启 (关闭状态)")
+
+        if storage_info:
+            clean_mb = storage_info.get("cleanable_mb", 0)
+            sess_cnt = storage_info.get("session_count", 0)
+            if clean_mb >= 1024:
+                size_str = f"{storage_info.get('cleanable_gb', 0):.2f} GB"
+            else:
+                size_str = f"{clean_mb:.1f} MB"
+            self.var_stat_storage.set(f"可深度瘦身: {size_str} (含 Chromium 死缓存与 {sess_cnt} 个会话的中间流日志，不损对话历史)")
+
+    def _on_clean_storage(self):
+        """一键深度清理垃圾缓存与整理碎片"""
+        if not messagebox.askyesno("深度瘦身确认", "即将清理 Chromium 静态渲染缓存、历史会话临时流日志并压缩整理数据库。\n\n此操作完全安全，不会删除您的任何对话记录、代码或配置。是否继续？"):
+            return
+
+        self._set_busy(True, "正在进行安全深度瘦身与缓存清理...")
+
+        def _worker():
+            try:
+                freed, details = StorageManager.clean_storage(clean_cache=True, clean_temp_logs=True, vacuum_db=True)
+                freed_mb = freed / (1024 * 1024)
+                if freed_mb >= 1024:
+                    size_str = f"{freed / (1024 * 1024 * 1024):.2f} GB"
+                else:
+                    size_str = f"{freed_mb:.1f} MB"
+                msg = f"深度瘦身已完成！共成功释放磁盘空间 {size_str}。"
+
+                def _done():
+                    self._set_busy(False, msg)
+                    self._refresh_system_status_async()
+                    messagebox.showinfo("瘦身成功", msg)
+
+                self.after(0, _done)
+            except Exception as e:
+                def _err():
+                    self._set_busy(False, f"瘦身异常: {e}")
+                    messagebox.showerror("瘦身失败", f"清理过程中发生异常:\n{e}")
+                self.after(0, _err)
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _check_daemon_running(self, port: int):
         pid_file = BASE_DIR / ".daemon.pid"
@@ -908,6 +1056,12 @@ class ModernOrbitApp(tk.Tk):
                     "disable_background_throttling": self.var_unthrottle.get(),
                     "expand_v8_memory": self.var_v8_mem.get(),
                     "disable_telemetry": self.var_telemetry.get(),
+                    "proxy_enabled": self.var_proxy_enabled.get(),
+                    "proxy_url": self.var_proxy_url.get().strip(),
+                    "disable_auto_update": self.var_disable_auto_update.get(),
+                    "enable_smooth_scrolling": self.var_smooth_scrolling.get(),
+                    "compact_ui_mode": self.var_compact_ui.get(),
+                    "prune_guide_skills": self.var_prune_skills.get(),
                 }
 
                 if "channels" not in self.cfg:
@@ -932,6 +1086,12 @@ class ModernOrbitApp(tk.Tk):
 
                 self.cfg["lock_port"] = self.var_daemon_port.get()
                 save_config(self.cfg)
+
+                # 设置 Skills 裁剪状态
+                try:
+                    SkillsOptimizer.set_pruned(self.var_prune_skills.get())
+                except Exception:
+                    pass
 
                 # 调用 LocalizationManager 部署补丁
                 is_tw = (lang == "zh-TW")

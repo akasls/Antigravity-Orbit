@@ -461,6 +461,26 @@ def cmd_localize(args):
     else:
         print("已取消操作。")
 
+def cmd_clean(args):
+    """深度磁盘与垃圾缓存清理"""
+    from core.storage import StorageManager
+    print("🔍 正在分析 Antigravity 存储占用与垃圾缓存...")
+    info = StorageManager.get_storage_breakdown()
+    clean_mb = info.get("cleanable_mb", 0)
+    print(f"📦 Chromium 静态渲染缓存: {info.get('chromium_cache_bytes', 0) / (1024 * 1024):.1f} MB")
+    print(f"📄 历史会话临时任务流日志: {info.get('brain_temp_bytes', 0) / (1024 * 1024):.1f} MB")
+    print(f"💾 会话摘要数据库大小: {info.get('db_size', 0) / (1024 * 1024):.1f} MB (共 {info.get('session_count', 0)} 个会话)")
+    print(f"✨ 预计可深度瘦身: {clean_mb:.1f} MB")
+
+    if getattr(args, "dry_run", False):
+        print("💡 [dry-run] 仅预检分析，未执行实际删除。")
+        return
+
+    print("\n🧹 正在执行安全深度瘦身...")
+    freed, details = StorageManager.clean_storage(clean_cache=True, clean_temp_logs=True, vacuum_db=True)
+    freed_mb = freed / (1024 * 1024)
+    print(f"✅ 深度清理完成！共安全释放磁盘空间 {freed_mb:.1f} MB。")
+
 def main():
     # 极速秒开旁路：双击启动独立客户端或直接带 gui 参数时，直接唤起图形界面，零 argparse 消耗
     if len(sys.argv) <= 1:
@@ -510,6 +530,10 @@ def main():
     p_opt.add_argument("--dir", default=None, help="手动指定 Antigravity 安装目录")
     p_opt.add_argument("--no-kill", action="store_true", help="不自动终止运行中的 Antigravity 进程")
 
+    # clean
+    p_clean = subparsers.add_parser("clean", help="深度清理 Chromium 渲染缓存、任务临时日志并整理数据库碎片")
+    p_clean.add_argument("--dry-run", action="store_true", help="仅显示可清理空间，不执行实际删除")
+
     args = parser.parse_args()
 
     if not args.subcommand:
@@ -547,6 +571,8 @@ def main():
             print("✅ 性能加速与去遥测补丁已成功部署生效！")
         else:
             print(f"❌ 部署失败: {msg}")
+    elif args.subcommand == "clean":
+        cmd_clean(args)
 
 if __name__ == "__main__":
     main()

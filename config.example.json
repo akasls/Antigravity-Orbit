@@ -10,7 +10,13 @@
     "disable_background_throttling": true,
     "expand_v8_memory": true,
     "disable_telemetry": true,
-    "hide_ide_buttons": true
+    "hide_ide_buttons": true,
+    "proxy_enabled": false,
+    "proxy_url": "http://127.0.0.1:10808",
+    "disable_auto_update": true,
+    "enable_smooth_scrolling": true,
+    "compact_ui_mode": false,
+    "prune_guide_skills": false
   },
   "channels": {
     "telegram": {

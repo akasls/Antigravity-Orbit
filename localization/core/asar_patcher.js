@@ -101,6 +101,7 @@ class AsarPatcher {
             this._patchLoadingOverlay();
             this._patchUpdater();
             this._patchPerformanceAndTelemetry();
+            this._handleAppUpdateYml();
         } catch (e) {
             fs.rmSync(this.tempDir, { recursive: true, force: true });
             throw e;
@@ -151,9 +152,37 @@ class AsarPatcher {
             try { fs.unlinkSync(this.metaPath); } catch (e) {}
         }
 
+        const disabledYml = path.join(this.resourcesDir, 'app-update.yml.disabled');
+        const origYml = path.join(this.resourcesDir, 'app-update.yml');
+        if (fs.existsSync(disabledYml)) {
+            try { fs.renameSync(disabledYml, origYml); } catch (e) {}
+        }
+
         this.resignMacApp();
         console.log('[√] 官方英文原版已成功无痕恢复！');
         return true;
+    }
+
+    _handleAppUpdateYml() {
+        const cfg = this.customConfig || {};
+        const origYml = path.join(this.resourcesDir, 'app-update.yml');
+        const disabledYml = path.join(this.resourcesDir, 'app-update.yml.disabled');
+
+        if (cfg.disable_auto_update !== false) {
+            if (fs.existsSync(origYml)) {
+                try {
+                    fs.renameSync(origYml, disabledYml);
+                    console.log('[锁定] app-update.yml 已重命名为 .disabled，阻断后台静默更新。');
+                } catch (e) {}
+            }
+        } else {
+            if (fs.existsSync(disabledYml)) {
+                try {
+                    fs.renameSync(disabledYml, origYml);
+                    console.log('[恢复] app-update.yml 已恢复。');
+                } catch (e) {}
+            }
+        }
     }
 
     // --- 内部补丁实现 ---
@@ -323,6 +352,7 @@ class AsarPatcher {
     }
 
     _patchUpdater() {
+        const cfg = this.customConfig || {};
         const updaterPath = path.join(this.tempDir, 'dist', 'updater.js');
         if (!fs.existsSync(updaterPath)) return;
 
@@ -340,14 +370,27 @@ class AsarPatcher {
 
         if (content.includes(target)) {
             content = content.replace(target, replacement);
-            fs.writeFileSync(updaterPath, content, 'utf-8');
-            console.log('[注入] updater.js 更新弹窗注入成功。');
         }
+
+        // 锁定版本，禁止后台自动检测与下载更新
+        if (cfg.disable_auto_update !== false) {
+            const initTarget = "function initAutoUpdater(isHeadless, settingsService) {";
+            if (content.includes(initTarget) && !content.includes('/* === AUTO_UPDATE_DISABLED === */')) {
+                content = content.replace(initTarget, `${initTarget}\n    /* === AUTO_UPDATE_DISABLED === */\n    console.log('[AutoUpdater] 后台自动更新已被安全锁定。');\n    return;`);
+            }
+            const checkTarget = "function startAutoUpdateChecks() {";
+            if (content.includes(checkTarget) && !content.includes('/* === AUTO_CHECK_DISABLED === */')) {
+                content = content.replace(checkTarget, `${checkTarget}\n    /* === AUTO_CHECK_DISABLED === */\n    return;`);
+            }
+        }
+
+        fs.writeFileSync(updaterPath, content, 'utf-8');
+        console.log('[注入] updater.js 更新机制与文案注入成功。');
     }
 
     _patchPerformanceAndTelemetry() {
         const cfg = this.customConfig || {};
-        console.log('[优化] 正在注入性能加速与遥测配置补丁...');
+        console.log('[优化] 正在注入性能加速、网络代理与遥测配置补丁...');
 
         // 1. 注入 Electron / Chromium 启动参数 (main.js)
         const mainPath = path.join(this.tempDir, 'dist', 'main.js');
@@ -379,9 +422,17 @@ class AsarPatcher {
                 );
             }
 
+            if (cfg.enable_smooth_scrolling !== false) {
+                switchLines.push(
+                    "// 3. 启用硬件级长文本平滑滚动与 60FPS 顺滑渲染",
+                    "electron_1.app.commandLine.appendSwitch('enable-smooth-scrolling');",
+                    "electron_1.app.commandLine.appendSwitch('enable-accelerated-2d-canvas');"
+                );
+            }
+
             if (cfg.disable_background_throttling !== false) {
                 switchLines.push(
-                    "// 3. 解除后台降频与冻结 (保证后台多任务切换及代码流式打印满速执行)",
+                    "// 4. 解除后台降频与冻结 (保证后台多任务切换及代码流式打印满速执行)",
                     "electron_1.app.commandLine.appendSwitch('disable-background-timer-throttling');",
                     "electron_1.app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');",
                     "electron_1.app.commandLine.appendSwitch('disable-renderer-backgrounding');"
@@ -390,8 +441,25 @@ class AsarPatcher {
 
             if (cfg.expand_v8_memory !== false) {
                 switchLines.push(
-                    "// 4. 扩充 V8 垃圾回收堆内存至 4GB (杜绝大工程索引与长上下文频繁卡顿)",
+                    "// 5. 扩充 V8 垃圾回收堆内存至 4GB (杜绝大工程索引与长上下文频繁卡顿)",
                     "electron_1.app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');"
+                );
+            }
+
+            if (cfg.proxy_enabled && cfg.proxy_url) {
+                const proxyUrl = cfg.proxy_url.trim();
+                switchLines.push(
+                    "// 6. Antigravity 专属网络代理 (彻底取代 Proxifier)",
+                    `electron_1.app.commandLine.appendSwitch('proxy-server', ${JSON.stringify(proxyUrl)});`,
+                    `electron_1.app.commandLine.appendSwitch('proxy-bypass-list', '<-loopback>;127.0.0.1;localhost');`,
+                    `process.env['HTTP_PROXY'] = ${JSON.stringify(proxyUrl)};`,
+                    `process.env['HTTPS_PROXY'] = ${JSON.stringify(proxyUrl)};`,
+                    `process.env['ALL_PROXY'] = ${JSON.stringify(proxyUrl)};`,
+                    `process.env['http_proxy'] = ${JSON.stringify(proxyUrl)};`,
+                    `process.env['https_proxy'] = ${JSON.stringify(proxyUrl)};`,
+                    `process.env['all_proxy'] = ${JSON.stringify(proxyUrl)};`,
+                    `process.env['NO_PROXY'] = 'localhost,127.0.0.1';`,
+                    `process.env['no_proxy'] = 'localhost,127.0.0.1';`
                 );
             }
 
@@ -403,24 +471,45 @@ class AsarPatcher {
                 if (mContent.includes(targetLock) && !mContent.includes('/* === ANTIGRAVITY_OPTIMIZATION_START === */')) {
                     mContent = mContent.replace(targetLock, optSwitches + "\n" + targetLock);
                     fs.writeFileSync(mainPath, mContent, 'utf-8');
-                    console.log('[优化] main.js 已按需注入硬件渲染加速与全套防降频、去遥测参数。');
+                    console.log('[优化] main.js 已按需注入硬件渲染加速、平滑滚动、专属代理与全套防降频、去遥测参数。');
                 }
             }
         }
 
-        if (cfg.disable_telemetry !== false) {
-            // 2. 注入 Go 后端核心 Language Server 遥测禁用参数 (languageServer.js)
-            const lsPath = path.join(this.tempDir, 'dist', 'languageServer.js');
-            if (fs.existsSync(lsPath)) {
-                let lsContent = fs.readFileSync(lsPath, 'utf-8');
+        // 2. 注入 Go 后端核心 Language Server 遥测禁用与专属代理环境变量 (languageServer.js)
+        const lsPath = path.join(this.tempDir, 'dist', 'languageServer.js');
+        if (fs.existsSync(lsPath)) {
+            let lsContent = fs.readFileSync(lsPath, 'utf-8');
+            if (cfg.disable_telemetry !== false) {
                 const targetRegex = /'--override_user_agent_name',\s*'antigravity',/;
                 if (targetRegex.test(lsContent) && !lsContent.includes("'--disable_telemetry=true'")) {
                     lsContent = lsContent.replace(targetRegex, "'--override_user_agent_name',\n            'antigravity',\n            '--disable_telemetry=true',");
-                    fs.writeFileSync(lsPath, lsContent, 'utf-8');
                     console.log('[优化] languageServer.js 已注入 --disable_telemetry=true 彻底切断后端核心遥测。');
                 }
             }
 
+            if (cfg.proxy_enabled && cfg.proxy_url) {
+                const proxyUrl = cfg.proxy_url.trim();
+                const targetEnv = "const env = { ...process.env, ...(0, shell_env_1.shellEnvSync)() };";
+                if (lsContent.includes(targetEnv) && !lsContent.includes('/* === ANTIGRAVITY_PROXY_INJECT === */')) {
+                    const proxyEnvCode = `${targetEnv}\n        /* === ANTIGRAVITY_PROXY_INJECT === */\n` +
+                        `        env['HTTP_PROXY'] = ${JSON.stringify(proxyUrl)};\n` +
+                        `        env['HTTPS_PROXY'] = ${JSON.stringify(proxyUrl)};\n` +
+                        `        env['ALL_PROXY'] = ${JSON.stringify(proxyUrl)};\n` +
+                        `        env['http_proxy'] = ${JSON.stringify(proxyUrl)};\n` +
+                        `        env['https_proxy'] = ${JSON.stringify(proxyUrl)};\n` +
+                        `        env['all_proxy'] = ${JSON.stringify(proxyUrl)};\n` +
+                        `        env['NO_PROXY'] = 'localhost,127.0.0.1';\n` +
+                        `        env['no_proxy'] = 'localhost,127.0.0.1';\n`;
+                    lsContent = lsContent.replace(targetEnv, proxyEnvCode);
+                    console.log(`[代理] languageServer.js 已为 Language Server 注入专属代理环境: ${proxyUrl}。`);
+                }
+            }
+
+            fs.writeFileSync(lsPath, lsContent, 'utf-8');
+        }
+
+        if (cfg.disable_telemetry !== false) {
             // 3. 中和 Chrome DevTools MCP 中的 Clearcut 遥测外发
             const clearcutPath = path.join(this.tempDir, 'node_modules', 'chrome-devtools-mcp', 'build', 'src', 'telemetry', 'ClearcutLogger.js');
             if (fs.existsSync(clearcutPath)) {
