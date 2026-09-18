@@ -1,6 +1,6 @@
 """
 Antigravity Orbit - 独立桌面客户端管理中心 (Native Desktop GUI Client)
-极简现代浅色设计风格 (Light Modern Theme)，无多级菜单，单页平铺流式布局
+现代化极简浅色单页设计，无冗余顶栏标题，无多级菜单，全卡片自适应排版
 """
 
 import os
@@ -39,6 +39,7 @@ from core.config import (
     RESOURCE_DIR,
     load_config,
     save_config,
+    find_active_config_file,
 )
 from core.localization import LocalizationManager
 from core.autostart import AutostartManager
@@ -46,10 +47,9 @@ from core.autostart import AutostartManager
 
 class CheckmarkBox(tk.Frame):
     """
-    自绘现代复选框组件：
-    - 选中状态：醒目高对比蓝底白字 ✔ (Unicode \u2714)
-    - 未选状态：清爽浅灰边框白色空框
-    彻底解决 ttk 原生主题在不同操作系统下无勾选或仅显示方块的问题
+    高质感现代复选框组件：
+    - 选中状态：醒目宝蓝底色与居中白字 ✔ (Unicode \u2714)
+    - 未选状态：纯白背景与浅灰精致边框
     """
 
     def __init__(self, parent, variable: tk.BooleanVar, text: str = "", command=None, bg="#ffffff", fg="#0f172a"):
@@ -58,7 +58,7 @@ class CheckmarkBox(tk.Frame):
         self.command = command
         self.bg_color = bg
 
-        # 边框方块指示器
+        # 指示器方块
         self.box = tk.Label(
             self,
             text="",
@@ -69,9 +69,9 @@ class CheckmarkBox(tk.Frame):
             bd=0,
             cursor="hand2"
         )
-        self.box.pack(side="left", padx=(0, 6))
+        self.box.pack(side="left", padx=(0, 8))
 
-        # 文本标签
+        # 文字标签
         if text:
             self.lbl = tk.Label(
                 self,
@@ -87,7 +87,6 @@ class CheckmarkBox(tk.Frame):
         self.box.bind("<Button-1>", lambda e: self.toggle())
         self.bind("<Button-1>", lambda e: self.toggle())
 
-        # 追踪变量变化
         self.variable.trace_add("write", lambda *_: self._update_view())
         self._update_view()
 
@@ -124,56 +123,56 @@ class ModernOrbitApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Antigravity Orbit - 管理中心")
-        self.geometry("960x780")
-        self.minsize(880, 680)
+        self.geometry("940x760")
+        self.minsize(860, 640)
 
-        self._center_window(960, 780)
+        self._center_window(940, 760)
         self._init_theme_colors()
-
-        # 加载应用图标
         self._setup_app_icons()
 
+        # 读取用户配置 (自动合并历史与当前配置)
         self.cfg = load_config()
         self._init_variables()
         self._setup_ttk_styles()
 
-        # 构建单页平铺流式布局
+        # 构建单页平铺流式布局 (无多级菜单，无多余顶栏标题)
         self._build_single_page_layout()
 
-        # 极速秒级异步状态刷新 (窗口先行渲染，后台线程零阻塞刷新)
-        self.after(30, self._refresh_system_status_async)
+        # 异步非阻塞环境刷新 (零卡顿秒开)
+        self.after(20, self._refresh_system_status_async)
 
     def _center_window(self, width, height):
         try:
             sw = self.winfo_screenwidth()
             sh = self.winfo_screenheight()
             x = max(0, int((sw - width) / 2))
-            y = max(0, int((sh - height) / 2) - 30)
+            y = max(0, int((sh - height) / 2) - 25)
             self.geometry(f"{width}x{height}+{x}+{y}")
         except Exception:
             pass
 
     def _init_theme_colors(self):
-        """现代浅色主题调色盘 (Slate / Zinc 风格规范)"""
-        self.C_BG = "#f8fafc"             # 页面浅灰底色
-        self.C_CARD = "#ffffff"           # 卡片纯白底色
-        self.C_CARD_BORDER = "#e2e8f0"    # 卡片边框浅灰
-        self.C_SEP = "#f1f5f9"            # 内部行分割线
-        self.C_HOVER = "#f1f5f9"          # 悬停轻灰
+        """现代极简浅色调色盘 (Slate / Zinc 风格规范)"""
+        self.C_BG = "#f4f5f7"             # 柔和浅灰底色
+        self.C_CARD = "#ffffff"           # 纯白卡片
+        self.C_CARD_HEADER = "#fafafa"    # 卡片顶部微调
+        self.C_BORDER = "#e2e8f0"         # 边框浅灰
+        self.C_SEP = "#f1f5f9"            # 行内分隔线
+        self.C_HOVER = "#f8fafc"          # 悬停轻灰
 
-        self.C_TEXT_MAIN = "#0f172a"      # 主要文字 (深墨黑，高对比清晰度)
+        self.C_TEXT_MAIN = "#0f172a"      # 主要文字 (高对比深墨黑)
         self.C_TEXT_MUTED = "#475569"     # 次要描述文字
-        self.C_TEXT_DIM = "#94a3b8"       # 浅灰弱化说明
+        self.C_TEXT_DIM = "#94a3b8"       # 提示性说明文字
 
-        self.C_ACCENT = "#2563eb"         # 现代高雅宝蓝 (主按钮/主动作)
-        self.C_ACCENT_HOVER = "#1d4ed8"   # 宝蓝悬停加深
-        self.C_BTN_SEC = "#ffffff"        # 次级按钮纯白背景
-        self.C_BTN_SEC_BORDER = "#cbd5e1" # 次级按钮边框
-        self.C_BTN_SEC_HOVER = "#f8fafc"  # 次级按钮悬停
+        self.C_ACCENT = "#2563eb"         # 系统级宝蓝
+        self.C_ACCENT_HOVER = "#1d4ed8"   # 宝蓝悬停
+        self.C_BTN_SEC = "#ffffff"        # 次级按钮底色
+        self.C_BTN_SEC_BORDER = "#cbd5e1" # 次级按钮描边
+        self.C_BTN_SEC_HOVER = "#f1f5f9"  # 次级按钮悬停
 
-        self.C_GREEN = "#16a34a"          # 运行中正常色 (Green-600)
-        self.C_GRAY = "#94a3b8"           # 离线或停止色 (Slate-400)
-        self.C_DANGER = "#dc2626"         # 警告/还原红色
+        self.C_GREEN = "#16a34a"          # 正常色 (Green-600)
+        self.C_GRAY = "#94a3b8"           # 未运行/未启用色 (Slate-400)
+        self.C_DANGER = "#dc2626"         # 警告红色
 
         self.configure(bg=self.C_BG)
 
@@ -224,32 +223,32 @@ class ModernOrbitApp(tk.Tk):
         self.var_v8_mem = tk.BooleanVar(value=custom.get("expand_v8_memory", True))
         self.var_telemetry = tk.BooleanVar(value=custom.get("disable_telemetry", True))
 
-        # 通知通道
-        tg = self.cfg.get("channels", {}).get("telegram", {})
+        # 通知通道 (精准读取历史配置)
+        channels = self.cfg.get("channels", {})
+        tg = channels.get("telegram", {})
         self.var_tg_enabled = tk.BooleanVar(value=tg.get("enabled", False))
         self.var_tg_token = tk.StringVar(value=tg.get("bot_token", ""))
         self.var_tg_chat = tk.StringVar(value=tg.get("chat_id", ""))
         self.var_tg_proxy = tk.StringVar(value=tg.get("proxy", ""))
 
-        fs = self.cfg.get("channels", {}).get("feishu", {})
+        fs = channels.get("feishu", {})
         self.var_fs_enabled = tk.BooleanVar(value=fs.get("enabled", False))
         self.var_fs_url = tk.StringVar(value=fs.get("webhook_url", ""))
 
-        wc = self.cfg.get("channels", {}).get("wecom", {})
+        wc = channels.get("wecom", {})
         self.var_wc_enabled = tk.BooleanVar(value=wc.get("enabled", False))
         self.var_wc_url = tk.StringVar(value=wc.get("webhook_url", ""))
 
-        # 监控常驻
+        # 守护服务
         self.var_daemon_port = tk.IntVar(value=self.cfg.get("lock_port", 49222))
 
-        # 状态显示
+        # 状态指示
         self.var_status_msg = tk.StringVar(value="就绪")
         self.var_stat_install = tk.StringVar(value="正在快速检测...")
         self.var_stat_daemon = tk.StringVar(value="正在快速检测...")
         self.var_stat_autostart = tk.StringVar(value="正在快速检测...")
 
     def _setup_ttk_styles(self):
-        """定制 ttk 控件以适应浅色主题"""
         self.style = ttk.Style()
         try:
             self.style.theme_use("clam")
@@ -259,13 +258,12 @@ class ModernOrbitApp(tk.Tk):
         self.style.configure("TFrame", background=self.C_BG)
         self.style.configure("Card.TFrame", background=self.C_CARD)
 
-        # 单选框
         self.style.configure(
             "Clean.TRadiobutton",
             background=self.C_CARD,
             foreground=self.C_TEXT_MAIN,
             font=("Segoe UI", 9),
-            padding=2
+            padding=3
         )
         self.style.map(
             "Clean.TRadiobutton",
@@ -273,7 +271,6 @@ class ModernOrbitApp(tk.Tk):
             indicatorcolor=[("selected", self.C_ACCENT), ("active", "#93c5fd")]
         )
 
-        # 下拉框
         self.style.configure(
             "Clean.TCombobox",
             fieldbackground="#ffffff",
@@ -285,64 +282,23 @@ class ModernOrbitApp(tk.Tk):
         )
 
     # -------------------------------------------------------------
-    # 单页平铺流式布局构建 (全部一页，无多级菜单)
+    # 单页平铺流式布局构建 (全部一页，无多级菜单，无多余顶栏标题)
     # -------------------------------------------------------------
     def _build_single_page_layout(self):
-        # 1. 顶部 Header
-        self._build_top_header()
-
-        # 2. 中间可滚动区域 (包含全部配置卡片)
+        # 1. 中间可滚动的主面板 (全功能平铺)
         self._build_scroll_content()
 
-        # 3. 底部吸底全局状态栏
+        # 2. 底部全局操作栏 (附带左下角 GitHub 跳转)
         self._build_bottom_bar()
 
-    def _build_top_header(self):
-        header = tk.Frame(self, bg="#ffffff", height=60, padx=24, pady=12, highlightthickness=1, highlightbackground=self.C_CARD_BORDER)
-        header.pack(fill="x", side="top")
-
-        # 左侧应用 Logo 与标题
-        left = tk.Frame(header, bg="#ffffff")
-        left.pack(side="left", anchor="center")
-
-        if self.app_icon_img:
-            lbl_ico = tk.Label(left, image=self.app_icon_img, bg="#ffffff")
-            lbl_ico.pack(side="left", padx=(0, 10))
-
-        title_box = tk.Frame(left, bg="#ffffff")
-        title_box.pack(side="left")
-
-        title_row = tk.Frame(title_box, bg="#ffffff")
-        title_row.pack(anchor="w")
-        tk.Label(title_row, text="Antigravity Orbit", font=("Segoe UI", 13, "bold"), fg=self.C_TEXT_MAIN, bg="#ffffff").pack(side="left")
-        
-        # 标签 Pill
-        pill = tk.Label(title_row, text="v2.3", font=("Segoe UI", 8, "bold"), fg=self.C_ACCENT, bg="#eff6ff", padx=6, pady=1)
-        pill.pack(side="left", padx=8)
-
-        tk.Label(title_box, text="一站式客户端汉化、性能优化、顶栏额度与长任务通知管理中心", font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg="#ffffff").pack(anchor="w", pady=(1, 0))
-
-        # 右侧快速状态指示
-        right = tk.Frame(header, bg="#ffffff")
-        right.pack(side="right", anchor="center")
-
-        # 客户端状态 Pill
-        self.pill_install = tk.Label(right, textvariable=self.var_stat_install, font=("Segoe UI", 8), fg="#1e293b", bg="#f1f5f9", padx=10, pady=4)
-        self.pill_install.pack(side="left", padx=4)
-
-        # 监控状态 Pill
-        self.pill_daemon = tk.Label(right, textvariable=self.var_stat_daemon, font=("Segoe UI", 8), fg="#1e293b", bg="#f1f5f9", padx=10, pady=4)
-        self.pill_daemon.pack(side="left", padx=4)
-
     def _build_scroll_content(self):
-        """中间垂直滚动的单页内容流"""
         container = tk.Frame(self, bg=self.C_BG)
         container.pack(fill="both", expand=True)
 
         self.canvas = tk.Canvas(container, bg=self.C_BG, bd=0, highlightthickness=0)
         self.scrollbar = ttk.Scrollbar(container, orient="vertical", command=self.canvas.yview)
 
-        self.scrollable_frame = tk.Frame(self.canvas, bg=self.C_BG, padx=24, pady=16)
+        self.scrollable_frame = tk.Frame(self.canvas, bg=self.C_BG, padx=20, pady=16)
         self.scrollable_frame.bind(
             "<Configure>",
             lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
@@ -351,20 +307,18 @@ class ModernOrbitApp(tk.Tk):
         self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(xscrollcommand=None, yscrollcommand=self.scrollbar.set)
 
-        # 保持窗口宽度自适应
         self.canvas.bind(
             "<Configure>",
             lambda e: self.canvas.itemconfig(self.canvas_window, width=e.width)
         )
 
-        # 绑定鼠标滚轮
         self.bind_all("<MouseWheel>", self._on_mousewheel)
 
         self.canvas.pack(side="left", fill="both", expand=True)
         self.scrollbar.pack(side="right", fill="y")
 
-        # 依次加载平铺卡片（全部在一页内呈现）
-        self._build_card_overview(self.scrollable_frame)
+        # 依次构建各功能卡片
+        self._build_card_system_status(self.scrollable_frame)
         self._build_card_localization(self.scrollable_frame)
         self._build_card_performance(self.scrollable_frame)
         self._build_card_notifications(self.scrollable_frame)
@@ -377,59 +331,88 @@ class ModernOrbitApp(tk.Tk):
             pass
 
     # -------------------------------------------------------------
-    # 卡片 1: 运行状态与服务管理
+    # 卡片 1: 客户端状态与服务管理 (宽敞独立行，解决遮挡问题)
     # -------------------------------------------------------------
-    def _build_card_overview(self, parent):
-        c = self._create_card(parent, "核心运行状态与服务管理", "实时监视 Antigravity 客户端及后台守护进程状态")
+    def _build_card_system_status(self, parent):
+        c = self._create_card(parent, "客户端与后台守护服务", "检测 Antigravity 本地安装状态、管理后台常驻进程与开机自启动")
 
-        row = tk.Frame(c, bg=self.C_CARD, padx=16, pady=12)
-        row.pack(fill="x")
+        # 行 1: 客户端本地安装与汉化状态
+        r_client = tk.Frame(c, bg=self.C_CARD, padx=18, pady=11)
+        r_client.pack(fill="x")
 
-        # 守护服务操作
-        f_daemon = tk.Frame(row, bg=self.C_CARD)
-        f_daemon.pack(side="left", fill="x", expand=True)
+        left_c = tk.Frame(r_client, bg=self.C_CARD)
+        left_c.pack(side="left", fill="x", expand=True)
+        tk.Label(left_c, text="Antigravity 客户端:", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
+        tk.Label(left_c, textvariable=self.var_stat_install, font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
 
-        tk.Label(f_daemon, text="后台常驻监听服务:", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(side="left")
-        tk.Label(f_daemon, textvariable=self.var_stat_daemon, font=("Segoe UI", 9), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left", padx=(6, 16))
+        self.pill_install = tk.Label(r_client, text="检测中...", font=("Segoe UI", 8, "bold"), fg="#1e293b", bg="#f1f5f9", padx=10, pady=4)
+        self.pill_install.pack(side="right")
 
-        tk.Label(f_daemon, text="端口:", font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left")
-        e_port = tk.Entry(f_daemon, textvariable=self.var_daemon_port, width=6, bg="#ffffff", fg=self.C_TEXT_MAIN, relief="solid", bd=1)
-        e_port.pack(side="left", padx=(4, 12))
+        self._create_row_separator(c)
 
-        self._create_outline_btn(f_daemon, "启动守护", self._start_daemon).pack(side="left", padx=3)
-        self._create_outline_btn(f_daemon, "停止守护", self._stop_daemon).pack(side="left", padx=3)
+        # 行 2: 后台常驻监听服务 (完全独立行，按钮空间充裕)
+        r_daemon = tk.Frame(c, bg=self.C_CARD, padx=18, pady=11)
+        r_daemon.pack(fill="x")
 
-        # 自启操作
-        f_auto = tk.Frame(row, bg=self.C_CARD)
-        f_auto.pack(side="right")
+        left_d = tk.Frame(r_daemon, bg=self.C_CARD)
+        left_d.pack(side="left", fill="x", expand=True)
 
-        tk.Label(f_auto, text="开机自启:", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(side="left")
-        tk.Label(f_auto, textvariable=self.var_stat_autostart, font=("Segoe UI", 9), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left", padx=(6, 12))
-        self._create_outline_btn(f_auto, "开启", self._enable_autostart).pack(side="left", padx=3)
-        self._create_outline_btn(f_auto, "关闭", self._disable_autostart).pack(side="left", padx=3)
+        d_title_row = tk.Frame(left_d, bg=self.C_CARD)
+        d_title_row.pack(anchor="w")
+        tk.Label(d_title_row, text="任务完成守护监听:", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(side="left")
+
+        # 端口输入
+        tk.Label(d_title_row, text="端口", font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left", padx=(10, 4))
+        e_port = tk.Entry(d_title_row, textvariable=self.var_daemon_port, width=6, bg="#f9fafb", fg=self.C_TEXT_MAIN, relief="solid", bd=1, font=("Consolas", 9))
+        e_port.pack(side="left")
+
+        tk.Label(left_d, textvariable=self.var_stat_daemon, font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
+
+        # 右侧操作按钮组
+        right_d = tk.Frame(r_daemon, bg=self.C_CARD)
+        right_d.pack(side="right")
+        self._create_outline_btn(right_d, "启动守护", self._start_daemon).pack(side="left", padx=(0, 6))
+        self._create_outline_btn(right_d, "停止守护", self._stop_daemon).pack(side="left")
+
+        self._create_row_separator(c)
+
+        # 行 3: 系统开机自启动 (完全独立行，确保“关闭自启”按钮 100% 完整显示，绝不遮挡)
+        r_auto = tk.Frame(c, bg=self.C_CARD, padx=18, pady=11)
+        r_auto.pack(fill="x")
+
+        left_a = tk.Frame(r_auto, bg=self.C_CARD)
+        left_a.pack(side="left", fill="x", expand=True)
+        tk.Label(left_a, text="系统开机自动启动:", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
+        tk.Label(left_a, textvariable=self.var_stat_autostart, font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
+
+        # 右侧操作按钮组 (间距充足，绝不截断)
+        right_a = tk.Frame(r_auto, bg=self.C_CARD)
+        right_a.pack(side="right")
+        self._create_outline_btn(right_a, "开启自启", self._enable_autostart).pack(side="left", padx=(0, 6))
+        self._create_outline_btn(right_a, "关闭自启", self._disable_autostart).pack(side="left")
 
     # -------------------------------------------------------------
-    # 卡片 2: 界面汉化与外观设置
+    # 卡片 2: 界面汉化与外观净化
     # -------------------------------------------------------------
     def _build_card_localization(self, parent):
-        c = self._create_card(parent, "界面汉化与外观净化", "全量汉化菜单、对话列表与设置项，并净化多余按钮")
+        c = self._create_card(parent, "界面语言与外观净化", "全面汉化 Antigravity 界面菜单与对话交互，移除多余推广按钮")
 
         # 语言单选组
-        r_lang = tk.Frame(c, bg=self.C_CARD, padx=16, pady=10)
+        r_lang = tk.Frame(c, bg=self.C_CARD, padx=18, pady=11)
         r_lang.pack(fill="x")
 
-        tk.Label(r_lang, text="客户端语言选择:", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w", pady=(0, 6))
+        tk.Label(r_lang, text="客户端语言选择:", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w", pady=(0, 8))
 
         rb_box = tk.Frame(r_lang, bg=self.C_CARD)
         rb_box.pack(fill="x")
 
         ttk.Radiobutton(
             rb_box,
-            text="简体中文 (zh-CN) [推荐]",
+            text="简体中文 (zh-CN) [默认推荐]",
             variable=self.var_language,
             value="zh-CN",
             style="Clean.TRadiobutton"
-        ).pack(side="left", padx=(0, 20))
+        ).pack(side="left", padx=(0, 24))
 
         ttk.Radiobutton(
             rb_box,
@@ -437,7 +420,7 @@ class ModernOrbitApp(tk.Tk):
             variable=self.var_language,
             value="zh-TW",
             style="Clean.TRadiobutton"
-        ).pack(side="left", padx=(0, 20))
+        ).pack(side="left", padx=(0, 24))
 
         ttk.Radiobutton(
             rb_box,
@@ -449,100 +432,100 @@ class ModernOrbitApp(tk.Tk):
 
         self._create_row_separator(c)
 
-        # 界面净化勾选行
+        # 界面净化勾选
         self._create_checkbox_row(
             c,
             title="移除右上角推广按钮 (Open IDE / Install IDE)",
-            desc="彻底隐藏右上角多余的 'Open IDE' 与 'Install IDE' 及其容器，使顶栏界面干净紧凑",
+            desc="彻底隐藏右上角多余的推广按钮及其占位空白容器，恢复干净的顶栏",
             variable=self.var_hide_ide,
             is_last=True
         )
 
     # -------------------------------------------------------------
-    # 卡片 3: 极限性能加速与顶栏额度
+    # 卡片 3: 性能极限加速与顶栏额度
     # -------------------------------------------------------------
     def _build_card_performance(self, parent):
-        c = self._create_card(parent, "性能加速与实时额度胶囊", "底层 Chromium 硬件栅格化、后台防休眠降频与顶栏模型配额")
+        c = self._create_card(parent, "性能加速与实时配额胶囊", "Chromium 显卡硬件加速、防后台休眠降频与顶栏模型配额")
 
-        # 顶栏额度胶囊
-        r_quota = tk.Frame(c, bg=self.C_CARD, padx=16, pady=10)
+        # 顶栏额度胶囊行
+        r_quota = tk.Frame(c, bg=self.C_CARD, padx=18, pady=11)
         r_quota.pack(fill="x")
 
         left = tk.Frame(r_quota, bg=self.C_CARD)
         left.pack(side="left", fill="both", expand=True)
 
-        tk.Label(left, text="顶栏模型配额胶囊", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
-        tk.Label(left, text="在 Antigravity 标题栏右上角常驻呈现 5小时 / 每周 模型限额百分比与健康指示灯", font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
+        tk.Label(left, text="顶栏模型额度实时胶囊", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
+        tk.Label(left, text="在 Antigravity 标题栏右上角常驻显示 Gemini 与 Claude/GPT 限额比例与健康指示灯", font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
 
         right = tk.Frame(r_quota, bg=self.C_CARD)
         right.pack(side="right", anchor="center")
 
-        tk.Label(right, text="刷新间隔:", font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left", padx=(0, 4))
+        tk.Label(right, text="轮询频率:", font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left", padx=(0, 4))
         cb_interval = ttk.Combobox(right, textvariable=self.var_quota_interval, values=[30, 60, 120, 300], width=5, state="readonly", style="Clean.TCombobox")
-        cb_interval.pack(side="left", padx=(0, 12))
+        cb_interval.pack(side="left", padx=(0, 10))
         tk.Label(right, text="秒", font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left", padx=(0, 16))
 
         CheckmarkBox(right, variable=self.var_show_quota, text="启用显示", bg=self.C_CARD, fg=self.C_TEXT_MAIN).pack(side="left")
 
         self._create_row_separator(c)
 
-        # 性能加速勾选项
+        # 性能加速勾选列表
         self._create_checkbox_row(
             c,
-            title="GPU 显卡硬件栅格化与零拷贝渲染 (Zero-Copy Rasterization)",
-            desc="大幅降低 AI 流式输出时的 CPU 占用与界面渲染开销，输入输出更加丝滑",
+            title="GPU 显卡硬件栅格化与零拷贝 (Zero-Copy Rasterization)",
+            desc="降低复杂项目与大量代码流式输出时的 CPU 渲染负载，交互更流畅",
             variable=self.var_gpu_accel
         )
 
         self._create_checkbox_row(
             c,
             title="解除后台调度降频 (Disable Background Throttling)",
-            desc="切换至其他窗口时防止 Electron 定时器降频至 1Hz，保障长对话任务后台满速执行",
+            desc="切换其他窗口时防止定时器被降频至 1Hz，保障智能体任务后台全速执行",
             variable=self.var_unthrottle
         )
 
         self._create_checkbox_row(
             c,
-            title="V8 引擎内存扩容至 4GB (--max-old-space-size=4096)",
-            desc="消除超大工程分析与上百轮长对话下的 V8 垃圾回收卡顿与内存溢出崩溃",
+            title="V8 引擎堆内存扩容至 4GB (--max-old-space-size=4096)",
+            desc="消除深度推理分析与数十轮长对话下的垃圾回收停顿与内存溢出崩溃",
             variable=self.var_v8_mem
         )
 
         self._create_checkbox_row(
             c,
             title="全栈切断遥测数据回传 (Anti-Telemetry)",
-            desc="阻断 Language Server 性能指标上报、Chromium 崩溃诊断与 DevTools 日志收集",
+            desc="关闭 Language Server 指标收集、Chromium 诊断与 DevTools 日志上报",
             variable=self.var_telemetry,
             is_last=True
         )
 
     # -------------------------------------------------------------
-    # 卡片 4: 即时通知渠道配置
+    # 卡片 4: 消息通知推送渠道
     # -------------------------------------------------------------
     def _build_card_notifications(self, parent):
-        c = self._create_card(parent, "消息通知推送渠道", "长跑任务、构建或对话完成时自动推送即时通知到手机或电脑")
+        c = self._create_card(parent, "任务完工即时通知渠道", "长跑任务、构建或复杂对话完成时自动向手机或电脑发送通知")
 
         # 1. Telegram
-        f_tg = tk.Frame(c, bg=self.C_CARD, padx=16, pady=10)
+        f_tg = tk.Frame(c, bg=self.C_CARD, padx=18, pady=11)
         f_tg.pack(fill="x")
 
         head_tg = tk.Frame(f_tg, bg=self.C_CARD)
-        head_tg.pack(fill="x", pady=(0, 6))
-        CheckmarkBox(head_tg, variable=self.var_tg_enabled, text="启用 Telegram Bot 通知", bg=self.C_CARD, fg=self.C_TEXT_MAIN).pack(side="left")
+        head_tg.pack(fill="x", pady=(0, 8))
+        CheckmarkBox(head_tg, variable=self.var_tg_enabled, text="启用 Telegram Bot 消息推送", bg=self.C_CARD, fg=self.C_TEXT_MAIN).pack(side="left")
         self._create_outline_btn(head_tg, "测试 Telegram", self._test_telegram).pack(side="right")
 
-        self._create_compact_input(f_tg, "Bot Token:", self.var_tg_token, "例如: 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11")
-        self._create_compact_input(f_tg, "Chat ID:", self.var_tg_chat, "例如: 123456789")
-        self._create_compact_input(f_tg, "代理地址:", self.var_tg_proxy, "可选, 例如: http://127.0.0.1:7890 (国内网络建议配置)")
+        self._create_compact_input(f_tg, "Bot Token:", self.var_tg_token, "例如: 7488372875:AAH96DP... (已同步历史配置)")
+        self._create_compact_input(f_tg, "Chat ID:", self.var_tg_chat, "例如: -1003820990608")
+        self._create_compact_input(f_tg, "代理配置:", self.var_tg_proxy, "可选, 例如: 10808 或 http://127.0.0.1:10808")
 
         self._create_row_separator(c)
 
         # 2. 飞书
-        f_fs = tk.Frame(c, bg=self.C_CARD, padx=16, pady=10)
+        f_fs = tk.Frame(c, bg=self.C_CARD, padx=18, pady=11)
         f_fs.pack(fill="x")
 
         head_fs = tk.Frame(f_fs, bg=self.C_CARD)
-        head_fs.pack(fill="x", pady=(0, 6))
+        head_fs.pack(fill="x", pady=(0, 8))
         CheckmarkBox(head_fs, variable=self.var_fs_enabled, text="启用飞书自定义机器人 (Feishu)", bg=self.C_CARD, fg=self.C_TEXT_MAIN).pack(side="left")
         self._create_outline_btn(head_fs, "测试飞书", self._test_feishu).pack(side="right")
 
@@ -551,11 +534,11 @@ class ModernOrbitApp(tk.Tk):
         self._create_row_separator(c)
 
         # 3. 企业微信
-        f_wc = tk.Frame(c, bg=self.C_CARD, padx=16, pady=10)
+        f_wc = tk.Frame(c, bg=self.C_CARD, padx=18, pady=11)
         f_wc.pack(fill="x")
 
         head_wc = tk.Frame(f_wc, bg=self.C_CARD)
-        head_wc.pack(fill="x", pady=(0, 6))
+        head_wc.pack(fill="x", pady=(0, 8))
         CheckmarkBox(head_wc, variable=self.var_wc_enabled, text="启用企业微信群机器人 (WeCom)", bg=self.C_CARD, fg=self.C_TEXT_MAIN).pack(side="left")
         self._create_outline_btn(head_wc, "测试企微", self._test_wecom).pack(side="right")
 
@@ -565,16 +548,16 @@ class ModernOrbitApp(tk.Tk):
     # 卡片 5: 运行日志预览
     # -------------------------------------------------------------
     def _build_card_logs(self, parent):
-        c = self._create_card(parent, "监控日志预览", "实时预览后台守护服务的心跳与任务推送记录")
+        c = self._create_card(parent, "守护日志即时预览", "预览后台守护进程心跳与任务完成推送记录")
 
-        h = tk.Frame(c, bg=self.C_CARD, padx=16, pady=6)
+        h = tk.Frame(c, bg=self.C_CARD, padx=18, pady=8)
         h.pack(fill="x")
         self._create_outline_btn(h, "刷新日志", self._refresh_log_preview).pack(side="right")
 
         self.txt_log = scrolledtext.ScrolledText(
             c,
             height=5,
-            bg="#f8fafc",
+            bg="#f9fafb",
             fg="#1e293b",
             insertbackground="#0f172a",
             font=("Consolas", 8),
@@ -584,17 +567,17 @@ class ModernOrbitApp(tk.Tk):
             padx=10,
             pady=6
         )
-        self.txt_log.pack(fill="both", expand=True, padx=16, pady=(0, 12))
+        self.txt_log.pack(fill="both", expand=True, padx=18, pady=(0, 12))
         self._refresh_log_preview()
 
     # -------------------------------------------------------------
-    # 底部全局操作栏 (包含左下角 GitHub 跳转与主要动作按钮)
+    # 底部全局操作栏 (附带左下角 GitHub 跳转与主要动作按钮)
     # -------------------------------------------------------------
     def _build_bottom_bar(self):
-        self.footer_frame = tk.Frame(self, bg="#ffffff", height=54, padx=24, pady=10, highlightthickness=1, highlightbackground=self.C_CARD_BORDER)
+        self.footer_frame = tk.Frame(self, bg="#ffffff", height=54, padx=20, pady=10, highlightthickness=1, highlightbackground=self.C_BORDER)
         self.footer_frame.pack(fill="x", side="bottom")
 
-        # 左侧：GitHub 图标与项目链接 (可点击直接跳转)
+        # 左侧：GitHub 图标与项目链接 (可点击直接唤起系统浏览器)
         f_left = tk.Frame(self.footer_frame, bg="#ffffff", cursor="hand2")
         f_left.pack(side="left", anchor="center")
 
@@ -616,11 +599,11 @@ class ModernOrbitApp(tk.Tk):
         self.lbl_github.bind("<Enter>", lambda e: self.lbl_github.configure(font=("Segoe UI", 9, "underline")))
         self.lbl_github.bind("<Leave>", lambda e: self.lbl_github.configure(font=("Segoe UI", 9)))
 
-        # 中间：操作状态简述
+        # 中间：操作状态提示
         self.lbl_msg = tk.Label(self.footer_frame, textvariable=self.var_status_msg, font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg="#ffffff")
-        self.lbl_msg.pack(side="left", padx=20, anchor="center")
+        self.lbl_msg.pack(side="left", padx=16, anchor="center")
 
-        # 右侧：动作按钮组
+        # 右侧：核心动作按钮组
         btn_box = tk.Frame(self.footer_frame, bg="#ffffff")
         btn_box.pack(side="right")
 
@@ -647,38 +630,39 @@ class ModernOrbitApp(tk.Tk):
         self.btn_apply.pack(side="left", padx=(5, 0))
 
     def _open_github(self):
-        """跳转到 GitHub 项目地址"""
+        """打开 GitHub 项目主页"""
         try:
             webbrowser.open("https://github.com/akasls/Antigravity-Orbit")
         except Exception as e:
-            messagebox.showinfo("GitHub 地址", f"项目地址: https://github.com/akasls/Antigravity-Orbit\n\n({e})")
+            messagebox.showinfo("GitHub 地址", f"项目主页: https://github.com/akasls/Antigravity-Orbit\n\n({e})")
 
     # -------------------------------------------------------------
     # 辅助卡片与行布局组件
     # -------------------------------------------------------------
     def _create_card(self, parent, title: str, subtitle: str = "") -> tk.Frame:
         """生成现代浅色微圆角卡片"""
-        c = tk.Frame(parent, bg=self.C_CARD, highlightthickness=1, highlightbackground=self.C_CARD_BORDER)
-        c.pack(fill="x", pady=8)
+        c = tk.Frame(parent, bg=self.C_CARD, highlightthickness=1, highlightbackground=self.C_BORDER)
+        c.pack(fill="x", pady=7)
 
-        h = tk.Frame(c, bg=self.C_CARD, padx=16, pady=10)
+        # 卡片顶部微底色
+        h = tk.Frame(c, bg=self.C_CARD_HEADER, padx=18, pady=9)
         h.pack(fill="x")
 
-        tk.Label(h, text=title, font=("Segoe UI", 10, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
+        tk.Label(h, text=title, font=("Segoe UI", 10, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD_HEADER).pack(anchor="w")
         if subtitle:
-            tk.Label(h, text=subtitle, font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
+            tk.Label(h, text=subtitle, font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD_HEADER).pack(anchor="w", pady=(1, 0))
 
-        sep = tk.Frame(c, bg=self.C_CARD_BORDER, height=1)
+        sep = tk.Frame(c, bg=self.C_BORDER, height=1)
         sep.pack(fill="x")
         return c
 
     def _create_row_separator(self, parent):
         sep = tk.Frame(parent, bg=self.C_SEP, height=1)
-        sep.pack(fill="x", padx=16)
+        sep.pack(fill="x", padx=18)
 
     def _create_checkbox_row(self, card, title: str, desc: str, variable: tk.BooleanVar, is_last: bool = False):
         """生成带显眼 ✔ 勾选指示的设置行"""
-        row = tk.Frame(card, bg=self.C_CARD, padx=16, pady=10)
+        row = tk.Frame(card, bg=self.C_CARD, padx=18, pady=10)
         row.pack(fill="x")
 
         left = tk.Frame(row, bg=self.C_CARD)
@@ -705,7 +689,7 @@ class ModernOrbitApp(tk.Tk):
         e = tk.Entry(
             row,
             textvariable=var,
-            bg="#ffffff",
+            bg="#f9fafb",
             fg=self.C_TEXT_MAIN,
             insertbackground="#0f172a",
             relief="solid",
@@ -730,29 +714,21 @@ class ModernOrbitApp(tk.Tk):
             activeforeground=fg_col,
             relief="solid",
             bd=1,
-            padx=10,
+            padx=12,
             pady=3,
             cursor="hand2"
         )
         return b
 
     # -------------------------------------------------------------
-    # 极速异步状态更新 (零卡顿后台检测)
+    # 极速异步状态更新
     # -------------------------------------------------------------
     def _refresh_system_status_async(self):
-        """在后台线程异步检测环境，不阻塞前台 UI 渲染"""
         def _worker():
-            # 1. 快速检查汉化与客户端目录
             loc = LocalizationManager.get_status(fast=True)
-
-            # 2. 检查守护端口与 PID
             port = self.var_daemon_port.get()
             is_running, pid = self._check_daemon_running(port)
-
-            # 3. 检查开机自启
             auto_enabled = AutostartManager.is_enabled()
-
-            # 回调至主线程更新 UI 变量与指示 Pill
             self.after(0, lambda: self._apply_status_to_ui(loc, is_running, pid, auto_enabled))
 
         threading.Thread(target=_worker, daemon=True).start()
@@ -762,23 +738,21 @@ class ModernOrbitApp(tk.Tk):
             install_dir = loc.get("install_dir", "")
             base_name = os.path.basename(install_dir)
             lang_label = "已汉化 (zh-CN)" if loc.get("is_localized") else "官方原版英文"
-            self.var_stat_install.set(f"● 客户端: {lang_label} ({base_name})")
-            self.pill_install.configure(fg=self.C_GREEN, bg="#dcfce7")
+            self.var_stat_install.set(f"{lang_label} · 安装路径: {install_dir}")
+            self.pill_install.configure(text=f"● {lang_label}", fg=self.C_GREEN, bg="#ecfdf5")
         else:
-            self.var_stat_install.set("○ 未检测到 Antigravity 安装")
-            self.pill_install.configure(fg=self.C_DANGER, bg="#fee2e2")
+            self.var_stat_install.set("未自动检测到 Antigravity 安装目录")
+            self.pill_install.configure(text="○ 未找到客户端", fg=self.C_DANGER, bg="#fef2f2")
 
         if is_running:
-            self.var_stat_daemon.set(f"● 守护服务: 运行中 (PID {pid})")
-            self.pill_daemon.configure(fg=self.C_GREEN, bg="#dcfce7")
+            self.var_stat_daemon.set(f"● 运行中 (监听端口: {self.var_daemon_port.get()}, PID: {pid})")
         else:
-            self.var_stat_daemon.set("○ 守护服务: 未启动")
-            self.pill_daemon.configure(fg=self.C_GRAY, bg="#f1f5f9")
+            self.var_stat_daemon.set("○ 未运行 (点击右侧启动守护可在任务完成后自动发送通知)")
 
         if auto_enabled:
-            self.var_stat_autostart.set("已开启")
+            self.var_stat_autostart.set("● 已开启 (系统登录后自动在后台静默运行)")
         else:
-            self.var_stat_autostart.set("未开启")
+            self.var_stat_autostart.set("○ 未开启 (关闭状态)")
 
     def _check_daemon_running(self, port: int):
         pid_file = BASE_DIR / ".daemon.pid"

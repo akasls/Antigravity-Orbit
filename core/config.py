@@ -66,11 +66,58 @@ DEFAULT_CONFIG = {
     }
 }
 
+def get_config_search_paths() -> list:
+    """返回配置文件的候选探测路径列表，按优先级排序"""
+    paths = []
+    # 1. 应用程序自身目录
+    paths.append(get_app_dir() / "config.json")
+    # 2. 当前工作目录
+    paths.append(Path.cwd() / "config.json")
+    # 3. 源码工程或打包上一级工程目录
+    if getattr(sys, "frozen", False):
+        exe_parent = Path(sys.executable).resolve().parent
+        paths.append(exe_parent / "config.json")
+        paths.append(exe_parent.parent / "config.json")
+    else:
+        paths.append(Path(__file__).resolve().parent.parent / "config.json")
+    # 4. 用户家目录 ~/.antigravity-orbit/config.json
+    paths.append(Path.home() / ".antigravity-orbit" / "config.json")
+
+    unique = []
+    for p in paths:
+        if p not in unique:
+            unique.append(p)
+    return unique
+
+
+def find_active_config_file() -> Path:
+    """寻找实际存在且有有效自定义内容的配置文件，若无则返回默认存储路径"""
+    # 优先找存在且包含自定义配置内容的文件
+    for p in get_config_search_paths():
+        if p.exists() and p.is_file():
+            try:
+                content = p.read_text(encoding="utf-8").strip()
+                if content and content != "{}":
+                    data = json.loads(content)
+                    if data.get("channels") or data.get("customization"):
+                        return p
+            except Exception:
+                pass
+
+    # 其次寻找任意存在的 config.json
+    for p in get_config_search_paths():
+        if p.exists() and p.is_file():
+            return p
+
+    return get_app_dir() / "config.json"
+
+
 def load_config() -> dict:
-    if not CONFIG_FILE.exists():
+    active_file = find_active_config_file()
+    if not active_file.exists():
         return DEFAULT_CONFIG.copy()
     try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        with open(active_file, "r", encoding="utf-8") as f:
             user_config = json.load(f)
             merged = DEFAULT_CONFIG.copy()
             merged.update(user_config)
@@ -89,9 +136,21 @@ def load_config() -> dict:
     except Exception:
         return DEFAULT_CONFIG.copy()
 
+
 def save_config(cfg: dict):
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+    active_file = find_active_config_file()
+    active_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(active_file, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+
+    # 镜像同步到全局家目录，防止换路径丢失凭据
+    try:
+        global_file = Path.home() / ".antigravity-orbit" / "config.json"
+        global_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(global_file, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
 
 def load_state() -> dict:
     if STATE_FILE.exists():
