@@ -40,5 +40,20 @@ class TestOrbitCore(unittest.TestCase):
         self.assertIn("logs", res)
 
 
+    def test_monitor_quota_regex(self):
+        from core.monitor import QUOTA_ERROR_REGEX
+        # 1. 验证此前误报的代码片段与随机哈希数字绝对不会被误判
+        self.assertIsNone(QUOTA_ERROR_REGEX.search("react-reconciler-8e99e505c4429605.js"))
+        self.assertIsNone(QUOTA_ERROR_REGEX.search("use super::{quota::QuotaData, token::TokenData};"))
+        self.assertIsNone(QUOTA_ERROR_REGEX.search("def fetch_account_quota_data(token): pass"))
+        self.assertIsNone(QUOTA_ERROR_REGEX.search("crates/cockpit-core/src/modules/quota.rs"))
+
+        # 2. 验证真实的限额/熔断报错可以精准识别
+        self.assertIsNotNone(QUOTA_ERROR_REGEX.search("Resource exhausted: quota exceeded for model gemini-2.5"))
+        self.assertIsNotNone(QUOTA_ERROR_REGEX.search("HTTP 429 Too Many Requests: Rate limit reached"))
+        self.assertIsNotNone(QUOTA_ERROR_REGEX.search("Exceeded your current quota. Please check your plan."))
+        self.assertIsNotNone(QUOTA_ERROR_REGEX.search("当前账号 Gemini 模型额度已耗尽"))
+
+
 if __name__ == "__main__":
     unittest.main()

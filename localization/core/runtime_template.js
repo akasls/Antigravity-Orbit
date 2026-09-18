@@ -1111,7 +1111,7 @@
                 const errLower = detectedErrorText.toLowerCase();
 
                 // 1. 判断是否是模型额度用尽 (Rate Limit / Quota Exceeded / 429)
-                const isQuota = /quota|rate\s*limit|resource_?exhausted|429|exceeded your|reached your limit|额度|配额/i.test(errLower);
+                const isQuota = /(?:quota|resource|rate\s*limit).*(?:exhausted|exceed|reach|limit)|(?:exceeded|reached)\s*(?:your\s*)?(?:quota|limit)|\b429\b.*(?:too\s*many|rate|request)|额度.*(?:耗尽|用完|不足)|配额.*(?:超限|耗尽)/i.test(errLower);
                 if (isQuota) {
                     if (!healingState.hasNotifiedQuota) {
                         healingState.hasNotifiedQuota = true;

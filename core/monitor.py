@@ -3,6 +3,7 @@ import time
 import json
 import glob
 import sqlite3
+import re
 import urllib.parse
 from pathlib import Path
 
@@ -10,10 +11,17 @@ from .config import BRAIN_DIR, DB_PATH, load_config, load_state, save_state
 from .utils import Logger, SingleInstanceLock
 from notifiers import get_active_notifiers
 
+# 严格配额熔断特征正则（杜绝将普通代码变量名 quota 或随机哈希中的数字 429 误判为报错）
+QUOTA_ERROR_REGEX = re.compile(
+    r'(?:resource_?exhausted|quota\s*(?:exceeded|exhausted|limit)|rate\s*limit\s*(?:reached|exceeded)|exceeded\s*your\s*(?:current\s*)?quota|\b429\b.*(?:too\s*many|rate|request)|额度.*(?:耗尽|用完|用尽|不足)|配额.*(?:耗尽|用完|超限))',
+    re.IGNORECASE
+)
+
 class AntigravityMonitor:
     def __init__(self):
         self.config = load_config()
         self.state = load_state()
+        self.last_quota_alerts: dict[str, float] = {}
 
     def get_conversation_info(self, conv_id: str) -> dict | None:
         if not DB_PATH.exists():
@@ -191,27 +199,48 @@ class AntigravityMonitor:
                             self.state["last_seen_steps"][conv_id] = max_step
                             save_state(self.state)
                         else:
-                            # 检查是否有显式错误或额度耗尽事件
-                            is_quota = False
-                            error_text = ""
-                            for entry in new_entries:
-                                cnt = (entry.get("content") or "")
-                                cnt_l = cnt.lower()
-                                if any(k in cnt_l for k in ["quota", "rate limit", "resourceexhausted", "resource exhausted", "429"]):
-                                    is_quota = True
-                                    error_text = cnt
-                                    break
-                                elif entry.get("status") == "ERROR" and not error_text:
-                                    error_text = cnt
-
+                            # 核心机制：检查会话当前状态
                             info = self.get_conversation_info(conv_id)
-                            p_name = (info.get("project_name") or info.get("title") or "默认工程") if info else "默认工程"
+                            # 如果会话仍处于活跃执行中（正在调用工具、生成代码等），切勿打扰，等待完全结束或中断
+                            if info and not info["is_idle"]:
+                                continue
 
-                            if is_quota:
-                                Logger.log(f"检测到额度耗尽！会话={conv_id[:8]}, 工程={p_name}, Step={max_step}")
-                                self.dispatch_notification(p_name, "任务中断：额度已耗尽", error_text or "模型限额已达上限，任务暂停执行。")
-                                self.state["last_seen_steps"][conv_id] = max_step
-                                save_state(self.state)
+                            # 会话已结束/空闲，但没有最终回复 target_response，此时严格检查是否发生了系统级报错或额度熔断
+                            # 1. 过滤：只检查真正的系统报错步骤 (status == 'ERROR' 或 type == 'ERROR_MESSAGE')
+                            # 严禁将正常的工具调用结果、代码阅读输出 (status == 'DONE' / 'SUCCESS') 误判为报错
+                            error_entries = [
+                                e for e in new_entries
+                                if e.get("status") == "ERROR" or e.get("type") == "ERROR_MESSAGE"
+                            ]
+
+                            if error_entries:
+                                is_quota = False
+                                error_text = ""
+                                for entry in error_entries:
+                                    cnt = (entry.get("content") or "")
+                                    if QUOTA_ERROR_REGEX.search(cnt):
+                                        is_quota = True
+                                        error_text = cnt
+                                        break
+                                    elif not error_text:
+                                        error_text = cnt
+
+                                p_name = (info.get("project_name") or info.get("title") or "默认工程") if info else "默认工程"
+                                now_ts = time.time()
+
+                                if is_quota and self.config.get("notify_on_quota_exhausted", True):
+                                    # 10 分钟告警冷却防连续轰炸
+                                    if now_ts - self.last_quota_alerts.get(conv_id, 0) >= 600:
+                                        self.last_quota_alerts[conv_id] = now_ts
+                                        Logger.log(f"检测到额度耗尽！会话={conv_id[:8]}, 工程={p_name}, Step={max_step}")
+                                        self.dispatch_notification(p_name, "任务中断：额度已耗尽", error_text or "模型限额已达上限，任务暂停执行。")
+                                elif error_text and self.config.get("notify_on_error", False):
+                                    Logger.log(f"检测到任务执行异常！会话={conv_id[:8]}, 工程={p_name}, Step={max_step}")
+                                    self.dispatch_notification(p_name, "任务中断：执行异常", error_text[:300])
+
+                            # 推进该会话已检查的步数，避免重复分析已处理步骤
+                            self.state["last_seen_steps"][conv_id] = max_step
+                            save_state(self.state)
 
                     except Exception as e:
                         Logger.log(f"扫描异常: {e}", echo=False)
