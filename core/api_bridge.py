@@ -30,6 +30,7 @@ from core.autostart import AutostartManager
 from core.storage import StorageManager
 from core.skills_optimizer import SkillsOptimizer
 from core.prompt_manager import PromptManager
+from core.account_pool import AccountPoolManager
 
 
 class OrbitApi:
@@ -37,6 +38,7 @@ class OrbitApi:
 
     def __init__(self, window_holder=None):
         self._window_holder = window_holder
+        self._account_mgr = AccountPoolManager()
 
     def get_initial_data(self) -> dict:
         """获取所有初始配置、运行状态、提示词及模板数据 (秒级返回)"""
@@ -73,6 +75,17 @@ class OrbitApi:
         # 运行日志最新 30 行
         logs = self._get_recent_logs()
 
+        # 账号池与凭据数据
+        account_pool = None
+        try:
+            account_pool = self._account_mgr.get_accounts_summary()
+            # 如果账号池为空，自动尝试静默导入当前已登录的客户端账号
+            if account_pool.get("total", 0) == 0:
+                self._account_mgr.import_current_client_account()
+                account_pool = self._account_mgr.get_accounts_summary()
+        except Exception as e:
+            account_pool = {"total": 0, "healthy": 0, "low_or_exhausted": 0, "accounts": [], "error": str(e)}
+
         return {
             "config": cfg,
             "status": {
@@ -87,6 +100,7 @@ class OrbitApi:
                 "app_autostart": app_auto,
                 "storage": storage_info,
             },
+            "account_pool": account_pool,
             "prompt": {
                 "content": prompt_content,
                 "templates": templates,
@@ -329,3 +343,77 @@ class OrbitApi:
             webbrowser.open(url)
         except Exception:
             pass
+
+    # ------------------------------------------------------------------
+    # 账号池与多账号极速切号 API
+    # ------------------------------------------------------------------
+    def get_account_pool(self) -> dict:
+        """获取账号池全量数据"""
+        try:
+            return {"success": True, "data": self._account_mgr.get_accounts_summary()}
+        except Exception as e:
+            return {"success": False, "message": f"获取账号池失败: {e}"}
+
+    def import_current_account(self) -> dict:
+        """一键从系统凭据导入当前反重力账号"""
+        try:
+            ok, info, msg = self._account_mgr.import_current_client_account()
+            pool = self._account_mgr.get_accounts_summary()
+            return {"success": ok, "message": msg, "data": pool}
+        except Exception as e:
+            return {"success": False, "message": f"导入账号失败: {e}"}
+
+    def add_account(self, token_input: str, custom_name: str = "") -> dict:
+        """手动添加/导入账号 (Refresh Token 或 JSON)"""
+        try:
+            ok, info, msg = self._account_mgr.add_account_by_token(token_input, custom_name or None)
+            pool = self._account_mgr.get_accounts_summary()
+            return {"success": ok, "message": msg, "data": pool}
+        except Exception as e:
+            return {"success": False, "message": f"添加账号异常: {e}"}
+
+    def switch_account(self, account_id: str, restart_app: bool = False) -> dict:
+        """一键切换当前反重力账号"""
+        try:
+            ok, msg = self._account_mgr.switch_account(account_id)
+            if not ok:
+                return {"success": False, "message": msg}
+
+            restart_msg = ""
+            if restart_app:
+                LocalizationManager.kill_running_antigravity()
+                time.sleep(0.8)
+                r_ok, r_msg = LocalizationManager.launch_antigravity()
+                restart_msg = "，客户端已重启生效" if r_ok else f"，重启客户端提示: {r_msg}"
+
+            pool = self._account_mgr.get_accounts_summary()
+            return {"success": True, "message": f"{msg}{restart_msg}", "data": pool}
+        except Exception as e:
+            return {"success": False, "message": f"切换账号异常: {e}"}
+
+    def refresh_account_quota(self, account_id: str) -> dict:
+        """刷新指定账号额度"""
+        try:
+            ok, quota, msg = self._account_mgr.refresh_single_account_quota(account_id)
+            pool = self._account_mgr.get_accounts_summary()
+            return {"success": ok, "message": msg, "data": pool}
+        except Exception as e:
+            return {"success": False, "message": f"刷新额度失败: {e}"}
+
+    def refresh_all_quotas(self) -> dict:
+        """全量批量自动刷新所有账号额度"""
+        try:
+            ok, count, msg = self._account_mgr.refresh_all_quotas()
+            pool = self._account_mgr.get_accounts_summary()
+            return {"success": ok, "message": msg, "count": count, "data": pool}
+        except Exception as e:
+            return {"success": False, "message": f"批量刷新失败: {e}"}
+
+    def delete_account(self, account_id: str) -> dict:
+        """移除账号"""
+        try:
+            ok, msg = self._account_mgr.delete_account(account_id)
+            pool = self._account_mgr.get_accounts_summary()
+            return {"success": ok, "message": msg, "data": pool}
+        except Exception as e:
+            return {"success": False, "message": f"删除账号失败: {e}"}

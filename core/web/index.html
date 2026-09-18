@@ -19,27 +19,29 @@
             <circle cx="12" cy="12" r="3"/>
           </svg>
           <span class="brand-title">Orbit 管理中心</span>
-          <span class="badge-version">v3.0.0</span>
+          <span class="badge-version">v3.1.0</span>
         </div>
-        <div class="brand-subtitle">Antigravity 增强套件</div>
+        <div class="brand-subtitle">Antigravity 增强与多账号套件</div>
       </div>
 
       <nav class="nav-list">
-        <div class="nav-item active" data-tab="overview">
+        <!-- 1. 仪表盘总览 -->
+        <div class="nav-item active" data-tab="dashboard">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>
           </svg>
-          <span>概览与服务</span>
+          <span>仪表盘总览</span>
         </div>
 
-        <div class="nav-item" data-tab="ui">
+        <!-- 2. 账号池与切换 (核心全新) -->
+        <div class="nav-item" data-tab="accounts">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
-            <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
           </svg>
-          <span>界面与外观</span>
+          <span>账号池与切换</span>
         </div>
 
+        <!-- 3. 性能加速与专属网络代理 -->
         <div class="nav-item" data-tab="perf">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
@@ -47,13 +49,24 @@
           <span>性能与代理</span>
         </div>
 
-        <div class="nav-item" data-tab="healing">
+        <!-- 4. 界面净化与外观 -->
+        <div class="nav-item" data-tab="appearance">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
+            <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
+          </svg>
+          <span>界面与外观</span>
+        </div>
+
+        <!-- 5. 任务自愈与通知推送 -->
+        <div class="nav-item" data-tab="automation">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>
           </svg>
-          <span>自愈与额度</span>
+          <span>自愈与通知</span>
         </div>
 
+        <!-- 6. 系统提示词与规则 -->
         <div class="nav-item" data-tab="prompts">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>
@@ -61,13 +74,7 @@
           <span>系统提示词</span>
         </div>
 
-        <div class="nav-item" data-tab="notify">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
-          </svg>
-          <span>消息推送</span>
-        </div>
-
+        <!-- 7. 运行日志 -->
         <div class="nav-item" data-tab="logs">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><polyline points="10 9 9 9 8 9"/>
@@ -89,540 +96,614 @@
     <main class="main-content">
 
       <!-- ======================================================== -->
-      <!-- 页面 1: 概览与系统服务 -->
+      <!-- 页面 1: 仪表盘总览 (Dashboard) -->
       <!-- ======================================================== -->
-      <section id="tab-overview" class="tab-pane active">
+      <section id="tab-dashboard" class="tab-pane active">
         <div class="pane-header">
-          <h2 class="pane-title">客户端状态与系统服务</h2>
-          <p class="pane-desc">实时监控 Antigravity 安装状态、管理后台常驻守护监听、开机自启与深度存储瘦身</p>
+          <h2 class="pane-title">仪表盘总览</h2>
+          <p class="pane-desc">实时掌控当前生效反重力账号、双周期配额健康度与核心系统运行状态</p>
         </div>
 
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-header-title">核心运行状态</div>
-              <div class="card-header-desc">Antigravity 本地部署与环境识别</div>
+        <!-- 核心主角卡片：当前激活账号 -->
+        <div class="account-hero-card">
+          <div class="hero-header">
+            <div class="hero-user-info">
+              <div class="user-avatar" id="hero-avatar">G</div>
+              <div>
+                <div class="user-meta-name">
+                  <span id="hero-user-name">正在检测账号...</span>
+                  <span class="badge-plan badge-active-tag">当前生效中</span>
+                </div>
+                <div class="user-meta-email" id="hero-user-email">未检测到已登录的凭据</div>
+              </div>
             </div>
-            <span id="badge-install-status" class="pill-badge gray">检测中...</span>
-          </div>
-
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">客户端安装路径</div>
-              <div id="text-install-path" class="row-desc" style="font-family: monospace;">正在分析本地目录...</div>
-            </div>
-          </div>
-
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">任务完成常驻守护服务</div>
-              <div id="text-daemon-status" class="row-desc">正在检测后台监听状态...</div>
-            </div>
-            <div class="row-right">
-              <span style="font-size: 12px; color: var(--text-muted);">端口:</span>
-              <input type="number" id="input-daemon-port" class="input-text input-mono" style="width: 72px; padding: 4px 8px;" value="49222">
-              <button id="btn-start-daemon" class="btn-secondary-sm">启动守护</button>
-              <button id="btn-stop-daemon" class="btn-secondary-sm">停止守护</button>
+            <div class="hero-badges" id="hero-plan-badge">
+              <span class="badge-plan badge-free">免费版</span>
             </div>
           </div>
 
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">后台守护服务随开机自启动</div>
-              <div id="text-daemon-autostart" class="row-desc">系统登录后自动静默在后台监听长跑任务事件</div>
+          <!-- 双额度条 -->
+          <div class="quota-bars-row">
+            <div class="quota-bar-col">
+              <div class="quota-bar-header">
+                <span class="quota-bar-title">
+                  <svg style="width: 13px; height: 13px; color: var(--accent);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  5 小时滚动额度 (Five Hour Limit)
+                </span>
+                <span class="quota-bar-percent" id="hero-5h-percent">100%</span>
+              </div>
+              <div class="quota-track">
+                <div class="quota-fill fill-healthy" id="hero-5h-fill" style="width: 100%;"></div>
+              </div>
+              <span class="quota-reset-desc" id="hero-5h-reset">重置周期：滚动计算</span>
             </div>
-            <div class="row-right">
-              <label class="switch">
-                <input type="checkbox" id="switch-daemon-autostart">
-                <span class="slider"></span>
-              </label>
+
+            <div class="quota-bar-col">
+              <div class="quota-bar-header">
+                <span class="quota-bar-title">
+                  <svg style="width: 13px; height: 13px; color: #10b981;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                  每周周期额度 (Weekly Limit)
+                </span>
+                <span class="quota-bar-percent" id="hero-weekly-percent">100%</span>
+              </div>
+              <div class="quota-track">
+                <div class="quota-fill fill-healthy" id="hero-weekly-fill" style="width: 100%;"></div>
+              </div>
+              <span class="quota-reset-desc" id="hero-weekly-reset">重置周期：每周自动重置</span>
             </div>
           </div>
 
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">Orbit 管理中心客户端开机自启动</div>
-              <div class="row-desc">开机自动拉起 Orbit 并静默常驻系统托盘，无需手动点开</div>
+          <div class="hero-actions">
+            <button class="btn btn-secondary btn-sm" id="btn-hero-refresh">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+              <span>刷新此账号额度</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-hero-pool">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <span>前往账号池管理</span>
+            </button>
+            <button class="btn btn-primary btn-sm" id="btn-hero-restart">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>重启 Antigravity 生效</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 下方两栏网格：系统服务与存储健康 -->
+        <div style="display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 16px;">
+          <!-- 客户端与服务运行状态 -->
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div class="card-title-group">
+                <div class="card-title">系统与守护服务状态</div>
+                <div class="card-subtitle">客户端进程监控与开机常驻守护</div>
+              </div>
             </div>
-            <div class="row-right">
+
+            <div class="row">
+              <div class="row-info">
+                <div class="row-title">Antigravity 官方客户端</div>
+                <div class="row-desc" id="client-path-text">检测中...</div>
+              </div>
+              <span class="status-pill status-active" id="client-status-badge">已安装</span>
+            </div>
+
+            <div class="row">
+              <div class="row-info">
+                <div class="row-title">后台常驻守护监听 (Daemon)</div>
+                <div class="row-desc" id="daemon-pid-text">长跑任务异常自愈与消息通知守护</div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="status-pill status-inactive" id="daemon-status-badge">已停止</span>
+                <button class="btn btn-secondary btn-xs" id="btn-toggle-daemon">启动服务</button>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="row-info">
+                <div class="row-title">客户端随开机自启动</div>
+                <div class="row-desc">随 Windows 开机静默启动并常驻托盘</div>
+              </div>
               <label class="switch">
                 <input type="checkbox" id="switch-app-autostart">
                 <span class="slider"></span>
               </label>
             </div>
-          </div>
 
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">点击关闭按钮时最小化到托盘 (Close to Tray)</div>
-              <div class="row-desc">关闭窗口时不退出程序，保持托盘静默就绪</div>
-            </div>
-            <div class="row-right">
+            <div class="row">
+              <div class="row-info">
+                <div class="row-title">关闭窗口时最小化到托盘</div>
+                <div class="row-desc">点击窗口右上角关闭按钮时缩入系统托盘</div>
+              </div>
               <label class="switch">
-                <input type="checkbox" id="switch-close-to-tray" checked>
+                <input type="checkbox" id="switch-close-tray" checked>
                 <span class="slider"></span>
               </label>
             </div>
           </div>
 
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">本地存储深度垃圾瘦身</div>
-              <div id="text-storage-info" class="row-desc">正在分析 Chromium 渲染死缓存与历史临时任务流...</div>
+          <!-- 存储占用与一键瘦身 -->
+          <div class="card" style="margin-bottom: 0;">
+            <div class="card-header">
+              <div class="card-title-group">
+                <div class="card-title">存储占用与健康维护</div>
+                <div class="card-subtitle">清理缓存日志与紧凑本地数据库</div>
+              </div>
             </div>
-            <div class="row-right">
-              <button id="btn-clean-storage" class="btn-secondary-sm">一键深度瘦身</button>
+
+            <div style="padding: 10px 0; font-size: 12px; color: var(--text-muted);" id="storage-breakdown">
+              正在扫描本地存储占用...
             </div>
+
+            <div class="callout-tip" style="margin-top: 8px; margin-bottom: 12px;">
+              💡 深度瘦身将安全清理无用历史缓存、压缩并整理 SQLite 数据库，可大幅提升 Antigravity 启动与索引响应速度。
+            </div>
+
+            <button class="btn btn-secondary" style="width: 100%;" id="btn-clean-storage">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              <span>执行安全深度瘦身</span>
+            </button>
           </div>
         </div>
       </section>
 
       <!-- ======================================================== -->
-      <!-- 页面 2: 界面语言与外观净化 -->
+      <!-- 页面 2: 账号池与多账号极速切号 (Account Pool) -->
       <!-- ======================================================== -->
-      <section id="tab-ui" class="tab-pane">
+      <section id="tab-accounts" class="tab-pane">
         <div class="pane-header">
-          <h2 class="pane-title">界面语言与外观净化</h2>
-          <p class="pane-desc">深度汉化 Antigravity 核心交互与菜单，净化顶栏多余 IDE 推广按钮</p>
+          <h2 class="pane-title">账号池与多账号管理</h2>
+          <p class="pane-desc">支持导入多账号矩阵、自动批量检测各账号额度与到期时间、一键无缝切换当前登录身份</p>
         </div>
 
-        <div class="card">
-          <div class="card-header">
-            <div class="card-header-title">界面语言包设置</div>
-            <div class="card-header-desc">支持简体中文与繁体中文原子级汉化</div>
+        <!-- 统计指标栏 -->
+        <div class="metrics-row">
+          <div class="metric-card">
+            <span class="metric-num" id="metric-total-accounts">0</span>
+            <span class="metric-label">账号池总数 (Total)</span>
           </div>
-
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">客户端主界面语言</div>
-              <div class="row-desc">选择后点击底部“保存并一键生效”立即写入生效</div>
-            </div>
-            <div class="row-right" style="gap: 20px;">
-              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12.5px;">
-                <input type="radio" name="radio-lang" value="zh-CN" checked> 简体中文 (zh-CN)
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12.5px;">
-                <input type="radio" name="radio-lang" value="zh-TW"> 繁体中文 (zh-TW)
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12.5px;">
-                <input type="radio" name="radio-lang" value="en"> 官方英文原版 (en)
-              </label>
-            </div>
+          <div class="metric-card">
+            <span class="metric-num" style="color: #10b981;" id="metric-healthy-accounts">0</span>
+            <span class="metric-label">额度良好 (>20%)</span>
           </div>
-
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">彻底移除右上角推广按钮 (Open IDE / Install IDE)</div>
-              <div class="row-desc">拦截推广按钮及其外层占位容器，还原干净的顶部标题栏</div>
-            </div>
-            <div class="row-right">
-              <label class="switch">
-                <input type="checkbox" id="switch-hide-ide" checked>
-                <span class="slider"></span>
-              </label>
-            </div>
+          <div class="metric-card">
+            <span class="metric-num" style="color: #f59e0b;" id="metric-low-accounts">0</span>
+            <span class="metric-label">额度紧张/耗尽</span>
           </div>
+          <div class="metric-card">
+            <span class="metric-num" style="color: var(--accent); font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" id="metric-active-email">-</span>
+            <span class="metric-label">当前生效账号 (Active)</span>
+          </div>
+        </div>
 
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">紧凑代码视野模式 (Compact UI Mode)</div>
-              <div class="row-desc">缩减气泡与卡片上下空白边距，有效代码展示视野提升 35%~50%</div>
-            </div>
-            <div class="row-right">
-              <label class="switch">
-                <input type="checkbox" id="switch-compact-ui">
-                <span class="slider"></span>
-              </label>
-            </div>
+        <!-- 操作工具栏 -->
+        <div class="account-toolbar">
+          <div style="font-size: 12.5px; font-weight: 600; color: var(--text-main); display: flex; align-items: center; gap: 6px;">
+            <svg style="width: 15px; height: 15px; color: var(--accent);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+            <span>账号矩阵列表</span>
+          </div>
+          <div class="toolbar-actions">
+            <button class="btn btn-secondary btn-sm" id="btn-import-current">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+              <span>读取当前客户端账号</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-add-account-modal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+              <span>添加账号</span>
+            </button>
+            <button class="btn btn-primary btn-sm" id="btn-refresh-all-quotas">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+              <span>刷新所有账号额度</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 账号卡片流容器 -->
+        <div class="account-grid" id="account-cards-container">
+          <!-- 动态由 JS 渲染 account-card -->
+          <div style="grid-column: 1 / -1; padding: 40px 0; text-align: center; color: var(--text-dim);">
+            正在加载账号池...
           </div>
         </div>
       </section>
 
       <!-- ======================================================== -->
-      <!-- 页面 3: 性能加速与网络代理 -->
+      <!-- 页面 3: 性能加速与专属代理 (Performance & Proxy) -->
       <!-- ======================================================== -->
       <section id="tab-perf" class="tab-pane">
         <div class="pane-header">
-          <h2 class="pane-title">性能加速与网络代理</h2>
-          <p class="pane-desc">释放 Chromium 显卡硬件性能、解除后台降频限制，为 Antigravity 注入专属专属网络代理</p>
+          <h2 class="pane-title">系统性能调优与专属网络代理</h2>
+          <p class="pane-desc">配置显卡硬件直推、长跑任务保活及反重力专属独立代理（彻底替代 Proxifier）</p>
+        </div>
+
+        <!-- 专属网络代理卡片 -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <div class="card-title">专属独立网络代理 (彻底取代 Proxifier)</div>
+              <div class="card-subtitle">为 Antigravity 全套进程注入专属代理，隔离外部全局工具</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="switch-proxy">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="row">
+            <div class="row-info">
+              <div class="row-title">代理协议类型</div>
+              <div class="row-desc">支持标准 HTTP 代理与高匿名 SOCKS5 代理</div>
+            </div>
+            <select id="select-proxy-type" class="select-clean">
+              <option value="http">HTTP 代理</option>
+              <option value="socks5">SOCKS5 代理</option>
+            </select>
+          </div>
+
+          <div class="row">
+            <div class="row-info">
+              <div class="row-title">代理服务器地址与端口</div>
+              <div class="row-desc">例如本地科学客户端地址 (127.0.0.1:7890)</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <input type="text" id="input-proxy-host" class="input-clean" style="width: 140px;" placeholder="127.0.0.1">
+              <span style="color: var(--text-dim); font-weight: 600;">:</span>
+              <input type="number" id="input-proxy-port" class="input-clean" style="width: 80px;" placeholder="7890">
+              <button class="btn btn-secondary btn-sm" id="btn-test-proxy">测试连通</button>
+            </div>
+          </div>
+
+          <div class="callout-tip">
+            📌 开启后，包括 <code>language_server_windows_x64.exe</code>、<code>Antigravity.exe</code>、<code>chrome.exe</code>、<code>git.exe</code> 等反重力关联链路均将独立接管，完全无需在后台开启并配置 Proxifier 规则。
+          </div>
+        </div>
+
+        <!-- 系统与渲染加速卡片 -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <div class="card-title">系统底层与显卡加速</div>
+              <div class="card-subtitle">释放 GPU 算力与解除大项目内存限制</div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="row-info">
+              <div class="row-title">独立显卡 GPU 硬件直推加速</div>
+              <div class="row-desc">强制开启 Chromium 底层硬件光栅化与 GPU 渲染加速，消除大文件滚动掉帧</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="switch-gpu" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="row">
+            <div class="row-info">
+              <div class="row-title">长跑任务防休眠降频 (No-Sleep Mode)</div>
+              <div class="row-desc">执行复杂任务或批量代码生成时，防止系统进入空闲休眠导致断流</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="switch-nosleep" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="row">
+            <div class="row-info">
+              <div class="row-title">4GB V8 堆内存扩展 (Big Heap Allocation)</div>
+              <div class="row-desc">将 Language Server 默认 1.4GB 内存上限扩展至 4096MB，防止解析大项目 OOM 崩溃</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="switch-heap" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- 页面 4: 界面净化与外观 (Appearance) -->
+      <!-- ======================================================== -->
+      <section id="tab-appearance" class="tab-pane">
+        <div class="pane-header">
+          <h2 class="pane-title">界面净化与外观显示</h2>
+          <p class="pane-desc">个性化设置客户端显示语言、顶栏额度胶囊与移除多余推广元素</p>
         </div>
 
         <div class="card">
           <div class="card-header">
-            <div class="card-header-title">顶栏模型配额实时胶囊</div>
-            <div class="card-header-desc">在标题栏右上角常驻显示 Gemini 与 Claude / GPT 额度与健康指示</div>
+            <div class="card-title-group">
+              <div class="card-title">语言与本地化</div>
+              <div class="card-subtitle">实时切换客户端显示语言环境</div>
+            </div>
           </div>
 
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">启用顶栏模型额度实时胶囊</div>
-              <div class="row-desc">窗口聚焦与失焦时全自动自主刷新，支持点击展开 5h 与周限额详细进度</div>
+          <div class="row">
+            <div class="row-info">
+              <div class="row-title">客户端显示语言</div>
+              <div class="row-desc">完全对齐官方词汇的高精度术语汉化</div>
             </div>
-            <div class="row-right">
-              <span style="font-size: 12px; color: var(--text-muted);">刷新频率:</span>
+            <select id="select-language" class="select-clean">
+              <option value="zh-CN">简体中文 (Simplified Chinese)</option>
+              <option value="zh-TW">繁體中文 (Traditional Chinese)</option>
+              <option value="en">English (Official Default)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <div class="card-title">界面视觉净化与辅助组件</div>
+              <div class="card-subtitle">顶栏实时额度胶囊与工作区扩展</div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="row-info">
+              <div class="row-title">顶栏模型额度实时胶囊徽章</div>
+              <div class="row-desc">在反重力顶栏常驻展示 Gemini 与 Claude 实时可用额度与刷新倒计时</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
               <select id="select-quota-interval" class="select-clean">
-                <option value="30">30 秒</option>
-                <option value="60" selected>60 秒</option>
-                <option value="120">120 秒</option>
-                <option value="300">300 秒</option>
+                <option value="30">每 30 秒刷新</option>
+                <option value="60">每 60 秒刷新</option>
+                <option value="120">每 2 分钟刷新</option>
+                <option value="300">每 5 分钟刷新</option>
               </select>
-              <label class="switch" style="margin-left: 8px;">
+              <label class="switch">
                 <input type="checkbox" id="switch-show-quota" checked>
                 <span class="slider"></span>
               </label>
             </div>
           </div>
 
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">GPU 显卡硬件栅格化与零拷贝 (Zero-Copy Rasterization)</div>
-              <div class="row-desc">降低长代码输出时的 CPU 负担，界面流式渲染更丝滑</div>
+          <div class="row">
+            <div class="row-info">
+              <div class="row-title">移除右上角官方推广与邀请好友按钮</div>
+              <div class="row-desc">隐藏顶栏右上角不必要的活动推广胶囊，保持工作区纯净</div>
             </div>
-            <div class="row-right">
-              <label class="switch">
-                <input type="checkbox" id="switch-gpu-accel" checked>
-                <span class="slider"></span>
-              </label>
-            </div>
+            <label class="switch">
+              <input type="checkbox" id="switch-remove-promo" checked>
+              <span class="slider"></span>
+            </label>
           </div>
 
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">长文本平滑滚动与 60FPS 顺滑渲染 (Smooth Scrolling)</div>
-              <div class="row-desc">消除长代码与推理过程中的滚动卡顿与撕裂感</div>
+          <div class="row">
+            <div class="row-info">
+              <div class="row-title">紧凑代码与对话工作区</div>
+              <div class="row-desc">压缩侧栏与编辑器内边距，提供更加开阔舒适的代码阅读视野</div>
             </div>
-            <div class="row-right">
-              <label class="switch">
-                <input type="checkbox" id="switch-smooth-scrolling" checked>
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">解除后台调度降频 (Disable Background Throttling)</div>
-              <div class="row-desc">切换其他窗口时防止定时器被降频至 1Hz，保障后台长跑全速执行</div>
-            </div>
-            <div class="row-right">
-              <label class="switch">
-                <input type="checkbox" id="switch-unthrottle" checked>
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">V8 引擎堆内存扩容至 4GB (--max-old-space-size=4096)</div>
-              <div class="row-desc">消除几十轮长对话与超大工程索引下的 GC 停顿与崩溃溢出</div>
-            </div>
-            <div class="row-right">
-              <label class="switch">
-                <input type="checkbox" id="switch-v8-mem" checked>
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">锁定稳定版本 (Disable Auto-Update)</div>
-              <div class="row-desc">阻断后台静默更新，防止官方静默升级覆盖汉化与优化补丁</div>
-            </div>
-            <div class="row-right">
-              <label class="switch">
-                <input type="checkbox" id="switch-disable-update" checked>
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">裁剪内置说明型 Skills 技能提示词 (Prune Skills)</div>
-              <div class="row-desc">安全屏蔽庞大的内置教程 Skills，每次请求节省约 14,700 Token</div>
-            </div>
-            <div class="row-right">
-              <label class="switch">
-                <input type="checkbox" id="switch-prune-skills">
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">全栈切断遥测数据回传 (Anti-Telemetry)</div>
-              <div class="row-desc">阻断 Language Server 指标收集、Chromium 崩溃诊断与 DevTools 日志上报</div>
-            </div>
-            <div class="row-right">
-              <label class="switch">
-                <input type="checkbox" id="switch-telemetry" checked>
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <!-- 专属网络代理卡片 -->
-        <div class="card">
-          <div class="card-header">
-            <div class="card-header-title">Antigravity 专属网络代理 (彻底取代 Proxifier)</div>
-            <div class="card-header-desc">直接向 Chromium 与 Go 核心服务原生注入代理，免去全局 TUN 模式</div>
-          </div>
-
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">启用 Antigravity 专属网络代理</div>
-              <div class="row-desc">开启后 Chromium 界面、Go 语言服务器及 git.exe/ssh.exe 均自动走此代理</div>
-            </div>
-            <div class="row-right">
-              <label class="switch">
-                <input type="checkbox" id="switch-proxy-enabled">
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="card-row" style="padding-top: 10px; padding-bottom: 14px;">
-            <div class="row-left" style="display: flex; align-items: center; gap: 12px;">
-              <span style="font-weight: 600; font-size: 12.5px; width: 80px; flex-shrink: 0;">代理地址:</span>
-              <input type="text" id="input-proxy-url" class="input-text input-mono" value="http://127.0.0.1:10808" placeholder="支持 HTTP/SOCKS5，例如: http://127.0.0.1:10808">
-            </div>
-          </div>
-
-          <div class="callout-tip" style="margin: 0 16px 14px 16px;">
-            💡 <strong>原理解析：</strong>此前您使用 Proxifier 代理 language_server_windows_x64.exe、Antigravity.exe、git.exe 等进程；本功能在 Chromium 命令行中直接注入 <code>--proxy-server</code>，并在 Language Server 启动时注入 <code>HTTP_PROXY</code> 环境变量，原生无死角接管所有 Google API 与网络请求，保存生效后您可以彻底退出并卸载 Proxifier！
+            <label class="switch">
+              <input type="checkbox" id="switch-compact-code" checked>
+              <span class="slider"></span>
+            </label>
           </div>
         </div>
       </section>
 
       <!-- ======================================================== -->
-      <!-- 页面 4: 自愈与额度熔断 -->
+      <!-- 页面 5: 任务自愈与通知 (Automation & Alerts) -->
       <!-- ======================================================== -->
-      <section id="tab-healing" class="tab-pane">
+      <section id="tab-automation" class="tab-pane">
         <div class="pane-header">
-          <h2 class="pane-title">任务异常自愈与额度监控</h2>
-          <p class="pane-desc">智能体长跑任务报错时自动重试自愈，恢复工作自动重置计数；模型额度耗尽立即告警</p>
+          <h2 class="pane-title">智能自愈策略与跨平台通知通道</h2>
+          <p class="pane-desc">配置长跑任务报错自动重试、额度耗尽熔断保护以及 Telegram、飞书、企业微信推送</p>
         </div>
 
+        <!-- 自愈与熔断卡片 -->
         <div class="card">
           <div class="card-header">
-            <div class="card-header-title">自愈引擎配置</div>
-            <div class="card-header-desc">毫秒级 DOM 状态感应与重试预算管理</div>
-          </div>
-
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">任务异常自动重试 (Auto-Retry on Error)</div>
-              <div class="row-desc">偶发网络波动或服务端报错时自动重试，重试后恢复正常工作自动清零重试计数</div>
-            </div>
-            <div class="row-right">
-              <span style="font-size: 12px; color: var(--text-muted);">最大重试:</span>
-              <select id="select-max-retries" class="select-clean">
-                <option value="1">1 次</option>
-                <option value="2">2 次</option>
-                <option value="3" selected>3 次</option>
-                <option value="5">5 次</option>
-                <option value="8">8 次</option>
-                <option value="10">10 次</option>
-              </select>
-              <label class="switch" style="margin-left: 8px;">
-                <input type="checkbox" id="switch-auto-retry" checked>
-                <span class="slider"></span>
-              </label>
+            <div class="card-title-group">
+              <div class="card-title">长跑任务异常自愈与熔断策略</div>
+              <div class="card-subtitle">防止偶发网络抖动中断任务，额度用尽时立即安全熔断</div>
             </div>
           </div>
 
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">模型额度耗尽立即发送中断通知 (Quota Exhausted)</div>
-              <div class="row-desc">检测到 429、Rate Limit 或额度为 0 时立即停止重试，向推送渠道发送【任务中断：额度已耗尽】</div>
+          <div class="row">
+            <div class="row-info">
+              <div class="row-title">意外报错自动重试次数</div>
+              <div class="row-desc">当智能体在长跑执行中遭遇偶发异常中断时，自动尝试重试</div>
             </div>
-            <div class="row-right">
-              <label class="switch">
-                <input type="checkbox" id="switch-notify-quota" checked>
-                <span class="slider"></span>
-              </label>
+            <select id="select-max-retries" class="select-clean">
+              <option value="0">关闭自动重试 (0 次)</option>
+              <option value="1">重试 1 次后告警</option>
+              <option value="2">重试 2 次后告警</option>
+              <option value="3">重试 3 次后告警 (推荐)</option>
+              <option value="5">重试 5 次后告警</option>
+            </select>
+          </div>
+
+          <div class="row">
+            <div class="row-info">
+              <div class="row-title">任务恢复工作后自动复位重试计数</div>
+              <div class="row-desc">重试后若智能体正常产出代码并继续工作，自动将已用重试次数清零</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="switch-reset-retries" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="row">
+            <div class="row-info">
+              <div class="row-title">模型额度耗尽立即发送熔断通知 (Quota Exhausted)</div>
+              <div class="row-desc">若因当前账号额度用完导致任务中断，立即通过配置的通道告警</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="switch-notify-quota" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 消息推送渠道 -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <div class="card-title">跨平台消息推送渠道</div>
+              <div class="card-subtitle">任务完成、报错重试失败或额度熔断时即时送达移动端</div>
             </div>
           </div>
 
-          <div class="card-row">
-            <div class="row-left">
-              <div class="row-title">重试超限发送任务失败通知 (Max Retries Failed)</div>
-              <div class="row-desc">连续自动重试达到设定上限仍未恢复时，发送【任务执行失败】告警通知</div>
+          <!-- Telegram -->
+          <div class="row">
+            <div class="row-info">
+              <div class="row-title">Telegram Bot 通知</div>
+              <div class="row-desc">通过 Telegram 专用机器人推送长跑完成与熔断告警</div>
             </div>
-            <div class="row-right">
-              <label class="switch">
-                <input type="checkbox" id="switch-notify-max-failed" checked>
-                <span class="slider"></span>
-              </label>
+            <label class="switch">
+              <input type="checkbox" id="switch-tg">
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div style="padding: 10px 0 16px 0; display: flex; flex-direction: column; gap: 8px;">
+            <input type="text" id="input-tg-token" class="input-clean" placeholder="Telegram Bot Token (例如: 123456:ABC-DEF...)">
+            <input type="text" id="input-tg-chat" class="input-clean" placeholder="Telegram Chat ID (例如: 123456789)">
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="input-tg-proxy" class="input-clean" style="flex: 1;" placeholder="TG 专属网络代理 (可选，如 http://127.0.0.1:7890)">
+              <button class="btn btn-secondary btn-sm" id="btn-test-tg">发送 TG 测试</button>
             </div>
+          </div>
+
+          <!-- 飞书 -->
+          <div class="row" style="border-top: 1px solid #f8fafc; padding-top: 14px;">
+            <div class="row-info">
+              <div class="row-title">飞书群自定义机器人 (Feishu Webhook)</div>
+              <div class="row-desc">向指定的飞书项目群或个人机器人推送卡片提醒</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="switch-feishu">
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div style="padding: 10px 0 16px 0; display: flex; gap: 8px;">
+            <input type="text" id="input-feishu-url" class="input-clean" style="flex: 1;" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
+            <button class="btn btn-secondary btn-sm" id="btn-test-feishu">发送飞书测试</button>
+          </div>
+
+          <!-- 企业微信 -->
+          <div class="row" style="border-top: 1px solid #f8fafc; padding-top: 14px;">
+            <div class="row-info">
+              <div class="row-title">企业微信群机器人 (WeCom Webhook)</div>
+              <div class="row-desc">向企业微信群机器人推送富文本任务完成卡片</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="switch-wecom">
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div style="padding: 10px 0 6px 0; display: flex; gap: 8px;">
+            <input type="text" id="input-wecom-url" class="input-clean" style="flex: 1;" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...">
+            <button class="btn btn-secondary btn-sm" id="btn-test-wecom">发送企微测试</button>
           </div>
         </div>
       </section>
 
       <!-- ======================================================== -->
-      <!-- 页面 5: 系统提示词管理 -->
+      <!-- 页面 6: 全局系统提示词管理 (Prompts & Rules) -->
       <!-- ======================================================== -->
       <section id="tab-prompts" class="tab-pane">
         <div class="pane-header">
-          <h2 class="pane-title">全局系统提示词与规则管理</h2>
-          <p class="pane-desc">直接可视化编辑 <code>~/.gemini/config/AGENTS.md</code>，精确约束智能体角色、逻辑风格与工程规范</p>
+          <h2 class="pane-title">全局系统规则与提示词管理</h2>
+          <p class="pane-desc">管理 Antigravity 全局 AGENTS.md 行为规则，内置 5 套实战角色模板，即时生效无需重启</p>
         </div>
 
-        <div class="prompt-editor-box">
+        <div class="prompt-editor-container">
           <div class="prompt-editor-header">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <span style="font-weight: 600; font-size: 12px; color: var(--text-muted);">预设角色模板:</span>
-              <select id="select-prompt-template" class="select-clean" style="width: 280px;">
-                <option value="">正在载入预设模板...</option>
-              </select>
-              <button id="btn-apply-template" class="btn-secondary-sm">套用此模板</button>
-            </div>
-
             <div style="display: flex; align-items: center; gap: 8px;">
-              <button id="btn-reload-prompt" class="btn-secondary-sm">重新读取</button>
-              <button id="btn-restore-prompt-bak" class="btn-secondary-sm">恢复备份</button>
-              <button id="btn-save-prompt" class="btn-primary-sm">保存系统提示词</button>
+              <span style="font-weight: 600; font-size: 12.5px; color: var(--text-main);">预设实战角色模板:</span>
+              <select id="select-preset-template" class="select-clean" style="font-size: 12px; padding: 4px 10px;">
+                <option value="">-- 选择套用模板 --</option>
+              </select>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button class="btn btn-secondary btn-xs" id="btn-restore-prompt">还原备份 (.bak)</button>
+              <button class="btn btn-primary btn-xs" id="btn-save-prompt">保存系统提示词</button>
             </div>
           </div>
-
-          <textarea id="textarea-prompt" class="prompt-textarea" placeholder="正在读取 ~/.gemini/config/AGENTS.md ..."></textarea>
+          <textarea id="prompt-editor" class="prompt-textarea" placeholder="在此编辑全局 AGENTS.md 系统提示词..."></textarea>
         </div>
 
         <div class="callout-tip">
-          💡 <strong>原理提示：</strong>Antigravity 每次启动新会话时会自动读取 <code>~/.gemini/config/AGENTS.md</code> 并注入为全局 <code>&lt;RULE[user_global]&gt;</code>。在此修改并保存后，<strong>无需重启 Antigravity</strong>，在下一个对话轮次将直接生效！每次保存均自动保留 <code>AGENTS.md.bak</code> 备份。
+          💡 该提示词直接对应反重力核心规则文件 <code>~/.gemini/config/AGENTS.md</code>。保存时会自动备份旧版本，下一个任务和对话直接生效。
         </div>
       </section>
 
       <!-- ======================================================== -->
-      <!-- 页面 6: 消息推送通道 -->
-      <!-- ======================================================== -->
-      <section id="tab-notify" class="tab-pane">
-        <div class="pane-header">
-          <h2 class="pane-title">长跑任务完成即时通知</h2>
-          <p class="pane-desc">任务完成或异常中断时，跨网络向手机或电脑推送工程名称与完成详情</p>
-        </div>
-
-        <!-- Telegram -->
-        <div class="card">
-          <div class="card-header">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <label class="switch">
-                <input type="checkbox" id="switch-tg-enabled">
-                <span class="slider"></span>
-              </label>
-              <div>
-                <div class="card-header-title">Telegram Bot 消息推送</div>
-                <div class="card-header-desc">支持国内外直连与代理网络自适应</div>
-              </div>
-            </div>
-            <button id="btn-test-tg" class="btn-secondary-sm">测试 Telegram</button>
-          </div>
-
-          <div style="padding: 14px 18px; display: flex; flex-direction: column; gap: 10px;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <span style="width: 90px; font-weight: 600; font-size: 12px; color: var(--text-muted);">Bot Token:</span>
-              <input type="text" id="input-tg-token" class="input-text input-mono" placeholder="已自动读取配置历史 Token">
-            </div>
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <span style="width: 90px; font-weight: 600; font-size: 12px; color: var(--text-muted);">Chat ID:</span>
-              <input type="text" id="input-tg-chat" class="input-text input-mono" placeholder="例如: -1003820990608">
-            </div>
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <span style="width: 90px; font-weight: 600; font-size: 12px; color: var(--text-muted);">代理配置:</span>
-              <input type="text" id="input-tg-proxy" class="input-text input-mono" placeholder="可选，例如: 10808 或 http://127.0.0.1:10808">
-            </div>
-          </div>
-        </div>
-
-        <!-- 飞书 -->
-        <div class="card">
-          <div class="card-header">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <label class="switch">
-                <input type="checkbox" id="switch-fs-enabled">
-                <span class="slider"></span>
-              </label>
-              <div>
-                <div class="card-header-title">飞书自定义机器人 (Feishu)</div>
-                <div class="card-header-desc">通过群自定义 Webhook 接收卡片通知</div>
-              </div>
-            </div>
-            <button id="btn-test-fs" class="btn-secondary-sm">测试飞书</button>
-          </div>
-
-          <div style="padding: 14px 18px; display: flex; align-items: center; gap: 12px;">
-            <span style="width: 90px; font-weight: 600; font-size: 12px; color: var(--text-muted);">Webhook:</span>
-            <input type="text" id="input-fs-url" class="input-text input-mono" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxx">
-          </div>
-        </div>
-
-        <!-- 企业微信 -->
-        <div class="card">
-          <div class="card-header">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <label class="switch">
-                <input type="checkbox" id="switch-wc-enabled">
-                <span class="slider"></span>
-              </label>
-              <div>
-                <div class="card-header-title">企业微信群机器人 (WeCom)</div>
-                <div class="card-header-desc">企业微信内部群消息通知推送</div>
-              </div>
-            </div>
-            <button id="btn-test-wc" class="btn-secondary-sm">测试企微</button>
-          </div>
-
-          <div style="padding: 14px 18px; display: flex; align-items: center; gap: 12px;">
-            <span style="width: 90px; font-weight: 600; font-size: 12px; color: var(--text-muted);">Webhook:</span>
-            <input type="text" id="input-wc-url" class="input-text input-mono" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxx">
-          </div>
-        </div>
-      </section>
-
-      <!-- ======================================================== -->
-      <!-- 页面 7: 守护运行日志 -->
+      <!-- 页面 7: 运行日志与审计 (Logs & Audit) -->
       <!-- ======================================================== -->
       <section id="tab-logs" class="tab-pane">
-        <div class="pane-header" style="display: flex; align-items: center; justify-content: space-between;">
-          <div>
-            <h2 class="pane-title">常驻后台心跳与任务日志</h2>
-            <p class="pane-desc">实时预览任务状态更新、心跳轮询与通知发送记录</p>
-          </div>
-          <div style="display: flex; gap: 8px;">
-            <button id="btn-refresh-logs" class="btn-secondary-sm">刷新日志</button>
-            <button id="btn-clear-logs" class="btn-secondary-sm">清空日志</button>
+        <div class="pane-header">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div>
+              <h2 class="pane-title">运行日志与切号审计</h2>
+              <p class="pane-desc">查看后台守护心跳、账号切换、长跑任务完成与通知推送日志</p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary btn-sm" id="btn-refresh-logs">刷新日志</button>
+              <button class="btn btn-secondary btn-sm" id="btn-clear-logs">清空日志</button>
+            </div>
           </div>
         </div>
 
-        <div id="terminal-logs" class="terminal-viewer">正在载入后台运行日志...</div>
+        <div class="terminal-viewer" id="terminal-logs">
+          正在载入日志流...
+        </div>
       </section>
 
     </main>
   </div>
 
-  <!-- 全局底部常驻操作栏 (严格等高规格) -->
-  <footer class="footer-bar">
+  <!-- 全局底部常驻操作栏 -->
+  <footer class="app-footer">
     <div class="footer-left">
-      <a id="link-github" class="github-link">
-        <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.1-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"/></svg>
-        <span>GitHub: akasls/Antigravity-Orbit</span>
+      <a class="footer-link" id="footer-link-github" href="#">
+        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+        <span>GitHub 源码仓库</span>
       </a>
-      <div id="footer-status" class="footer-status-msg">● 客户端就绪</div>
+      <span class="footer-status-pill">
+        <span class="status-dot"></span>
+        <span id="footer-status-text">就绪</span>
+      </span>
     </div>
 
-    <div class="footer-actions">
-      <button id="btn-restore-official" class="btn-action danger">还原官方原版</button>
-      <button id="btn-restart-app" class="btn-action secondary">重启 Antigravity</button>
-      <button id="btn-apply-all" class="btn-action primary">保存并一键生效</button>
+    <div class="footer-right">
+      <button class="btn btn-secondary" id="btn-restore-all">还原官方原版</button>
+      <button class="btn btn-secondary" id="btn-restart-app">重启 Antigravity</button>
+      <button class="btn btn-primary" id="btn-save-all">保存并一键生效</button>
     </div>
   </footer>
 
-  <!-- 浮动 Toast 消息通知容器 -->
-  <div id="toast-container" class="toast-container"></div>
+  <!-- 模态框：添加新账号弹窗 -->
+  <div class="modal-backdrop" id="modal-add-account">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="modal-title">添加反重力账号</div>
+        <button class="modal-close" id="btn-close-modal">
+          <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+          支持输入 Google OAuth <code>refresh_token</code>，或直接粘贴从其他工具/客户端导出的完整 Token JSON 载荷：
+        </div>
+        <textarea id="input-account-token" class="prompt-textarea" style="height: 120px; border: 1px solid var(--border-card); border-radius: var(--radius-sm);" placeholder='例如: 1//068hngFBst... 或 {"token": {"refresh_token": "..."}}'></textarea>
+        
+        <input type="text" id="input-account-name" class="input-clean" placeholder="自定义备注名称 (可选，留空则自动读取 Google 姓名)">
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" id="btn-cancel-modal">取消</button>
+        <button class="btn btn-primary btn-sm" id="btn-submit-add-account">验证并导入账号</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 浮动无感 Toast 容器 -->
+  <div class="toast-container" id="toast-container"></div>
 
   <script src="app.js"></script>
 </body>
