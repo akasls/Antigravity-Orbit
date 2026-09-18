@@ -162,7 +162,11 @@ class LocalizationEngine {
             disable_background_throttling: true,
             expand_v8_memory: true,
             disable_telemetry: true,
-            hide_ide_buttons: true
+            hide_ide_buttons: true,
+            auto_retry_on_error: true,
+            max_retry_count: 3,
+            notify_on_quota_exhausted: true,
+            notify_on_max_retry_failed: true
         };
     }
 

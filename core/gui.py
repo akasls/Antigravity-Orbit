@@ -256,6 +256,12 @@ class ModernOrbitApp(tk.Tk):
         self.var_proxy_enabled = tk.BooleanVar(value=custom.get("proxy_enabled", False))
         self.var_proxy_url = tk.StringVar(value=custom.get("proxy_url", "http://127.0.0.1:10808"))
 
+        # 任务异常自愈与额度监控
+        self.var_auto_retry = tk.BooleanVar(value=custom.get("auto_retry_on_error", True))
+        self.var_max_retry_count = tk.IntVar(value=custom.get("max_retry_count", 3))
+        self.var_notify_quota = tk.BooleanVar(value=custom.get("notify_on_quota_exhausted", True))
+        self.var_notify_max_retry = tk.BooleanVar(value=custom.get("notify_on_max_retry_failed", True))
+
         # 通知通道 (精准读取历史配置)
         channels = self.cfg.get("channels", {})
         tg = channels.get("telegram", {})
@@ -357,6 +363,7 @@ class ModernOrbitApp(tk.Tk):
         self._build_card_localization(self.scrollable_frame)
         self._build_card_performance(self.scrollable_frame)
         self._build_card_proxy(self.scrollable_frame)
+        self._build_card_task_healing(self.scrollable_frame)
         self._build_card_notifications(self.scrollable_frame)
         self._build_card_logs(self.scrollable_frame)
 
@@ -635,7 +642,59 @@ class ModernOrbitApp(tk.Tk):
         ).pack(anchor="w")
 
     # -------------------------------------------------------------
-    # 卡片 4: 消息通知推送渠道
+    # 卡片: 任务异常自愈与额度监控告警
+    # -------------------------------------------------------------
+    def _build_card_task_healing(self, parent):
+        c = self._create_card(parent, "任务异常自愈与额度监控告警", "智能体任务意外报错自动重试，恢复工作自动重置计数；额度耗尽或超限即时通知")
+
+        # 行 1: 任务异常自动重试与最大重试次数
+        r_retry = tk.Frame(c, bg=self.C_CARD, padx=20, pady=12)
+        r_retry.pack(fill="x")
+
+        left = tk.Frame(r_retry, bg=self.C_CARD)
+        left.pack(side="left", fill="both", expand=True)
+
+        tk.Label(left, text="任务异常自动重试 (Auto-Retry on Error)", font=self.font_main_bold, fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
+        tk.Label(left, text="智能体运行遭遇网络抖动或偶发报错时自动重试，重试后恢复工作将自动重置重试计数为 0", font=self.font_sm, fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
+
+        right = tk.Frame(r_retry, bg=self.C_CARD)
+        right.pack(side="right", anchor="center")
+
+        tk.Label(right, text="最大重试:", font=self.font_sm, fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left", padx=(0, 4))
+        cb_retries = ttk.Combobox(right, textvariable=self.var_max_retry_count, values=[1, 2, 3, 4, 5, 8, 10], width=4, state="readonly", style="Clean.TCombobox")
+        cb_retries.pack(side="left", padx=(0, 4))
+        tk.Label(right, text="次", font=self.font_sm, fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left", padx=(0, 16))
+
+        f_chk = tk.Frame(right, bg=self.C_CARD, cursor="hand2")
+        f_chk.pack(side="left")
+        chk = ModernCheckmark(f_chk, variable=self.var_auto_retry, bg=self.C_CARD, font_family=self.FONT_FAMILY)
+        chk.pack(side="left", padx=(0, 6))
+        lbl_txt = tk.Label(f_chk, text="已启用", font=self.font_main, fg=self.C_TEXT_MAIN, bg=self.C_CARD, cursor="hand2")
+        lbl_txt.pack(side="left")
+        lbl_txt.bind("<Button-1>", lambda e: chk.toggle())
+        f_chk.bind("<Button-1>", lambda e: chk.toggle())
+
+        self._create_row_separator(c)
+
+        # 行 2: 额度耗尽专门告警
+        self._create_checkbox_row(
+            c,
+            title="模型额度耗尽立即发送中断通知 (Notify on Quota Exhausted)",
+            desc="检测到 429、Rate Limit 或模型额度用尽时立即停止重试，向各渠道发送【任务中断：额度已耗尽】告警",
+            variable=self.var_notify_quota
+        )
+
+        # 行 3: 重试次数超限失败告警
+        self._create_checkbox_row(
+            c,
+            title="重试次数超限发送任务失败通知 (Notify on Max Retries Failed)",
+            desc="连续自动重试达到设定上限仍无法恢复工作时，向各渠道发送【任务执行失败】告警",
+            variable=self.var_notify_max_retry,
+            is_last=True
+        )
+
+    # -------------------------------------------------------------
+    # 卡片: 消息通知推送渠道
     # -------------------------------------------------------------
     def _build_card_notifications(self, parent):
         c = self._create_card(parent, "任务完工即时通知渠道", "长跑任务、构建或复杂对话完成时自动向手机或电脑发送通知")
@@ -1062,6 +1121,10 @@ class ModernOrbitApp(tk.Tk):
                     "enable_smooth_scrolling": self.var_smooth_scrolling.get(),
                     "compact_ui_mode": self.var_compact_ui.get(),
                     "prune_guide_skills": self.var_prune_skills.get(),
+                    "auto_retry_on_error": self.var_auto_retry.get(),
+                    "max_retry_count": self.var_max_retry_count.get(),
+                    "notify_on_quota_exhausted": self.var_notify_quota.get(),
+                    "notify_on_max_retry_failed": self.var_notify_max_retry.get(),
                 }
 
                 if "channels" not in self.cfg:

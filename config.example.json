@@ -16,7 +16,11 @@
     "disable_auto_update": true,
     "enable_smooth_scrolling": true,
     "compact_ui_mode": false,
-    "prune_guide_skills": false
+    "prune_guide_skills": false,
+    "auto_retry_on_error": true,
+    "max_retry_count": 3,
+    "notify_on_quota_exhausted": true,
+    "notify_on_max_retry_failed": true
   },
   "channels": {
     "telegram": {

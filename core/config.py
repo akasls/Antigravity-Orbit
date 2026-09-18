@@ -52,7 +52,11 @@ DEFAULT_CONFIG = {
         "disable_auto_update": True,     # 锁定稳定版本，禁止后台静默更新导致补丁被覆盖
         "enable_smooth_scrolling": True, # 硬件级长文本平滑滚动与 60FPS 渲染
         "compact_ui_mode": False,        # 紧凑代码视野模式 (有效代码显示面积提升 35%~50%)
-        "prune_guide_skills": False      # 裁剪内置说明型 Skills，节省前置 Token 预算
+        "prune_guide_skills": False,     # 裁剪内置说明型 Skills，节省前置 Token 预算
+        "auto_retry_on_error": True,          # 任务异常自动重试 (意外出错时自动点击重试继续工作)
+        "max_retry_count": 3,                 # 最大自动重试次数 (1~10次，恢复工作后重置计数)
+        "notify_on_quota_exhausted": True,    # 额度用尽告警 (发送"任务中断：额度已耗尽")
+        "notify_on_max_retry_failed": True    # 重试超限告警 (达到最大重试次数发送"任务失败")
     },
     "channels": {
         "telegram": {

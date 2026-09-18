@@ -6,11 +6,18 @@ from .base import BaseNotifier
 from core.utils import Logger, format_notification
 
 class TelegramNotifier(BaseNotifier):
-    def __init__(self, config: dict):
-        super().__init__("telegram", config)
-        self.bot_token = config.get("bot_token", "").strip()
-        self.chat_id = config.get("chat_id", "").strip()
-        self.proxy = config.get("proxy", "").strip()
+    def __init__(self, config=None, chat_id: str = "", proxy: str = ""):
+        if isinstance(config, dict):
+            super().__init__("telegram", config)
+            self.bot_token = config.get("bot_token", "").strip()
+            self.chat_id = config.get("chat_id", "").strip()
+            self.proxy = config.get("proxy", "").strip()
+        else:
+            cfg = {"bot_token": str(config or "").strip(), "chat_id": str(chat_id or "").strip(), "proxy": str(proxy or "").strip()}
+            super().__init__("telegram", cfg)
+            self.bot_token = cfg["bot_token"]
+            self.chat_id = cfg["chat_id"]
+            self.proxy = cfg["proxy"]
 
     def _get_proxies(self) -> list[str]:
         proxies = []

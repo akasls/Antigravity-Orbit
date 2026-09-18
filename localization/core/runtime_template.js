@@ -741,21 +741,69 @@
         return { dot: 'ag-dot-purple', color: '#a78bfa' };
     }
 
+    /**
+     * 动态提取 CSRF Token (穿透 Electron contextIsolation 独立沙箱隔离)
+     */
+    function getCsrfToken() {
+        try {
+            if (window.__APP_CONFIG__ && window.__APP_CONFIG__.csrfToken) {
+                return window.__APP_CONFIG__.csrfToken;
+            }
+        } catch (e) {}
+
+        try {
+            const scripts = document.getElementsByTagName('script');
+            for (let i = 0; i < scripts.length; i++) {
+                const txt = scripts[i].textContent || scripts[i].innerText || '';
+                const m = txt.match(/["']csrfToken["']\s*:\s*["']([^"']+)["']/);
+                if (m && m[1]) return m[1];
+            }
+        } catch (e) {}
+
+        try {
+            if (document.head) {
+                const m = document.head.innerHTML.match(/["']csrfToken["']\s*:\s*["']([^"']+)["']/);
+                if (m && m[1]) return m[1];
+            }
+        } catch (e) {}
+
+        try {
+            if (document.documentElement) {
+                const m = document.documentElement.innerHTML.match(/["']csrfToken["']\s*:\s*["']([^"']+)["']/);
+                if (m && m[1]) return m[1];
+            }
+        } catch (e) {}
+
+        return '';
+    }
+
+    /**
+     * 健壮解析模型额度限额数据 (兼容 Connect-RPC 各种包装层级与命名规范)
+     */
     function parseQuotaBuckets(data) {
         let g5h = null, gWeekly = null;
         let c5h = null, cWeekly = null;
 
-        if (data && Array.isArray(data.groups)) {
-            for (const g of data.groups) {
-                const name = (g.name || '').toLowerCase();
-                const isGemini = name.includes('gemini');
-                for (const b of (g.buckets || [])) {
-                    const period = (b.period || '').toUpperCase();
-                    if (period.includes('FIVE_HOURS') || period.includes('5H')) {
-                        if (isGemini) g5h = b; else c5h = b;
-                    } else if (period.includes('WEEKLY')) {
-                        if (isGemini) gWeekly = b; else cWeekly = b;
-                    }
+        let groups = [];
+        if (data) {
+            if (data.response && Array.isArray(data.response.groups)) {
+                groups = data.response.groups;
+            } else if (Array.isArray(data.groups)) {
+                groups = data.groups;
+            } else if (data.data && Array.isArray(data.data.groups)) {
+                groups = data.data.groups;
+            }
+        }
+
+        for (const g of groups) {
+            const name = (g.displayName || g.name || '').toLowerCase();
+            const isGemini = name.includes('gemini');
+            for (const b of (g.buckets || [])) {
+                const p = (b.window || b.bucketId || b.period || '').toLowerCase();
+                if (p.includes('5h') || p.includes('five_hour') || p.includes('5-hour')) {
+                    if (isGemini) g5h = b; else c5h = b;
+                } else if (p.includes('week')) {
+                    if (isGemini) gWeekly = b; else cWeekly = b;
                 }
             }
         }
@@ -781,6 +829,9 @@
         };
     }
 
+    /**
+     * 渲染模型额度顶部胶囊与详情弹窗
+     */
     function renderQuotaUi() {
         const root = document.getElementById('antigravity-quota-root');
         if (!root) return;
@@ -892,34 +943,278 @@
         }
     }
 
+    /**
+     * 发送通知到 Orbit 守护进程及原生桌面通知
+     */
+    function sendOrbitNotification(status, summary) {
+        let projectName = '默认工程';
+        try {
+            const titleEl = document.querySelector('[data-testid*="workspace-title"], [class*="project-title"], [data-testid*="project-name"], header h1');
+            if (titleEl && titleEl.textContent.trim()) {
+                projectName = titleEl.textContent.trim();
+            } else if (document.title && !document.title.includes('Antigravity') && !document.title.includes('Untitled')) {
+                projectName = document.title.split('—')[0].split('-')[0].trim();
+            }
+        } catch (e) {}
+
+        const payload = JSON.stringify({
+            project_name: projectName,
+            status: status,
+            summary: summary,
+            timestamp: new Date().toISOString()
+        });
+
+        // 1. 优先向本地守护服务分发
+        try {
+            fetch('http://127.0.0.1:49222/notify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload
+            }).catch(() => {
+                fetch('http://127.0.0.1:49223/notify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload
+                }).catch(() => {});
+            });
+        } catch (e) {}
+
+        // 2. 原生桌面通知兜底
+        try {
+            if (typeof Notification !== 'undefined') {
+                if (Notification.permission === 'granted') {
+                    new Notification('Antigravity Orbit · ' + status, {
+                        body: `【${projectName}】\n${summary}`
+                    });
+                } else if (Notification.permission !== 'denied') {
+                    Notification.requestPermission().then(p => {
+                        if (p === 'granted') {
+                            new Notification('Antigravity Orbit · ' + status, {
+                                body: `【${projectName}】\n${summary}`
+                            });
+                        }
+                    });
+                }
+            }
+        } catch (e) {}
+    }
+
+    /**
+     * =========================================================================
+     * 智能任务异常自愈与额度监控引擎 (Auto Self-Healing & Quota Protection Engine)
+     * =========================================================================
+     */
+    const healingState = {
+        currentRetryCount: 0,
+        isRetrying: false,
+        consecutiveWorkingSeconds: 0,
+        hasNotifiedQuota: false,
+        hasNotifiedMaxRetries: false
+    };
+
+    function checkQuotaLimits(data) {
+        const cfg = (typeof CUSTOM_CONFIG !== 'undefined' ? CUSTOM_CONFIG : {}) || {};
+        if (cfg.notify_on_quota_exhausted === false) return;
+
+        const info = parseQuotaBuckets(data);
+        const geminiExhausted = (info.gemini.pct5h === 0 || info.gemini.pctWeekly === 0);
+        const claudeExhausted = (info.claude.pct5h === 0 || info.claude.pctWeekly === 0);
+
+        if (geminiExhausted || claudeExhausted) {
+            if (!healingState.hasNotifiedQuota) {
+                healingState.hasNotifiedQuota = true;
+                const detail = geminiExhausted
+                    ? `Gemini 额度耗尽 (5h限制剩余: ${info.gemini.pct5h}%, 周限制剩余: ${info.gemini.pctWeekly}%)`
+                    : `Claude & GPT 额度耗尽 (5h限制剩余: ${info.claude.pct5h}%, 周限制剩余: ${info.claude.pctWeekly}%)`;
+                console.warn('[AutoHealing] 检测到模型额度耗尽:', detail);
+                sendOrbitNotification('任务中断：额度已耗尽', `${detail}，任务已自动暂停保护，请等待限额刷新或切换模型。`);
+            }
+        }
+    }
+
+    function isAgentActivelyWorking() {
+        try {
+            // 1. 存在停止按钮 (Stop 生成中)
+            const stopBtn = document.querySelector('button[aria-label*="Stop" i], button[title*="Stop" i], button[data-testid*="stop" i]');
+            if (stopBtn && stopBtn.offsetParent !== null) return true;
+
+            // 2. 思考中 / 工具进度 / 流式输出容器存在
+            const indicators = document.querySelectorAll('.thinking-container, [data-testid*="thinking"], [class*="streaming"], [class*="tool-call-progress"]');
+            for (let i = 0; i < indicators.length; i++) {
+                if (indicators[i].offsetParent !== null) return true;
+            }
+        } catch (e) {}
+        return false;
+    }
+
+    function runHealingCheckCycle() {
+        const cfg = (typeof CUSTOM_CONFIG !== 'undefined' ? CUSTOM_CONFIG : {}) || {};
+        if (cfg.auto_retry_on_error === false) return;
+
+        const maxRetries = (typeof cfg.max_retry_count === 'number' && cfg.max_retry_count >= 1) ? cfg.max_retry_count : 3;
+
+        const working = isAgentActivelyWorking();
+        if (working) {
+            healingState.consecutiveWorkingSeconds++;
+            // 若重试后智能体已连续工作 3 秒以上，严格重置重试次数为 0
+            if (healingState.consecutiveWorkingSeconds >= 3) {
+                if (healingState.currentRetryCount > 0) {
+                    console.log(`[AutoHealing] 智能体已恢复正常工作 (持续 ${healingState.consecutiveWorkingSeconds}s)，重置重试计数为 0。`);
+                    healingState.currentRetryCount = 0;
+                    healingState.isRetrying = false;
+                    healingState.hasNotifiedMaxRetries = false;
+                }
+                if (healingState.hasNotifiedQuota) {
+                    healingState.hasNotifiedQuota = false;
+                }
+            }
+            return;
+        } else {
+            healingState.consecutiveWorkingSeconds = 0;
+        }
+
+        // 检测是否有错误卡片或错误提示
+        try {
+            const errorNodes = document.querySelectorAll('[role="alert"], [class*="error-message"], [class*="error-banner"], [class*="error-card"], [data-testid*="error"]');
+            let detectedErrorText = '';
+            let retryBtn = null;
+
+            for (let i = 0; i < errorNodes.length; i++) {
+                const el = errorNodes[i];
+                if (el.offsetParent === null) continue; // 不可见元素跳过
+                const txt = (el.textContent || '').trim();
+                if (txt) {
+                    detectedErrorText = txt;
+                    // 在错误区域内部寻找重试按钮
+                    retryBtn = el.querySelector('button[data-testid*="retry" i], button[aria-label*="retry" i], button[aria-label*="重试" i]') ||
+                               Array.from(el.querySelectorAll('button')).find(b => /^(Retry|重试|Try again|重新尝试)$/i.test((b.textContent || '').trim()));
+                    if (retryBtn) break;
+                }
+            }
+
+            // 全局寻找悬挂的重试按钮
+            if (!retryBtn) {
+                retryBtn = document.querySelector('button[data-testid*="retry" i], button[aria-label*="retry" i], button[aria-label*="重试" i]');
+                if (!retryBtn) {
+                    const allBtns = document.querySelectorAll('button');
+                    for (let i = allBtns.length - 1; i >= 0; i--) {
+                        const b = allBtns[i];
+                        if (b.offsetParent !== null && /^(Retry|重试|Try again|重新尝试)$/i.test((b.textContent || '').trim())) {
+                            retryBtn = b;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (detectedErrorText || retryBtn) {
+                const errLower = detectedErrorText.toLowerCase();
+
+                // 1. 判断是否是模型额度用尽 (Rate Limit / Quota Exceeded / 429)
+                const isQuota = /quota|rate\s*limit|resource_?exhausted|429|exceeded your|reached your limit|额度|配额/i.test(errLower);
+                if (isQuota) {
+                    if (!healingState.hasNotifiedQuota) {
+                        healingState.hasNotifiedQuota = true;
+                        console.warn('[AutoHealing] 捕获到模型额度用尽阻断:', detectedErrorText);
+                        sendOrbitNotification('任务中断：额度已耗尽', detectedErrorText || '检测到模型额度已耗尽或触发 429 请求频控，任务已自动暂停保护。');
+                    }
+                    return; // 额度耗尽绝不盲目重试
+                }
+
+                // 2. 普通可恢复异常：自动重试
+                if (retryBtn && !retryBtn.disabled) {
+                    if (healingState.currentRetryCount < maxRetries) {
+                        if (!healingState.isRetrying) {
+                            healingState.isRetrying = true;
+                            healingState.currentRetryCount++;
+                            const current = healingState.currentRetryCount;
+                            console.log(`[AutoHealing] 检测到任务意外异常，正在执行自动重试 (${current}/${maxRetries})...`);
+
+                            // 延时 2.5 秒执行点击，防止服务端高频重放
+                            setTimeout(() => {
+                                try {
+                                    retryBtn.click();
+                                    console.log(`[AutoHealing] 已触发重试点击 (${current}/${maxRetries})。`);
+                                } catch (e) {}
+                                setTimeout(() => {
+                                    healingState.isRetrying = false;
+                                }, 3500);
+                            }, 2500);
+                        }
+                    } else {
+                        // 超过最大重试次数
+                        if (!healingState.hasNotifiedMaxRetries) {
+                            healingState.hasNotifiedMaxRetries = true;
+                            console.error(`[AutoHealing] 任务重试 ${maxRetries} 次仍未恢复，发送失败通知。`);
+                            sendOrbitNotification('任务失败：重试次数超限', `任务在执行过程中发生异常，已连续自动重试 ${maxRetries} 次仍未恢复。\n报错摘要: ${detectedErrorText.slice(0, 300)}`);
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            // 静默安全保护
+        }
+    }
+
+    // 启动智能自愈周期轮询 (每秒检测一次)
+    setInterval(runHealingCheckCycle, 1000);
+
+    /**
+     * 向 Language Server 独立发起额度查询请求
+     */
     async function fetchQuotaSummary() {
         if (isFetchingQuota) return latestQuotaData;
         isFetchingQuota = true;
 
-        const csrf = (window.__APP_CONFIG__ && window.__APP_CONFIG__.csrfToken) ? window.__APP_CONFIG__.csrfToken : '';
+        const csrf = getCsrfToken();
         try {
+            const headers = {
+                'Content-Type': 'application/json',
+                'Connect-Protocol-Version': '1'
+            };
+            if (csrf) {
+                headers['x-codeium-csrf-token'] = csrf;
+            }
+
             const res = await fetch('/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Connect-Protocol-Version': '1',
-                    'x-codeium-csrf-token': csrf
-                },
+                headers: headers,
                 body: '{}'
             });
+
             if (res.ok) {
                 const data = await res.json();
                 latestQuotaData = data;
                 lastFetchTime = new Date();
                 renderQuotaUi();
+                checkQuotaLimits(data);
                 return data;
             }
         } catch (err) {
-            // 静默处理网络或端口尚未就绪
+            // 静默处理启动阶段网络尚未就绪
         } finally {
             isFetchingQuota = false;
         }
         return latestQuotaData;
+    }
+
+    /**
+     * 确保额度定时轮询器启动 (完全脱离 Orbit 客户端独立工作)
+     */
+    function ensureQuotaPolling() {
+        const cfg = (typeof CUSTOM_CONFIG !== 'undefined' ? CUSTOM_CONFIG : {}) || {};
+        if (cfg.show_quota_badge === false) return;
+
+        if (!quotaPollTimer) {
+            const intervalSec = (cfg.quota_refresh_interval && cfg.quota_refresh_interval >= 5) ? cfg.quota_refresh_interval : 60;
+            quotaPollTimer = setInterval(fetchQuotaSummary, intervalSec * 1000);
+            window.addEventListener('focus', fetchQuotaSummary);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') fetchQuotaSummary();
+            });
+            // 立即发起一次刷新
+            fetchQuotaSummary();
+        }
     }
 
     function mountQuotaBadge() {
@@ -929,6 +1224,8 @@
             if (existing) existing.remove();
             return;
         }
+
+        ensureQuotaPolling();
 
         const titleBar = document.querySelector('[data-testid="title-menu-bar"]');
         if (!titleBar) return;
@@ -971,13 +1268,7 @@
             });
 
             titleBar.appendChild(root);
-            fetchQuotaSummary();
-
-            if (!quotaPollTimer) {
-                const intervalSec = (cfg.quota_refresh_interval && cfg.quota_refresh_interval >= 5) ? cfg.quota_refresh_interval : 60;
-                quotaPollTimer = setInterval(fetchQuotaSummary, intervalSec * 1000);
-                window.addEventListener('focus', fetchQuotaSummary);
-            }
+            renderQuotaUi();
         }
     }
 

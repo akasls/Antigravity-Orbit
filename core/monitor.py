@@ -73,9 +73,22 @@ class AntigravityMonitor:
             save_state(self.state)
             Logger.log(f"初始化完毕，已记录 {count} 个历史会话的基准进度。")
 
+    def dispatch_notification(self, proj_display: str, status: str, summary: str):
+        self.config = load_config()
+        active_notifiers = get_active_notifiers(self.config)
+        if not active_notifiers:
+            Logger.log(f"未配置或未开启任何通知渠道，跳过推送 ({status})")
+            return
+        Logger.log(f"正在向 {len(active_notifiers)} 个渠道分发通知: 工程={proj_display}, 状态={status}")
+        for notifier in active_notifiers:
+            try:
+                notifier.send(proj_display, status, summary)
+            except Exception as err:
+                Logger.log(f"[{notifier.name}] 推送发生异常: {err}")
+
     def run_loop(self):
         lock_port = self.config.get("lock_port", 49222)
-        lock = SingleInstanceLock(lock_port)
+        lock = SingleInstanceLock(lock_port, notify_callback=self.dispatch_notification)
         if not lock.acquire():
             Logger.log(f"服务已在运行中 (端口 {lock_port} 被占用)，当前进程退出。")
             return
@@ -86,7 +99,7 @@ class AntigravityMonitor:
         except Exception:
             pass
 
-        Logger.log("Antigravity 监控引擎已启动，正在监听任务完成事件...")
+        Logger.log(f"Antigravity 监控引擎已启动 (监听端口: {lock_port})，正在监听任务事件...")
 
         pattern = str(BRAIN_DIR / "*" / ".system_generated" / "logs" / "transcript.jsonl")
         self.initialize_state_if_needed(pattern)
@@ -172,16 +185,33 @@ class AntigravityMonitor:
 
                             Logger.log(f"检测到任务完成！会话={conv_id[:8]}, 工程={proj_display}, Step={max_step}")
 
-                            # 发送给所有开启的渠道
-                            for notifier in active_notifiers:
-                                try:
-                                    notifier.send(proj_display, "正常完成", target_response)
-                                except Exception as err:
-                                    Logger.log(f"[{notifier.name}] 推送发生异常: {err}")
+                            self.dispatch_notification(proj_display, "正常完成", target_response)
 
                             # 更新状态
                             self.state["last_seen_steps"][conv_id] = max_step
                             save_state(self.state)
+                        else:
+                            # 检查是否有显式错误或额度耗尽事件
+                            is_quota = False
+                            error_text = ""
+                            for entry in new_entries:
+                                cnt = (entry.get("content") or "")
+                                cnt_l = cnt.lower()
+                                if any(k in cnt_l for k in ["quota", "rate limit", "resourceexhausted", "resource exhausted", "429"]):
+                                    is_quota = True
+                                    error_text = cnt
+                                    break
+                                elif entry.get("status") == "ERROR" and not error_text:
+                                    error_text = cnt
+
+                            info = self.get_conversation_info(conv_id)
+                            p_name = (info.get("project_name") or info.get("title") or "默认工程") if info else "默认工程"
+
+                            if is_quota:
+                                Logger.log(f"检测到额度耗尽！会话={conv_id[:8]}, 工程={p_name}, Step={max_step}")
+                                self.dispatch_notification(p_name, "任务中断：额度已耗尽", error_text or "模型限额已达上限，任务暂停执行。")
+                                self.state["last_seen_steps"][conv_id] = max_step
+                                save_state(self.state)
 
                     except Exception as e:
                         Logger.log(f"扫描异常: {e}", echo=False)

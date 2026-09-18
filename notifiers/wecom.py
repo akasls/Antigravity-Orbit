@@ -4,9 +4,14 @@ from .base import BaseNotifier
 from core.utils import Logger, format_notification
 
 class WeComNotifier(BaseNotifier):
-    def __init__(self, config: dict):
-        super().__init__("wecom", config)
-        self.webhook_url = config.get("webhook_url", "").strip()
+    def __init__(self, config=None):
+        if isinstance(config, dict):
+            super().__init__("wecom", config)
+            self.webhook_url = config.get("webhook_url", "").strip()
+        else:
+            url = str(config or "").strip()
+            super().__init__("wecom", {"webhook_url": url})
+            self.webhook_url = url
 
     def _send_payload(self, text: str) -> tuple[bool, str]:
         if not self.webhook_url:
