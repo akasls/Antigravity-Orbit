@@ -161,10 +161,12 @@ Gemini 额度耗尽 (5h限制剩余: 0%, 周限制剩余: 12%)，任务已自动
 
 ## ⚡ 快速开始 (1 分钟上手)
 
-### 方式零：直接下载免安装预编译客户端（最省心，无需 Python / Git）
+### 方式零：直接下载安装包或绿色免安装版（最推荐，零门槛，无需 Python / Git）
 
 前往 [GitHub Releases 发布页](https://github.com/akasls/Antigravity-Orbit/releases) 下载官方自动打包好的开箱即用版本：
-- **Windows 用户**：下载 `Antigravity-Orbit-Windows-x64.zip`，解压后直接双击 **`Antigravity-Orbit.exe`** 即可打开！
+- **Windows 原生安装包（强烈推荐，0.017s 极速秒开）**：下载并运行 **`Antigravity-Orbit-Setup.exe`**，一键安装至系统，自动创建桌面与开始菜单快捷方式，享受闪电级启动！
+- **Windows 绿色免安装版**：下载 `Antigravity-Orbit-Windows-x64.zip`，解压后直接双击 **`Antigravity-Orbit.exe`** 即可极速启动！
+- **Windows 单文件便携版**：下载 `Antigravity-Orbit-Portable-x64.exe`，单文件即点即用，便于 U 盘随身携带。
 - **macOS 用户**：下载 `Antigravity-Orbit-macOS.zip`，解压后运行 **`Antigravity-Orbit.app`** 即可！
 
 ---

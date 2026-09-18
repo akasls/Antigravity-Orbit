@@ -36,6 +36,7 @@ jobs:
         with:
           name: Antigravity-Orbit-Windows-x64
           path: |
+            dist/Antigravity-Orbit-Setup.exe
             dist/Antigravity-Orbit-Windows-x64.zip
             dist/Antigravity-Orbit-Portable-x64.exe
           if-no-files-found: error

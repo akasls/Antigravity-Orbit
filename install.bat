@@ -1,73 +1,54 @@
-@echo off
+﻿@echo off
 chcp 65001 >nul
-title Antigravity 综合配置向导
+title Antigravity Orbit 安装向导
 
-:: 检查 Python 环境
-where python >nul 2>nul
-if %errorlevel% equ 0 (
-    set "PY_CMD=python"
-    goto CHECK_NODE
-)
-
-where py >nul 2>nul
-if %errorlevel% equ 0 (
-    set "PY_CMD=py"
-    goto CHECK_NODE
-)
+set "DIR=%~dp0"
+cd /d "%DIR%"
 
 echo ========================================================
-echo [错误] 未检测到 Python 环境！
-echo.
-echo 请先安装 Python 3.8 或以上版本，并勾选 Add Python to PATH！
-echo 官方下载地址: https://www.python.org/downloads/
+echo   🌌 Antigravity Orbit - 安装向导与管理中心
 echo ========================================================
 echo.
-pause
-exit /b 1
 
-:CHECK_NODE
-:: 检查 Node.js 环境 (客户端界面汉化需要 Node.js)
-where node >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [提示] 未检测到 Node.js 环境。若需进行客户端界面汉化，请访问 https://nodejs.org 安装。
-    echo.
-)
-
-:: 执行模式选择
-if not "%~1"=="" (
-    %PY_CMD% "%~dp0main.py" %*
-    echo.
-    pause
+:: 1. 若已存在编译好的 Setup.exe 安装程序，直接唤起
+if exist "%DIR%dist\Antigravity-Orbit-Setup.exe" (
+    echo [发现安装包] 正在启动 Antigravity Orbit 安装向导...
+    start "" "%DIR%dist\Antigravity-Orbit-Setup.exe"
     exit /b 0
 )
 
-echo ========================================================
-echo   🌌 Antigravity Orbit - 综合管理与配置
-echo ========================================================
-echo.
-echo   [1] 启动【桌面可视化控制中心】 (Native GUI 桌面软件, 推荐)
-echo   [2] 运行【命令行交互式配置向导】 (Console CLI 向导)
+:: 2. 源码环境或已构建目录模式
+where python >nul 2>nul
+if %ERRORLEVEL% NEQ 0 (
+    echo [错误] 未在系统 PATH 中检测到 Python 环境，无法执行向导。
+    pause
+    exit /b 1
+)
+
+echo   [1] 立即安装到电脑 (一键部署至应用目录、自动生成桌面与开始菜单快捷方式)
+echo   [2] 启动桌面控制中心 (0.017秒极速秒开模式)
+echo   [3] 卸载当前已安装版本
 echo   [0] 退出
 echo.
-set /p "CHOICE=请选择运行模式 [1/2/0, 默认 1]: "
-
+set /p "CHOICE=请选择操作 [1/2/3/0, 默认 1]: "
 if "%CHOICE%"=="" set "CHOICE=1"
+
 if "%CHOICE%"=="1" (
-    where pythonw >nul 2>nul
-    if %errorlevel% equ 0 (
-        start "" pythonw "%~dp0main.py" gui
-    ) else (
-        start "" %PY_CMD% "%~dp0main.py" gui
-    )
+    python "%DIR%scripts\installer_template.py"
     exit /b 0
 )
 if "%CHOICE%"=="2" (
-    %PY_CMD% "%~dp0main.py" setup
-    echo.
+    call "%DIR%gui.bat"
+    exit /b 0
+)
+if "%CHOICE%"=="3" (
+    set "UNINST=%LOCALAPPDATA%\Programs\Antigravity-Orbit\uninstall.bat"
+    if exist "%UNINST%" (
+        call "%UNINST%"
+    ) else (
+        echo [提示] 未在系统应用目录检测到已安装的 Antigravity Orbit。
+    )
     pause
     exit /b 0
 )
 exit /b 0
-
-
-

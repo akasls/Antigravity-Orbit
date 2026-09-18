@@ -117,8 +117,16 @@ def build():
             shutil.make_archive(str(zip_name), 'zip', str(DIST_DIR), "Antigravity-Orbit")
             print(f"[OK] 极速秒开版压缩包就绪: {zip_name}.zip")
 
-        # 2. 构建 Onefile 单文件独立便携版
-        print("\n>>> [2/2] 正在构建 Windows 单文件便携版 (Onefile)...")
+        # 2. 构建 Windows 原生安装程序 (Setup.exe，推荐普通用户安装)
+        print("\n>>> [2/3] 正在构建 Windows 原生安装包 (Setup.exe)...")
+        try:
+            from scripts.build_installer import build_installer
+            build_installer()
+        except Exception as e:
+            print(f"[警告] 安装包构建异常: {e}")
+
+        # 3. 构建 Onefile 单文件独立便携版 (随身携带)
+        print("\n>>> [3/3] 正在构建 Windows 单文件便携版 (Onefile)...")
         cmd_file = base_cmd + [
             "--onefile",
             "--name", "Antigravity-Orbit-Portable-x64",
