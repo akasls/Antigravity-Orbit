@@ -22,7 +22,7 @@ class AsarPatcher {
      */
     static runCmd(cmd) {
         try {
-            const out = child_process.execSync(cmd, { encoding: 'utf-8', stdio: 'pipe' });
+            const out = child_process.execSync(cmd, { encoding: 'utf-8', stdio: 'pipe', windowsHide: true });
             return { success: true, stdout: out, stderr: '' };
         } catch (e) {
             return { success: false, stdout: e.stdout || '', stderr: e.stderr || e.message };

@@ -17,7 +17,24 @@ class LocalizationManager:
     """Antigravity 界面汉化与本地化管理核心类"""
 
     @staticmethod
-    def check_node_environment(fast: bool = True) -> Tuple[bool, str]:
+    def _run_subp(cmd, cwd=None, capture_output=True, timeout=None):
+        """跨平台执行子进程，Windows 下强力抑制黑控制台窗口弹出"""
+        kwargs = {"cwd": str(cwd) if cwd else None}
+        if timeout:
+            kwargs["timeout"] = timeout
+        if capture_output:
+            kwargs["capture_output"] = True
+            kwargs["text"] = True
+        if sys.platform == "win32":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+            kwargs["startupinfo"] = startupinfo
+        return subprocess.run(cmd, **kwargs)
+
+    @classmethod
+    def check_node_environment(cls, fast: bool = True) -> Tuple[bool, str]:
         """检测系统是否存在 Node.js 环境 (fast=True 仅探测 PATH，0毫秒无开销)"""
         node_exe = shutil.which("node")
         if not node_exe:
@@ -25,8 +42,8 @@ class LocalizationManager:
         if fast:
             return True, "已就绪"
         try:
-            res = subprocess.run([node_exe, "-v"], capture_output=True, text=True, timeout=5)
-            version = res.stdout.strip()
+            res = cls._run_subp([node_exe, "-v"], capture_output=True, timeout=5)
+            version = (res.stdout or "").strip()
             return True, version
         except Exception as e:
             return False, f"检测 Node.js 异常: {e}"
@@ -91,7 +108,7 @@ class LocalizationManager:
             if install_dir:
                 cmd.extend(["--install-dir", install_dir])
             try:
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=10, cwd=str(RESOURCE_DIR))
+                res = cls._run_subp(cmd, capture_output=True, timeout=10, cwd=str(RESOURCE_DIR))
                 if res.returncode == 0:
                     data = json.loads(res.stdout.strip())
                     status["installed"] = data.get("installed", False)
@@ -116,7 +133,7 @@ class LocalizationManager:
         no_kill: bool = False,
         stream_output: bool = True
     ) -> Tuple[bool, str]:
-        """安装或更新汉化包与优化配置"""
+        """安装或更新汉化包与优化配置 (强力抑制黑窗口)"""
         node_ok, node_msg = cls.check_node_environment()
         if not node_ok:
             return False, f"无法执行部署: {node_msg}。\n请先安装 Node.js (https://nodejs.org) 并配置 PATH。"
@@ -137,13 +154,9 @@ class LocalizationManager:
             cmd.append("--no-kill")
 
         try:
-            if stream_output:
-                res = subprocess.run(cmd, cwd=str(RESOURCE_DIR))
-                return (res.returncode == 0, "汉化安装成功！" if res.returncode == 0 else f"汉化安装失败 (退出码: {res.returncode})")
-            else:
-                res = subprocess.run(cmd, cwd=str(RESOURCE_DIR), capture_output=True, text=True)
-                output = res.stdout + ("\n" + res.stderr if res.stderr else "")
-                return (res.returncode == 0, output.strip())
+            res = cls._run_subp(cmd, cwd=str(RESOURCE_DIR), capture_output=True)
+            output = (res.stdout or "") + ("\n" + res.stderr if res.stderr else "")
+            return (res.returncode == 0, output.strip() if output.strip() else ("部署成功" if res.returncode == 0 else "部署失败"))
         except Exception as e:
             return False, f"执行汉化引擎异常: {e}"
 
@@ -154,7 +167,7 @@ class LocalizationManager:
         no_kill: bool = False,
         stream_output: bool = True
     ) -> Tuple[bool, str]:
-        """卸载汉化，恢复官方原版英文"""
+        """卸载汉化，恢复官方原版英文 (强力抑制黑窗口)"""
         node_ok, node_msg = cls.check_node_environment()
         if not node_ok:
             return False, f"无法还原官方英文: {node_msg}。"
@@ -169,15 +182,62 @@ class LocalizationManager:
             cmd.append("--no-kill")
 
         try:
-            if stream_output:
-                res = subprocess.run(cmd, cwd=str(RESOURCE_DIR))
-                return (res.returncode == 0, "官方原版英文已成功恢复！" if res.returncode == 0 else f"恢复失败 (退出码: {res.returncode})")
-            else:
-                res = subprocess.run(cmd, cwd=str(RESOURCE_DIR), capture_output=True, text=True)
-                output = res.stdout + ("\n" + res.stderr if res.stderr else "")
-                return (res.returncode == 0, output.strip())
+            res = cls._run_subp(cmd, cwd=str(RESOURCE_DIR), capture_output=True)
+            output = (res.stdout or "") + ("\n" + res.stderr if res.stderr else "")
+            return (res.returncode == 0, "官方原版英文已成功恢复！" if res.returncode == 0 else f"恢复失败: {output.strip()}")
         except Exception as e:
             return False, f"执行还原操作异常: {e}"
+
+    @classmethod
+    def is_running(cls) -> bool:
+        """检查 Antigravity 客户端是否正在运行"""
+        try:
+            if sys.platform == "win32":
+                res = cls._run_subp(["tasklist", "/fi", "imagename eq Antigravity.exe", "/nh"], capture_output=True)
+                return "antigravity.exe" in (res.stdout or "").lower()
+            elif sys.platform == "darwin":
+                res = cls._run_subp(["pgrep", "-f", "Antigravity"], capture_output=True)
+                return res.returncode == 0
+        except Exception:
+            pass
+        return False
+
+    @classmethod
+    def kill_running_antigravity(cls) -> bool:
+        """安全终止运行中的 Antigravity 客户端"""
+        try:
+            if sys.platform == "win32":
+                cls._run_subp(["taskkill", "/F", "/IM", "Antigravity.exe"], capture_output=True)
+            elif sys.platform == "darwin":
+                cls._run_subp(["pkill", "-f", "Antigravity"], capture_output=True)
+            return True
+        except Exception:
+            return False
+
+    @classmethod
+    def launch_antigravity(cls, install_dir: Optional[str] = None) -> Tuple[bool, str]:
+        """拉起启动 Antigravity 客户端"""
+        target_dir = cls._fallback_detect_dir(install_dir)
+        if not target_dir:
+            return False, "未能探测到 Antigravity 安装目录"
+
+        try:
+            if sys.platform == "win32":
+                exe_path = Path(target_dir) / "Antigravity.exe"
+                if exe_path.exists():
+                    subprocess.Popen(
+                        [str(exe_path)],
+                        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+                        close_fds=True
+                    )
+                    return True, "已启动 Antigravity 客户端"
+            elif sys.platform == "darwin":
+                cls._run_subp(["open", str(target_dir)], capture_output=True)
+                return True, "已启动 Antigravity 客户端"
+        except Exception as e:
+            return False, f"拉起客户端失败: {e}"
+        return False, "未找到客户端可执行文件"
+
 
     @staticmethod
     def _fallback_detect_dir(manual_dir: Optional[str] = None) -> Optional[Path]:

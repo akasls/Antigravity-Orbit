@@ -94,6 +94,12 @@ class TestOrbitCore(unittest.TestCase):
         for k, v in default_quota.items():
             self.assertEqual(v, 100)
 
+    def test_localization_process_methods(self):
+        from core.localization import LocalizationManager
+        self.assertTrue(hasattr(LocalizationManager, "is_running"))
+        self.assertTrue(hasattr(LocalizationManager, "kill_running_antigravity"))
+        self.assertTrue(hasattr(LocalizationManager, "launch_antigravity"))
+
 
 if __name__ == "__main__":
     unittest.main()

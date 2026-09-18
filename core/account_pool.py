@@ -359,7 +359,27 @@ class AccountPoolManager:
     # Google API 网络交互
     # ------------------------------------------------------------------
     @staticmethod
-    def refresh_google_token(refresh_token: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+    def _http_urlopen(req: urllib.request.Request, timeout: int = 12):
+        """支持从本地配置自动装配 HTTP / HTTPS 代理的请求包装器"""
+        try:
+            from core.config import load_config
+            cfg = load_config()
+            custom = cfg.get("customization", {})
+            if custom.get("proxy_enabled"):
+                p_type = custom.get("proxy_type", "http").lower()
+                p_host = custom.get("proxy_host", "127.0.0.1")
+                p_port = custom.get("proxy_port", 7890)
+                proxy_url = f"{p_type}://{p_host}:{p_port}"
+                opener = urllib.request.build_opener(
+                    urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url})
+                )
+                return opener.open(req, timeout=timeout)
+        except Exception:
+            pass
+        return urllib.request.urlopen(req, timeout=timeout)
+
+    @classmethod
+    def refresh_google_token(cls, refresh_token: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
         """使用 refresh_token 刷新 Google OAuth access_token"""
         if not refresh_token:
             return False, None, "缺少 refresh_token"
@@ -378,7 +398,7 @@ class AccountPoolManager:
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=12) as resp:
+            with cls._http_urlopen(req, timeout=12) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
                 return True, result, "Token 刷新成功"
         except urllib.error.HTTPError as e:
@@ -387,22 +407,22 @@ class AccountPoolManager:
         except Exception as e:
             return False, None, f"Token 刷新异常: {e}"
 
-    @staticmethod
-    def fetch_user_info(access_token: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+    @classmethod
+    def fetch_user_info(cls, access_token: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
         """获取 Google 账号用户信息（邮箱、姓名、头像）"""
         req = urllib.request.Request(
             GOOGLE_USERINFO_URL,
             headers={"Authorization": f"Bearer {access_token}", "User-Agent": USER_AGENT}
         )
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with cls._http_urlopen(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return True, data, "成功获取用户信息"
         except Exception as e:
             return False, None, f"获取用户信息失败: {e}"
 
-    @staticmethod
-    def fetch_account_quota_data(access_token: str, project_id: Optional[str] = None) -> Dict[str, Any]:
+    @classmethod
+    def fetch_account_quota_data(cls, access_token: str, project_id: Optional[str] = None) -> Dict[str, Any]:
         """深度查询账号额度（订阅计划、5h额度、周度额度、各模型额度）"""
         headers = {
             "Authorization": f"Bearer {access_token}",
@@ -453,7 +473,7 @@ class AccountPoolManager:
                 data=assist_payload,
                 headers=headers
             )
-            with urllib.request.urlopen(req, timeout=12) as resp:
+            with cls._http_urlopen(req, timeout=12) as resp:
                 assist_data = json.loads(resp.read().decode("utf-8"))
                 paid_tier = assist_data.get("paidTier") or {}
                 current_tier = assist_data.get("currentTier") or {}
@@ -488,7 +508,7 @@ class AccountPoolManager:
                 data=b"{}",
                 headers=headers
             )
-            with urllib.request.urlopen(req, timeout=12) as resp:
+            with cls._http_urlopen(req, timeout=12) as resp:
                 summary_data = json.loads(resp.read().decode("utf-8"))
                 for group in summary_data.get("groups", []):
                     g_name = (group.get("displayName") or "").lower()
@@ -499,8 +519,13 @@ class AccountPoolManager:
                         frac = bucket.get("remainingFraction")
                         reset = bucket.get("resetTime") or ""
                         if frac is None:
-                            continue
-                        percent = int(float(frac) * 100)
+                            # Proto3 规范中 0.0 为默认值在 JSON 序列化时被省略。
+                            # 若包含有效重置时间或 bucketId 则判定额度已耗尽 (0%)
+                            if reset or b_id:
+                                frac = 0.0
+                            else:
+                                continue
+                        percent = max(0, min(100, int(round(float(frac) * 100))))
 
                         is_5h = ("5h" in window or "5h" in b_id or "five hour" in d_name or "5 hour" in d_name)
                         is_weekly = ("weekly" in window or "weekly" in b_id or "week" in d_name)
@@ -536,6 +561,28 @@ class AccountPoolManager:
                             quota_result["weekly_percent"] = min(quota_result["weekly_percent"], percent)
                             if not quota_result["weekly_reset"]:
                                 quota_result["weekly_reset"] = reset
+        except urllib.error.HTTPError as e:
+            err_body = ""
+            try:
+                err_body = e.read().decode("utf-8", errors="ignore")
+            except Exception:
+                pass
+            if e.code == 429 or "RESOURCE_EXHAUSTED" in err_body:
+                # 明确识别 Google 额度熔断/已耗尽 (HTTP 429 RESOURCE_EXHAUSTED)
+                quota_result["five_hour_fraction"] = 0.0
+                quota_result["five_hour_percent"] = 0
+                quota_result["claude_5h_percent"] = 0
+                quota_result["gemini_5h_percent"] = 0
+                quota_result["status"] = "EXHAUSTED"
+                claude_found = True
+                gemini_found = True
+            elif e.code == 403:
+                quota_result["status"] = "FORBIDDEN"
+                quota_result["five_hour_percent"] = 0
+                quota_result["claude_5h_percent"] = 0
+                quota_result["gemini_5h_percent"] = 0
+                claude_found = True
+                gemini_found = True
         except Exception:
             pass
 
@@ -559,26 +606,34 @@ class AccountPoolManager:
                 data=b"{}",
                 headers=headers
             )
-            with urllib.request.urlopen(req, timeout=12) as resp:
+            with cls._http_urlopen(req, timeout=12) as resp:
                 models_data = json.loads(resp.read().decode("utf-8"))
                 for m_id, m_info in models_data.get("models", {}).items():
                     q_info = m_info.get("quotaInfo") or {}
                     frac = q_info.get("remainingFraction")
+                    if frac is None and (q_info.get("resetTime") or "claude" in m_id or "gemini" in m_id):
+                        frac = 0.0
                     if frac is not None:
                         quota_result["models"][m_id] = {
                             "displayName": m_info.get("displayName") or m_id,
                             "remainingFraction": float(frac),
-                            "percent": int(float(frac) * 100),
+                            "percent": max(0, min(100, int(round(float(frac) * 100)))),
                             "resetTime": q_info.get("resetTime") or ""
                         }
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                quota_result["status"] = "EXHAUSTED"
+                for m_id in quota_result.get("models", {}):
+                    quota_result["models"][m_id]["percent"] = 0
+                    quota_result["models"][m_id]["remainingFraction"] = 0.0
         except Exception:
             pass
 
         # 综合评定健康度
-        min_percent = min(quota_result["five_hour_percent"], quota_result["weekly_percent"])
-        if min_percent <= 0:
+        min_percent = min(quota_result["five_hour_percent"], quota_result["weekly_percent"], quota_result["claude_5h_percent"], quota_result["gemini_5h_percent"])
+        if min_percent <= 0 or quota_result["status"] == "EXHAUSTED":
             quota_result["status"] = "EXHAUSTED"
-        elif min_percent <= 20:
+        elif min_percent <= 20 or quota_result["status"] == "LOW":
             quota_result["status"] = "LOW"
         else:
             quota_result["status"] = "HEALTHY"

@@ -48,7 +48,7 @@ class LocalizationEngine {
             ];
             for (const root of regRoots) {
                 try {
-                    const out = child_process.execSync(`reg query "${root}" /s /f Antigravity /d`, { encoding: 'utf-8', stdio: 'pipe' });
+                    const out = child_process.execSync(`reg query "${root}" /s /f Antigravity /d`, { encoding: 'utf-8', stdio: 'pipe', windowsHide: true });
                     for (const line of out.split(/\r?\n/)) {
                         const m = line.match(/^\s*(InstallLocation|DisplayIcon)\s+REG_\w+\s+(.+)$/i);
                         if (m) {
@@ -244,7 +244,7 @@ class LocalizationEngine {
     isClientRunning() {
         try {
             if (process.platform === 'win32') {
-                const out = child_process.execSync('tasklist /fi "imagename eq Antigravity.exe" /nh', { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+                const out = child_process.execSync('tasklist /fi "imagename eq Antigravity.exe" /nh', { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
                 return out.toLowerCase().includes('antigravity.exe');
             } else if (process.platform === 'darwin') {
                 const out = child_process.execSync('pgrep -f Antigravity', { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
@@ -261,7 +261,7 @@ class LocalizationEngine {
         console.log('[进程] 正在关闭 Antigravity 客户端以解除文件锁...');
         try {
             if (process.platform === 'win32') {
-                child_process.execSync('taskkill /f /im Antigravity.exe /t >nul 2>nul');
+                child_process.execSync('taskkill /f /im Antigravity.exe /t >nul 2>nul', { windowsHide: true });
             } else {
                 child_process.execSync('pkill -f Antigravity >/dev/null 2>&1');
             }
@@ -279,7 +279,7 @@ class LocalizationEngine {
             if (process.platform === 'win32') {
                 const exe = path.join(installDir, 'Antigravity.exe');
                 if (fs.existsSync(exe)) {
-                    const child = child_process.spawn(exe, [], { detached: true, stdio: 'ignore' });
+                    const child = child_process.spawn(exe, [], { detached: true, stdio: 'ignore', windowsHide: true });
                     child.unref();
                     console.log('[启动] 客户端启动成功！');
                 }

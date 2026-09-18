@@ -632,9 +632,6 @@ function setupEvents() {
   const btnSavePrompt = document.getElementById('btn-save-prompt');
   if (btnSavePrompt) btnSavePrompt.addEventListener('click', handleSavePrompt);
 
-  const btnSavePromptTop = document.getElementById('btn-save-prompt-top');
-  if (btnSavePromptTop) btnSavePromptTop.addEventListener('click', handleSavePrompt);
-
   // 7. 系统维护中的客户端核心操作 (从底部移入此处)
   const btnRestart = document.getElementById('btn-restart-app');
   if (btnRestart) btnRestart.addEventListener('click', handleRestartApp);

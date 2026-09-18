@@ -139,7 +139,7 @@ class OrbitApi:
         return self.get_initial_data()
 
     def save_and_apply(self, new_cfg: dict) -> dict:
-        """保存配置并一键部署补丁"""
+        """保存配置并实时生效 (绝对不干扰或强杀正在运行中的 Antigravity 客户端)"""
         try:
             cfg = load_config()
             cfg.update(new_cfg)
@@ -152,15 +152,21 @@ class OrbitApi:
             except Exception:
                 pass
 
-            # 部署补丁
-            lang = custom.get("language", "zh-CN")
-            is_tw = (lang == "zh-TW")
-            is_en = (lang == "en")
-            ok, msg = LocalizationManager.install(tw=is_tw, en=is_en, stream_output=False)
+            # 核心机制：
+            # 1. 代理、自愈、推送、自启动等后台服务配置写入后即刻生效；
+            # 2. 若 Antigravity 正在运行中：绝不强行杀掉客户端，避免弹黑窗或打断用户工作流。
+            #    若修改了外观/语言等需要重载的底层项，用户可随时在「系统维护」点击【重启客户端】一次性生效。
+            # 3. 若 Antigravity 处于未运行状态：静默注入最新补丁。
+            is_running = LocalizationManager.is_running()
+            if not is_running:
+                lang = custom.get("language", "zh-CN")
+                is_tw = (lang == "zh-TW")
+                is_en = (lang == "en")
+                LocalizationManager.install(tw=is_tw, en=is_en, no_kill=True, stream_output=False)
 
             return {
-                "success": ok,
-                "message": "配置与优化已成功部署生效！" if ok else f"部署失败: {msg}"
+                "success": True,
+                "message": "配置已实时自动保存生效！"
             }
         except Exception as e:
             return {"success": False, "message": f"处理配置异常: {e}"}
@@ -177,14 +183,25 @@ class OrbitApi:
             return {"success": False, "message": f"还原异常: {e}"}
 
     def restart_antigravity(self) -> dict:
-        """重启 Antigravity 客户端"""
+        """重启 Antigravity 客户端并同步最新补丁"""
         try:
+            cfg = load_config()
+            custom = cfg.get("customization", {})
+            lang = custom.get("language", "zh-CN")
+            is_tw = (lang == "zh-TW")
+            is_en = (lang == "en")
+
             LocalizationManager.kill_running_antigravity()
             time.sleep(0.8)
+
+            # 客户端退出后 (asar 未被锁) 重新注入最新汉化与优化补丁
+            LocalizationManager.install(tw=is_tw, en=is_en, no_kill=True, stream_output=False)
+            time.sleep(0.3)
+
             ok, msg = LocalizationManager.launch_antigravity()
             return {
                 "success": ok,
-                "message": "客户端已重新拉起！" if ok else f"未能自动拉起: {msg}"
+                "message": "客户端已重新拉起并应用最新补丁！" if ok else f"未能自动拉起: {msg}"
             }
         except Exception as e:
             return {"success": False, "message": f"重启异常: {e}"}

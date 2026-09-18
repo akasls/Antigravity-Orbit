@@ -549,35 +549,37 @@
                     align-items: center;
                     margin-left: auto;
                     margin-right: 145px;
-                    height: 24px;
-                    z-index: 9999;
+                    height: 26px;
+                    z-index: 99999;
                     -webkit-app-region: no-drag !important;
-                    font-family: system-ui, -apple-system, "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
                     position: relative;
                     user-select: none;
                 }
                 .ag-quota-pill {
                     display: inline-flex;
                     align-items: center;
-                    gap: 6px;
-                    padding: 2px 10px;
-                    height: 22px;
-                    border-radius: 11px;
-                    background: rgba(255, 255, 255, 0.08);
-                    border: 1px solid rgba(255, 255, 255, 0.14);
-                    font-size: 11px;
-                    font-weight: 500;
-                    color: rgba(255, 255, 255, 0.9);
+                    gap: 7px;
+                    padding: 3px 12px;
+                    height: 24px;
+                    border-radius: 12px;
+                    background: #18181b !important;
+                    border: 1px solid #3f3f46 !important;
+                    font-size: 11.5px;
+                    font-weight: 600;
+                    color: #f4f4f5 !important;
                     cursor: pointer;
                     box-sizing: border-box;
                     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-                    backdrop-filter: blur(8px);
-                    -webkit-backdrop-filter: blur(8px);
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+                    opacity: 1 !important;
                 }
                 .ag-quota-pill:hover {
-                    background: rgba(255, 255, 255, 0.16);
-                    border-color: rgba(255, 255, 255, 0.28);
-                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+                    background: #27272a !important;
+                    border-color: #52525b !important;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+                    color: #ffffff !important;
+                    transform: translateY(-0.5px);
                 }
                 .ag-quota-dot {
                     width: 7px;
@@ -592,8 +594,8 @@
                 .ag-dot-red { background: #f87171; box-shadow: 0 0 6px rgba(248, 113, 113, 0.7); }
                 .ag-quota-divider {
                     width: 1px;
-                    height: 10px;
-                    background: rgba(255, 255, 255, 0.2);
+                    height: 11px;
+                    background: #52525b;
                     margin: 0 2px;
                 }
                 .ag-quota-popover {
@@ -808,9 +810,22 @@
             }
         }
 
+        if (data && (data.error || data.code === 429)) {
+            return {
+                gemini: { pct5h: 0, time5h: null, pctWeekly: 0, timeWeekly: null },
+                claude: { pct5h: 0, time5h: null, pctWeekly: 0, timeWeekly: null }
+            };
+        }
+
         const getPct = (b) => {
-            if (!b || typeof b.remainingFraction !== 'number') return 100;
-            return Math.min(100, Math.max(0, Math.round(b.remainingFraction * 100)));
+            if (!b) return 100;
+            if (typeof b.remainingFraction === 'number') {
+                return Math.min(100, Math.max(0, Math.round(b.remainingFraction * 100)));
+            }
+            if (b.resetTime || b.bucketId) {
+                return 0;
+            }
+            return 100;
         };
 
         return {
