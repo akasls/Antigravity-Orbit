@@ -139,10 +139,10 @@
 
         <!-- 多账号列表卡片流 (支持 Claude 与 Gemini 5H/周限 双列矩阵展示) -->
         <div class="account-cards-grid" id="account-cards-container">
-          <div class="empty-state">
-            <div class="empty-icon">👥</div>
-            <div class="empty-title">暂无已导入账号</div>
-            <div class="empty-desc">点击右上角【网页登录】快速授权，或【手动导入】粘贴 Token</div>
+          <div class="account-card skeleton-card" style="opacity: 0.7;">
+            <div class="skeleton-shimmer" style="height: 36px; border-radius: 8px; margin-bottom: 8px;"></div>
+            <div class="skeleton-shimmer" style="height: 64px; border-radius: 6px; margin-bottom: 8px;"></div>
+            <div class="skeleton-shimmer" style="height: 26px; border-radius: 6px;"></div>
           </div>
         </div>
       </section>

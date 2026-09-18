@@ -1319,21 +1319,35 @@ input:checked + .slider:before {
 
 .quota-cell {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 3px;
   font-size: 11px;
 }
+.quota-cell-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
 .quota-cell-label {
-  width: 26px;
   color: var(--text-muted);
   font-weight: 600;
-  flex-shrink: 0;
+  font-size: 11px;
+}
+.quota-cell-reset {
+  font-size: 10px;
+  color: #475569;
+  background: rgba(148, 163, 184, 0.15);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 .quota-cell-bar-wrap {
-  flex: 1;
   display: flex;
   align-items: center;
   gap: 6px;
+  width: 100%;
 }
 .quota-cell-val {
   font-size: 11px;
@@ -1347,6 +1361,162 @@ input:checked + .slider:before {
   width: 1px;
   background: var(--border-card);
   margin: -3px 0;
+}
+
+/* 具体模型明细折叠面板 */
+.account-models-collapse {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: #f8fafc;
+  border: 1px dashed var(--border-card);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.account-models-collapse:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+.models-collapse-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.models-collapse-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+.models-count-tag {
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--accent);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+.models-collapse-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.models-collapse-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.models-collapse-arrow {
+  width: 13px;
+  height: 13px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+.models-collapse-arrow.open {
+  transform: rotate(180deg);
+}
+
+/* 模型抽屉与卡片网格 */
+.account-models-drawer {
+  background: #f8fafc;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.models-filter-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.btn-model-filter {
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-card);
+  background: #ffffff;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-model-filter:hover {
+  border-color: #cbd5e1;
+  color: var(--text-main);
+}
+.btn-model-filter.active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.models-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 6px;
+}
+.model-item-card {
+  background: #ffffff;
+  border: 1px solid var(--border-card);
+  border-radius: 6px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+.model-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+.model-item-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 95px;
+}
+.model-item-pct {
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.model-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.model-item-reset {
+  font-size: 9.5px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 骨架屏秒开占位动画 */
+.skeleton-card {
+  animation: skeletonPulse 1.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes skeletonPulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 

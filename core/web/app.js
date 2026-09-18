@@ -148,8 +148,95 @@ function renderAll() {
   renderLogs();
 }
 
+const openDrawers = new Set();
+const drawerFilters = {};
+
+function formatResetCountdown(isoStr) {
+  if (!isoStr) return '';
+  try {
+    const target = new Date(isoStr).getTime();
+    if (isNaN(target)) return '';
+    const diff = target - Date.now();
+    if (diff <= 0) return '已恢复';
+
+    const totalMinutes = Math.floor(diff / 60000);
+    const totalHours = Math.floor(totalMinutes / 60);
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    const mins = totalMinutes % 60;
+
+    if (days > 0) {
+      return `${days}天${hours}小时后重置`;
+    }
+    if (hours > 0) {
+      return `${hours}小时${mins}分后重置`;
+    }
+    if (mins > 0) {
+      return `${mins}分钟后重置`;
+    }
+    return '即将重置';
+  } catch (e) {
+    return '';
+  }
+}
+
+function formatExactDateTime(isoStr) {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    const m = pad(d.getMonth() + 1);
+    const date = pad(d.getDate());
+    const h = pad(d.getHours());
+    const min = pad(d.getMinutes());
+    return `${m}-${date} ${h}:${min}`;
+  } catch (e) {
+    return '';
+  }
+}
+
+window.toggleModelsDrawer = function(accId) {
+  const drawer = document.getElementById(`models-drawer-${accId}`);
+  const arrow = document.getElementById(`arrow-drawer-${accId}`);
+  const hint = document.getElementById(`hint-drawer-${accId}`);
+  if (!drawer) return;
+
+  if (openDrawers.has(accId)) {
+    openDrawers.delete(accId);
+    drawer.style.display = 'none';
+    if (arrow) arrow.classList.remove('open');
+    if (hint) hint.textContent = '展开';
+  } else {
+    openDrawers.add(accId);
+    drawer.style.display = 'block';
+    if (arrow) arrow.classList.add('open');
+    if (hint) hint.textContent = '收起';
+  }
+};
+
+window.filterDrawerModels = function(accId, cat, btnEl) {
+  drawerFilters[accId] = cat;
+  const drawer = document.getElementById(`models-drawer-${accId}`);
+  if (!drawer) return;
+
+  const btns = drawer.querySelectorAll('.btn-model-filter');
+  btns.forEach(b => b.classList.remove('active'));
+  if (btnEl) btnEl.classList.add('active');
+
+  const cards = drawer.querySelectorAll('.model-item-card');
+  cards.forEach(card => {
+    const cardCat = card.getAttribute('data-cat');
+    if (cat === 'all' || cardCat === cat) {
+      card.style.display = '';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+};
+
 /**
- * 渲染账号池：支持 Claude 与 Gemini 5H / 周限 对比矩阵
+ * 渲染账号池：支持 Claude 与 Gemini 5H / 周限 对比矩阵及具体模型明细展开
  */
 function renderAccountPool() {
   const pool = appState.account_pool || { accounts: [], total: 0, healthy: 0, low_or_exhausted: 0 };
@@ -189,17 +276,27 @@ function renderAccountPool() {
   container.innerHTML = accounts.map(acc => {
     const q = acc.quota || {};
 
-    // 解析 Claude 限额
+    // 解析 Claude 限额与重置倒计时
     const c5h = (typeof q.claude_5h_percent === 'number') ? q.claude_5h_percent 
       : ((typeof q.five_hour_percent === 'number') ? q.five_hour_percent : 100);
     const cW = (typeof q.claude_weekly_percent === 'number') ? q.claude_weekly_percent 
       : ((typeof q.weekly_percent === 'number') ? q.weekly_percent : 100);
 
-    // 解析 Gemini 限额
+    const c5hReset = formatResetCountdown(q.claude_5h_reset || q.five_hour_reset);
+    const c5hExact = formatExactDateTime(q.claude_5h_reset || q.five_hour_reset);
+    const cWReset = formatResetCountdown(q.claude_weekly_reset || q.weekly_reset);
+    const cWExact = formatExactDateTime(q.claude_weekly_reset || q.weekly_reset);
+
+    // 解析 Gemini 限额与重置倒计时
     const g5h = (typeof q.gemini_5h_percent === 'number') ? q.gemini_5h_percent 
       : ((typeof q.five_hour_percent === 'number') ? q.five_hour_percent : 100);
     const gW = (typeof q.gemini_weekly_percent === 'number') ? q.gemini_weekly_percent 
       : ((typeof q.weekly_percent === 'number') ? q.weekly_percent : 100);
+
+    const g5hReset = formatResetCountdown(q.gemini_5h_reset || q.five_hour_reset);
+    const g5hExact = formatExactDateTime(q.gemini_5h_reset || q.five_hour_reset);
+    const gWReset = formatResetCountdown(q.gemini_weekly_reset || q.weekly_reset);
+    const gWExact = formatExactDateTime(q.gemini_weekly_reset || q.weekly_reset);
 
     const tier = q.tier_display || q.tier || 'Google AI';
     const isPro = tier.toLowerCase().includes('pro');
@@ -223,6 +320,73 @@ function renderAccountPool() {
       ? `<img src="${acc.avatar}" alt="Avatar">`
       : (acc.email || "A").charAt(0).toUpperCase();
 
+    // 解析具体模型明细
+    const rawModels = q.models || {};
+    const modelKeys = Object.keys(rawModels);
+    const hasModels = modelKeys.length > 0;
+    const isDrawerOpen = openDrawers.has(acc.id);
+    const curFilter = drawerFilters[acc.id] || 'all';
+
+    let modelsGridHtml = '';
+    let claudeCount = 0;
+    let geminiCount = 0;
+
+    if (hasModels) {
+      const modelItems = modelKeys.map(k => {
+        const m = rawModels[k] || {};
+        const pct = typeof m.percent === 'number' ? m.percent : 100;
+        const resetCd = formatResetCountdown(m.resetTime);
+        const exactDt = formatExactDateTime(m.resetTime);
+        const isClaude = k.includes('claude') || k.includes('3p') || k.includes('gpt');
+        const isGemini = k.includes('gemini');
+        const cat = isClaude ? 'claude' : (isGemini ? 'gemini' : 'other');
+
+        if (cat === 'claude') claudeCount++;
+        if (cat === 'gemini') geminiCount++;
+
+        return {
+          id: k,
+          displayName: m.displayName || k,
+          percent: pct,
+          resetCountdown: resetCd,
+          exactTime: exactDt,
+          cat: cat,
+          colorClass: getProgressColorClass(pct)
+        };
+      });
+
+      // 旗舰核心模型优先排序
+      modelItems.sort((a, b) => {
+        const aKey = a.displayName.toLowerCase();
+        const bKey = b.displayName.toLowerCase();
+        const aCore = aKey.includes('claude') || aKey.includes('pro') || aKey.includes('gpt');
+        const bCore = bKey.includes('claude') || bKey.includes('pro') || bKey.includes('gpt');
+        if (aCore && !bCore) return -1;
+        if (!aCore && bCore) return 1;
+        return a.displayName.localeCompare(b.displayName);
+      });
+
+      modelsGridHtml = modelItems.map(m => {
+        const isHidden = (curFilter !== 'all' && m.cat !== curFilter);
+        return `
+          <div class="model-item-card" data-cat="${m.cat}" style="${isHidden ? 'display: none;' : ''}">
+            <div class="model-item-header">
+              <span class="model-item-title" title="${m.displayName} (${m.id})">${m.displayName}</span>
+              <span class="model-item-pct ${m.colorClass}">${m.percent}%</span>
+            </div>
+            <div class="progress-track" style="height: 4px; margin: 4px 0 3px;">
+              <div class="progress-fill ${m.colorClass}" style="width: ${m.percent}%;"></div>
+            </div>
+            <div class="model-item-footer">
+              <span class="model-item-reset" title="${m.exactTime ? '下次重置时间: ' + m.exactTime : ''}">
+                ${m.resetCountdown || '与周期同步'}
+              </span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
     return `
       <div class="account-card ${acc.is_active ? 'active' : ''}">
         <div class="account-card-header">
@@ -239,7 +403,7 @@ function renderAccountPool() {
           </div>
         </div>
 
-        <!-- Claude 与 Gemini 5H / 周限 对比矩阵 -->
+        <!-- Claude 与 Gemini 5H / 周限 对比矩阵 (含下次重置时间倒计时) -->
         <div class="account-quota-matrix">
           <!-- Claude 列 -->
           <div class="quota-matrix-col">
@@ -248,7 +412,10 @@ function renderAccountPool() {
               <span>Claude</span>
             </div>
             <div class="quota-cell">
-              <div class="quota-cell-label">5H</div>
+              <div class="quota-cell-top">
+                <span class="quota-cell-label">5H</span>
+                ${c5hReset ? `<span class="quota-cell-reset" title="下次重置: ${c5hExact}">${c5hReset}</span>` : ''}
+              </div>
               <div class="quota-cell-bar-wrap">
                 <div class="progress-track" style="height: 5px;">
                   <div class="progress-fill ${fillC5h}" style="width: ${c5h}%;"></div>
@@ -257,7 +424,10 @@ function renderAccountPool() {
               </div>
             </div>
             <div class="quota-cell">
-              <div class="quota-cell-label">周限</div>
+              <div class="quota-cell-top">
+                <span class="quota-cell-label">周限</span>
+                ${cWReset ? `<span class="quota-cell-reset" title="下次重置: ${cWExact}">${cWReset}</span>` : ''}
+              </div>
               <div class="quota-cell-bar-wrap">
                 <div class="progress-track" style="height: 5px;">
                   <div class="progress-fill ${fillCW}" style="width: ${cW}%;"></div>
@@ -277,7 +447,10 @@ function renderAccountPool() {
               <span>Gemini</span>
             </div>
             <div class="quota-cell">
-              <div class="quota-cell-label">5H</div>
+              <div class="quota-cell-top">
+                <span class="quota-cell-label">5H</span>
+                ${g5hReset ? `<span class="quota-cell-reset" title="下次重置: ${g5hExact}">${g5hReset}</span>` : ''}
+              </div>
               <div class="quota-cell-bar-wrap">
                 <div class="progress-track" style="height: 5px;">
                   <div class="progress-fill ${fillG5h}" style="width: ${g5h}%;"></div>
@@ -286,7 +459,10 @@ function renderAccountPool() {
               </div>
             </div>
             <div class="quota-cell">
-              <div class="quota-cell-label">周限</div>
+              <div class="quota-cell-top">
+                <span class="quota-cell-label">周限</span>
+                ${gWReset ? `<span class="quota-cell-reset" title="下次重置: ${gWExact}">${gWReset}</span>` : ''}
+              </div>
               <div class="quota-cell-bar-wrap">
                 <div class="progress-track" style="height: 5px;">
                   <div class="progress-fill ${fillGW}" style="width: ${gW}%;"></div>
@@ -296,6 +472,38 @@ function renderAccountPool() {
             </div>
           </div>
         </div>
+
+        <!-- 具体模型额度明细折叠抽屉 -->
+        ${hasModels ? `
+          <div class="account-models-collapse" onclick="toggleModelsDrawer('${acc.id}')">
+            <div class="models-collapse-left">
+              <svg style="width: 13px; height: 13px; color: var(--accent);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <line x1="3" y1="9" x2="21" y2="9"/>
+                <line x1="9" y1="21" x2="9" y2="9"/>
+              </svg>
+              <span class="models-collapse-title">查看具体模型额度明细</span>
+              <span class="models-count-tag">${modelKeys.length} 个模型</span>
+            </div>
+            <div class="models-collapse-right">
+              <span class="models-collapse-hint" id="hint-drawer-${acc.id}">${isDrawerOpen ? '收起' : '展开'}</span>
+              <svg class="models-collapse-arrow ${isDrawerOpen ? 'open' : ''}" id="arrow-drawer-${acc.id}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="account-models-drawer" id="models-drawer-${acc.id}" style="${isDrawerOpen ? 'display: block;' : 'display: none;'}">
+            <div class="models-filter-bar">
+              <button type="button" class="btn-model-filter ${curFilter === 'all' ? 'active' : ''}" data-filter="all" onclick="filterDrawerModels('${acc.id}', 'all', this)">全部 (${modelKeys.length})</button>
+              <button type="button" class="btn-model-filter ${curFilter === 'claude' ? 'active' : ''}" data-filter="claude" onclick="filterDrawerModels('${acc.id}', 'claude', this)">Claude & GPT (${claudeCount})</button>
+              <button type="button" class="btn-model-filter ${curFilter === 'gemini' ? 'active' : ''}" data-filter="gemini" onclick="filterDrawerModels('${acc.id}', 'gemini', this)">Gemini (${geminiCount})</button>
+            </div>
+            <div class="models-grid" id="models-grid-${acc.id}">
+              ${modelsGridHtml}
+            </div>
+          </div>
+        ` : ''}
 
         <div class="account-card-footer">
           <span style="font-size: 11px; color: var(--text-dim);">${acc.last_refreshed_text || '刚刚'}</span>

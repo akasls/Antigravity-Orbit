@@ -118,8 +118,8 @@ class OrbitWindowManager:
         html_path = self.get_web_entry_path()
         icon_ico = RESOURCE_DIR / "resources" / "icon.ico"
 
-        # 1. 启动系统托盘
-        self.init_tray()
+        # 1. 异步非阻塞启动系统托盘，优先瞬间创建并呈现主视窗
+        threading.Thread(target=self.init_tray, daemon=True).start()
 
         # 2. 创建现代 Edge WebView2 窗口
         self.window = webview.create_window(

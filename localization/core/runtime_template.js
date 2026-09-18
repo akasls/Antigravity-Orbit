@@ -560,24 +560,27 @@
                     display: inline-flex;
                     align-items: center;
                     gap: 7px;
-                    padding: 3px 12px;
+                    padding: 2px 11px;
                     height: 24px;
                     border-radius: 12px;
-                    background: #18181b !important;
-                    border: 1px solid #3f3f46 !important;
+                    background: rgba(255, 255, 255, 0.16) !important;
+                    backdrop-filter: blur(14px) saturate(180%);
+                    -webkit-backdrop-filter: blur(14px) saturate(180%);
+                    border: 1px solid rgba(255, 255, 255, 0.28) !important;
                     font-size: 11.5px;
                     font-weight: 600;
-                    color: #f4f4f5 !important;
+                    color: #ffffff !important;
+                    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
                     cursor: pointer;
                     box-sizing: border-box;
                     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+                    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.25);
                     opacity: 1 !important;
                 }
                 .ag-quota-pill:hover {
-                    background: #27272a !important;
-                    border-color: #52525b !important;
-                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+                    background: rgba(255, 255, 255, 0.26) !important;
+                    border-color: rgba(255, 255, 255, 0.45) !important;
+                    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.4);
                     color: #ffffff !important;
                     transform: translateY(-0.5px);
                 }
@@ -595,7 +598,7 @@
                 .ag-quota-divider {
                     width: 1px;
                     height: 11px;
-                    background: #52525b;
+                    background: rgba(255, 255, 255, 0.35);
                     margin: 0 2px;
                 }
                 .ag-quota-popover {
@@ -603,11 +606,11 @@
                     top: calc(100% + 8px);
                     right: 0;
                     width: 320px;
-                    background: #18181b;
-                    border: 1px solid rgba(255, 255, 255, 0.15);
+                    background: #1e222d;
+                    border: 1px solid rgba(255, 255, 255, 0.18);
                     border-radius: 10px;
                     padding: 14px 16px;
-                    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.3);
+                    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.2);
                     z-index: 100000;
                     color: #e4e4e7;
                     font-size: 12px;

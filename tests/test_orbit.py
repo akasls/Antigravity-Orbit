@@ -83,16 +83,26 @@ class TestOrbitCore(unittest.TestCase):
         self.assertIn("brain_temp_str", breakdown)
 
     def test_quota_matrix_fields(self):
-        # 验证初始数据结构包含 Claude 与 Gemini 双列矩阵必要字段
+        # 验证初始数据结构包含 Claude 与 Gemini 双列矩阵及下次重置时间与模型明细必要字段
         mgr = AccountPoolManager()
         default_quota = {
             "claude_5h_percent": 100,
+            "claude_5h_reset": "2026-09-18T19:52:33Z",
             "claude_weekly_percent": 100,
+            "claude_weekly_reset": "2026-09-25T14:52:33Z",
             "gemini_5h_percent": 100,
-            "gemini_weekly_percent": 100
+            "gemini_5h_reset": "2026-09-18T19:52:33Z",
+            "gemini_weekly_percent": 100,
+            "gemini_weekly_reset": "2026-09-25T14:52:33Z",
+            "models": {
+                "claude-sonnet-4-6": {"displayName": "Claude Sonnet 4.6", "percent": 100, "resetTime": "2026-09-18T19:52:35Z"},
+                "gemini-3.1-pro-high": {"displayName": "Gemini 3.1 Pro", "percent": 100, "resetTime": "2026-09-18T19:52:35Z"}
+            }
         }
-        for k, v in default_quota.items():
-            self.assertEqual(v, 100)
+        self.assertEqual(default_quota["claude_5h_percent"], 100)
+        self.assertTrue("Z" in default_quota["claude_5h_reset"])
+        self.assertIn("claude-sonnet-4-6", default_quota["models"])
+        self.assertIn("gemini-3.1-pro-high", default_quota["models"])
 
     def test_localization_process_methods(self):
         from core.localization import LocalizationManager
