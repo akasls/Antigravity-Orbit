@@ -53,12 +53,8 @@ class OrbitApi:
         daemon_auto = AutostartManager.is_enabled()
         app_auto = AutostartManager.is_app_autostart_enabled()
 
-        # 存储分析
+        # 存储分析 (启动时免全盘递归扫描，由前端异步按需懒加载)
         storage_info = None
-        try:
-            storage_info = StorageManager.get_storage_breakdown()
-        except Exception:
-            pass
 
         # 提示词与模板
         prompt_content = PromptManager.read_system_prompt()
@@ -79,9 +75,9 @@ class OrbitApi:
         account_pool = None
         try:
             account_pool = self._account_mgr.get_accounts_summary()
-            # 如果账号池为空，自动尝试静默导入当前已登录的客户端账号
+            # 如果账号池为空，自动尝试静默快速导入当前客户端账号 (零网络阻塞)
             if account_pool.get("total", 0) == 0:
-                self._account_mgr.import_current_client_account()
+                self._account_mgr.import_current_client_account(fetch_network=False)
                 account_pool = self._account_mgr.get_accounts_summary()
         except Exception as e:
             account_pool = {"total": 0, "healthy": 0, "low_or_exhausted": 0, "accounts": [], "error": str(e)}
@@ -267,6 +263,13 @@ class OrbitApi:
         else:
             ok, msg = AutostartManager.disable_app_autostart()
         return {"success": ok, "message": msg}
+
+    def get_storage_breakdown(self) -> dict:
+        """异步按需获取磁盘垃圾与缓存分析"""
+        try:
+            return {"success": True, "data": StorageManager.get_storage_breakdown()}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
 
     def clean_storage(self) -> dict:
         """执行安全深度瘦身"""

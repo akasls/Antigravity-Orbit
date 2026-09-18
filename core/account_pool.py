@@ -13,6 +13,7 @@ import time
 import uuid
 import base64
 import ctypes
+import threading
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -412,7 +413,14 @@ class AccountPoolManager:
             "accounts": accounts_list
         }
 
-    def import_current_client_account(self) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+    def _background_enrich_account(self, account_id: str):
+        """后台异步静默丰富账号详情与配额"""
+        try:
+            self.refresh_single_account_quota(account_id)
+        except Exception:
+            pass
+
+    def import_current_client_account(self, fetch_network: bool = True) -> Tuple[bool, Optional[Dict[str, Any]], str]:
         """一键从 Windows 系统凭据管理器读取当前客户端账号并导入账号池"""
         ok, cred_data, msg = self.read_system_credential()
         if not ok or not cred_data:
@@ -425,6 +433,42 @@ class AccountPoolManager:
 
         if not refresh_token:
             return False, None, "系统凭据中未包含 refresh_token"
+
+        if not fetch_network:
+            # 零网络耗时快速导入
+            account_id = None
+            for acc in self._pool_cache.get("accounts", []):
+                if acc.get("token", {}).get("refresh_token") == refresh_token:
+                    account_id = acc["id"]
+                    break
+            if not account_id:
+                account_id = str(uuid.uuid4())
+                new_acc = {
+                    "id": account_id,
+                    "email": "当前登录账号",
+                    "name": "Antigravity 用户",
+                    "avatar": "",
+                    "added_at": int(time.time()),
+                    "token": {
+                        "access_token": access_token or "",
+                        "refresh_token": refresh_token,
+                        "token_type": "Bearer",
+                        "expiry": expiry or "",
+                    },
+                    "quota": {
+                        "status": "HEALTHY",
+                        "tier": "Google AI",
+                        "five_hour_pct": 100,
+                        "weekly_pct": 100,
+                        "models": {},
+                        "last_refreshed": int(time.time()),
+                    }
+                }
+                self._pool_cache.setdefault("accounts", []).append(new_acc)
+            self._pool_cache["active_account_id"] = account_id
+            self.save_pool()
+            threading.Thread(target=self._background_enrich_account, args=(account_id,), daemon=True).start()
+            return True, {"id": account_id, "email": "当前登录账号", "name": "Antigravity 用户"}, "快速导入成功"
 
         # 如果 access_token 缺失或接近过期，刷新一次
         if not access_token:

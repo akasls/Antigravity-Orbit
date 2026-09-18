@@ -56,8 +56,15 @@ def build():
     # 路径分隔符适配 (Windows 用分号 ;, Unix 用冒号 :)
     sep = ";" if system == "windows" else ":"
 
-    # 严格排除无用重型第三方科学与测试库，将体积与解压启动时间压缩至极限
+    # 严格排除无用重型第三方科学、Qt与测试库，将体积与解压启动时间压缩至极限
     excludes = [
+        "--exclude-module", "PyQt6",
+        "--exclude-module", "PyQt5",
+        "--exclude-module", "PySide6",
+        "--exclude-module", "PySide2",
+        "--exclude-module", "qtpy",
+        "--exclude-module", "tkinter",
+        "--exclude-module", "_tkinter",
         "--exclude-module", "numpy",
         "--exclude-module", "scipy",
         "--exclude-module", "matplotlib",
@@ -68,6 +75,8 @@ def build():
         "--exclude-module", "pydoc",
         "--exclude-module", "doctest",
         "--exclude-module", "test",
+        "--exclude-module", "IPython",
+        "--exclude-module", "jedi",
     ]
 
     # 构建基础参数
