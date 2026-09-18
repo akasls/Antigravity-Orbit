@@ -49,6 +49,10 @@ def build():
             print("[错误] PyInstaller 安装失败，请手动运行: pip install pyinstaller")
             sys.exit(1)
 
+    # 终止可能仍在后台驻留的旧版 Orbit 进程，避免 Windows 文件锁定 PermissionError
+    if system == "windows":
+        subprocess.run("taskkill /F /IM Antigravity-Orbit.exe /IM Antigravity-Orbit-Portable-x64.exe 2>nul", shell=True, capture_output=True)
+
     # 路径分隔符适配 (Windows 用分号 ;, Unix 用冒号 :)
     sep = ";" if system == "windows" else ":"
 
@@ -74,6 +78,7 @@ def build():
         "--windowed",
         f"--add-data=localization{sep}localization",
         f"--add-data=resources{sep}resources",
+        f"--add-data=core/web{sep}core/web",
         f"--add-data=config.example.json{sep}.",
     ] + excludes
 

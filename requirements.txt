@@ -1,5 +1,7 @@
 # Antigravity Orbit Dependencies
 pystray>=0.19.5
 pillow>=10.0.0
+pywebview>=6.2.0
+bottle>=0.13.0
 pyinstaller>=6.0.0
 
