@@ -1282,3 +1282,71 @@ input:checked + .slider:before {
   transition: width 0.3s ease;
 }
 
+/* 账号卡片 Claude 与 Gemini 双列配额矩阵 */
+.account-quota-matrix {
+  display: flex;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  gap: 12px;
+  margin: 8px 0;
+}
+.quota-matrix-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.quota-col-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-main);
+  padding-bottom: 3px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+.quota-brand-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.claude-dot { background: #d97706; }
+.gemini-dot { background: #2563eb; }
+
+.quota-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.quota-cell-label {
+  width: 26px;
+  color: var(--text-muted);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.quota-cell-bar-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.quota-cell-val {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-main);
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.quota-matrix-divider {
+  width: 1px;
+  background: var(--border-card);
+  margin: -3px 0;
+}
+
+

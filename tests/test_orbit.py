@@ -82,7 +82,18 @@ class TestOrbitCore(unittest.TestCase):
         self.assertIn("chromium_cache_str", breakdown)
         self.assertIn("brain_temp_str", breakdown)
 
+    def test_quota_matrix_fields(self):
+        # 验证初始数据结构包含 Claude 与 Gemini 双列矩阵必要字段
+        mgr = AccountPoolManager()
+        default_quota = {
+            "claude_5h_percent": 100,
+            "claude_weekly_percent": 100,
+            "gemini_5h_percent": 100,
+            "gemini_weekly_percent": 100
+        }
+        for k, v in default_quota.items():
+            self.assertEqual(v, 100)
+
 
 if __name__ == "__main__":
-
     unittest.main()

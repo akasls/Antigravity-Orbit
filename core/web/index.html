@@ -9,7 +9,7 @@
 <body>
 
   <div class="app-layout">
-    <!-- 左侧导航栏 (极简标题) -->
+    <!-- 左侧导航栏 -->
     <aside class="sidebar">
       <div class="brand-header">
         <div class="brand-title-row">
@@ -65,13 +65,6 @@
           <span>系统维护</span>
         </div>
       </nav>
-
-      <div class="sidebar-footer-hint">
-        <div class="hint-title">
-          <svg style="width: 13px; height: 13px; color: var(--accent);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>
-          托盘后台守护
-        </div>
-      </div>
     </aside>
 
     <!-- 右侧主内容面板 -->
@@ -90,10 +83,6 @@
               <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
               <span>网页登录</span>
             </button>
-            <button class="btn btn-secondary btn-sm" id="btn-import-current">
-              <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-              <span>提取本地凭据</span>
-            </button>
             <button class="btn btn-secondary btn-sm" id="btn-open-add-modal">
               <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12"/></svg>
               <span>手动导入</span>
@@ -102,65 +91,6 @@
               <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
               <span>刷新配额</span>
             </button>
-          </div>
-        </div>
-
-        <!-- 顶部当前生效账号卡片 -->
-        <div class="card card-hero" id="active-account-hero">
-          <div class="hero-top">
-            <div class="hero-identity">
-              <div class="account-avatar" id="hero-avatar">A</div>
-              <div class="hero-info">
-                <div class="hero-email-row">
-                  <span class="hero-email" id="hero-email">正在检测当前客户端凭据...</span>
-                  <span class="badge badge-plan badge-pro" id="hero-plan-badge">PRO</span>
-                  <span class="badge-status-active">
-                    <span class="status-dot-pulse"></span> 使用中
-                  </span>
-                </div>
-                <div class="hero-meta">
-                  <span id="hero-name">本地账号</span> · 
-                  <span>上次刷新: <span id="hero-last-refreshed">刚刚</span></span>
-                </div>
-              </div>
-            </div>
-            <button class="btn btn-secondary btn-sm" id="btn-refresh-hero-quota">
-              <svg style="width: 13px; height: 13px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-              <span>刷新此账号</span>
-            </button>
-          </div>
-
-          <!-- 双轨主限额进度条 -->
-          <div class="progress-dual-wrap">
-            <div class="progress-block">
-              <div class="progress-header">
-                <span class="progress-label">5 小时滚动配额</span>
-                <span class="progress-val" id="hero-5h-val">100% 可用</span>
-              </div>
-              <div class="progress-track">
-                <div class="progress-fill fill-healthy" id="hero-5h-bar" style="width: 100%;"></div>
-              </div>
-              <div class="progress-hint">重置倒计时: <span id="hero-5h-reset">充足</span></div>
-            </div>
-
-            <div class="progress-block">
-              <div class="progress-header">
-                <span class="progress-label">每周周期配额</span>
-                <span class="progress-val" id="hero-weekly-val">100% 可用</span>
-              </div>
-              <div class="progress-track">
-                <div class="progress-fill fill-healthy" id="hero-weekly-bar" style="width: 100%;"></div>
-              </div>
-              <div class="progress-hint">重置倒计时: <span id="hero-weekly-reset">充足</span></div>
-            </div>
-          </div>
-
-          <!-- 各模型独立配额区 -->
-          <div class="model-quotas-wrap" id="hero-model-quotas-section">
-            <div class="model-quotas-title">可用模型配额</div>
-            <div class="model-quotas-grid" id="hero-models-grid">
-              <div style="font-size: 11.5px; color: var(--text-dim);">正在读取模型可用配额...</div>
-            </div>
           </div>
         </div>
 
@@ -207,12 +137,12 @@
           </div>
         </div>
 
-        <!-- 多账号列表卡片流 -->
+        <!-- 多账号列表卡片流 (支持 Claude 与 Gemini 5H/周限 双列矩阵展示) -->
         <div class="account-cards-grid" id="account-cards-container">
           <div class="empty-state">
             <div class="empty-icon">👥</div>
             <div class="empty-title">暂无已导入账号</div>
-            <div class="empty-desc">支持点击【网页登录】快速授权，或【提取本地凭据】直接读取</div>
+            <div class="empty-desc">点击右上角【网页登录】快速授权，或【手动导入】粘贴 Token</div>
           </div>
         </div>
       </section>
@@ -485,7 +415,7 @@
 
 
       <!-- ======================================================== -->
-      <!-- 4. 系统提示词 (System Prompts - 纯净直改默认) -->
+      <!-- 4. 系统提示词 (System Prompts) -->
       <!-- ======================================================== -->
       <section class="tab-pane" id="tab-prompts">
         <div class="pane-header">
@@ -510,7 +440,7 @@
           </div>
           <textarea class="prompt-textarea" id="prompt-editor-content" placeholder="输入反重力全局系统规则 (Markdown 格式)..." spellcheck="false"></textarea>
           <div class="editor-footer">
-            <div class="editor-footer-tip">修改后自动写入默认配置，重启客户端或开启新会话时生效。</div>
+            <div class="editor-footer-tip">修改后自动写入默认配置，开启新会话即刻生效。</div>
             <button class="btn btn-primary btn-sm" id="btn-save-prompt">保存修改</button>
           </div>
         </div>
@@ -523,6 +453,34 @@
       <section class="tab-pane" id="tab-system">
         <div class="pane-header">
           <h1 class="pane-title">系统维护</h1>
+        </div>
+
+        <!-- 客户端核心操作与备份还原 (从底部移入此处，更合理聚焦) -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">客户端操作与还原</div>
+          </div>
+          <div class="card-body">
+            <div class="setting-row">
+              <div class="row-info">
+                <div class="row-title">重启 Antigravity 客户端</div>
+                <div class="row-desc">重启反重力以应用最新网络代理或底层性能优化</div>
+              </div>
+              <div class="row-ctrl">
+                <button class="btn btn-secondary btn-sm" id="btn-restart-app">重启客户端</button>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <div class="row-info">
+                <div class="row-title">还原官方原版英文</div>
+                <div class="row-desc">撤销全部界面汉化与本地补丁，恢复纯净官方原版</div>
+              </div>
+              <div class="row-ctrl">
+                <button class="btn btn-secondary btn-sm" id="btn-restore-all">还原官方原版</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- 界面与外观定制 -->
@@ -550,7 +508,7 @@
             <div class="setting-row">
               <div class="row-info">
                 <div class="row-title">顶栏模型额度实时胶囊徽章</div>
-                <div class="row-desc">顶栏展示 Gemini 与 Claude 实时可用额度</div>
+                <div class="row-desc">顶栏常驻展示 Gemini 与 Claude 实时可用额度</div>
               </div>
               <div class="row-ctrl">
                 <label class="switch">
@@ -644,7 +602,7 @@
             </div>
             <div class="setting-row row-footer-action">
               <div class="row-info">
-                <div class="row-desc">清理仅针对缓存与冗余文件，不影响项目源码及配置。</div>
+                <div class="row-desc">清理仅针对冗余死缓存，不影响项目源码及配置。</div>
               </div>
               <div class="row-ctrl">
                 <button class="btn btn-secondary btn-sm" id="btn-clean-storage">
@@ -672,27 +630,7 @@
     </main>
   </div>
 
-  <!-- 全局底部常驻操作栏 -->
-  <footer class="app-footer">
-    <div class="footer-left">
-      <a class="footer-link" id="footer-link-github" href="#">
-        <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
-        <span>GitHub 源码</span>
-      </a>
-      <span class="footer-status-pill">
-        <span class="status-dot"></span>
-        <span id="footer-status-text">就绪</span>
-      </span>
-    </div>
-
-    <div class="footer-right">
-      <button class="btn btn-secondary" id="btn-restore-all">还原官方原版</button>
-      <button class="btn btn-secondary" id="btn-restart-app">重启 Antigravity</button>
-      <button class="btn btn-primary" id="btn-save-all">保存并一键生效</button>
-    </div>
-  </footer>
-
-  <!-- 模态框 1：Google 网页授权登录弹窗 (新增) -->
+  <!-- 模态框 1：Google 网页授权登录弹窗 -->
   <div class="modal-backdrop" id="modal-oauth-login">
     <div class="modal-box" style="width: 480px;">
       <div class="modal-header">

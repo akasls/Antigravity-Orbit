@@ -246,7 +246,27 @@ class AccountPoolManager:
         self.db_path = self.data_dir / "orbit_accounts.json"
         self._pool_cache: Dict[str, Any] = {"accounts": [], "active_account_id": None}
         self._oauth_server: Optional[OAuthCallbackServer] = None
+        self._is_refreshing_all = False
         self.load_pool()
+        self._start_auto_refresher(interval_seconds=300)
+
+    def _start_auto_refresher(self, interval_seconds: int = 300):
+        """启动后台静默定时器，自动轮询刷新过期的账号配额"""
+        def _loop():
+            time.sleep(3)
+            while True:
+                try:
+                    now = int(time.time())
+                    accounts = self._pool_cache.get("accounts", [])
+                    need_refresh = any((now - a.get("quota", {}).get("last_refreshed", 0)) >= interval_seconds for a in accounts)
+                    if need_refresh and not self._is_refreshing_all and accounts:
+                        self.refresh_all_quotas()
+                except Exception:
+                    pass
+                time.sleep(60)
+
+        threading.Thread(target=_loop, daemon=True).start()
+
 
     # ------------------------------------------------------------------
     # 存储与持久化
@@ -400,6 +420,14 @@ class AccountPoolManager:
             "weekly_fraction": 1.0,
             "weekly_percent": 100,
             "weekly_reset": "",
+            "claude_5h_percent": 100,
+            "claude_5h_reset": "",
+            "claude_weekly_percent": 100,
+            "claude_weekly_reset": "",
+            "gemini_5h_percent": 100,
+            "gemini_5h_reset": "",
+            "gemini_weekly_percent": 100,
+            "gemini_weekly_reset": "",
             "models": {},
             "raw_credits": [],
             "last_refreshed": int(time.time()),
@@ -451,7 +479,9 @@ class AccountPoolManager:
         except Exception:
             pass
 
-        # 2. 查询 retrieveUserQuotaSummary 获取 5h 和 周度额度
+        # 2. 查询 retrieveUserQuotaSummary 获取 Claude 与 Gemini 的 5h 和 周度额度
+        claude_found = False
+        gemini_found = False
         try:
             req = urllib.request.Request(
                 f"{CLOUD_CODE_PROD_URL}/v1internal:retrieveUserQuotaSummary",
@@ -461,22 +491,66 @@ class AccountPoolManager:
             with urllib.request.urlopen(req, timeout=12) as resp:
                 summary_data = json.loads(resp.read().decode("utf-8"))
                 for group in summary_data.get("groups", []):
+                    g_name = (group.get("displayName") or "").lower()
                     for bucket in group.get("buckets", []):
+                        b_id = (bucket.get("bucketId") or "").lower()
                         d_name = (bucket.get("displayName") or "").lower()
+                        window = (bucket.get("window") or "").lower()
                         frac = bucket.get("remainingFraction")
                         reset = bucket.get("resetTime") or ""
-                        if frac is not None:
-                            percent = int(float(frac) * 100)
-                            if "five hour" in d_name or "5 hour" in d_name or "5h" in d_name:
-                                quota_result["five_hour_fraction"] = float(frac)
-                                quota_result["five_hour_percent"] = percent
+                        if frac is None:
+                            continue
+                        percent = int(float(frac) * 100)
+
+                        is_5h = ("5h" in window or "5h" in b_id or "five hour" in d_name or "5 hour" in d_name)
+                        is_weekly = ("weekly" in window or "weekly" in b_id or "week" in d_name)
+
+                        is_claude = ("claude" in g_name or "3p" in g_name or "gpt" in g_name or "claude" in b_id or "3p" in b_id)
+                        is_gemini = ("gemini" in g_name or "gemini" in b_id)
+
+                        if is_claude:
+                            claude_found = True
+                            if is_5h:
+                                quota_result["claude_5h_percent"] = percent
+                                quota_result["claude_5h_reset"] = reset
+                            elif is_weekly:
+                                quota_result["claude_weekly_percent"] = percent
+                                quota_result["claude_weekly_reset"] = reset
+                        elif is_gemini:
+                            gemini_found = True
+                            if is_5h:
+                                quota_result["gemini_5h_percent"] = percent
+                                quota_result["gemini_5h_reset"] = reset
+                            elif is_weekly:
+                                quota_result["gemini_weekly_percent"] = percent
+                                quota_result["gemini_weekly_reset"] = reset
+
+                        # 兜底通用限额
+                        if is_5h:
+                            quota_result["five_hour_fraction"] = min(quota_result["five_hour_fraction"], float(frac))
+                            quota_result["five_hour_percent"] = min(quota_result["five_hour_percent"], percent)
+                            if not quota_result["five_hour_reset"]:
                                 quota_result["five_hour_reset"] = reset
-                            elif "week" in d_name:
-                                quota_result["weekly_fraction"] = float(frac)
-                                quota_result["weekly_percent"] = percent
+                        elif is_weekly:
+                            quota_result["weekly_fraction"] = min(quota_result["weekly_fraction"], float(frac))
+                            quota_result["weekly_percent"] = min(quota_result["weekly_percent"], percent)
+                            if not quota_result["weekly_reset"]:
                                 quota_result["weekly_reset"] = reset
         except Exception:
             pass
+
+        # 若未独立返回，默认继承通用额度
+        if not claude_found:
+            quota_result["claude_5h_percent"] = quota_result["five_hour_percent"]
+            quota_result["claude_5h_reset"] = quota_result["five_hour_reset"]
+            quota_result["claude_weekly_percent"] = quota_result["weekly_percent"]
+            quota_result["claude_weekly_reset"] = quota_result["weekly_reset"]
+        if not gemini_found:
+            quota_result["gemini_5h_percent"] = quota_result["five_hour_percent"]
+            quota_result["gemini_5h_reset"] = quota_result["five_hour_reset"]
+            quota_result["gemini_weekly_percent"] = quota_result["weekly_percent"]
+            quota_result["gemini_weekly_reset"] = quota_result["weekly_reset"]
+
 
         # 3. 查询 fetchAvailableModels 获取各模型独立配额
         try:

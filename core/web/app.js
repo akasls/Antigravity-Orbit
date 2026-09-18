@@ -1,7 +1,7 @@
 /**
  * Antigravity Orbit - 现代桌面核心控制器 (v3.3.0)
- * 纯原生驱动，支持 Google OAuth 网页授权与本地回调、多账号配额深度看板、
- * 专属代理接管与全局系统规则一键管理。
+ * 实时自动保存、Google OAuth 网页授权、Claude 与 Gemini 双列配额看板、
+ * 后台自动定时刷新与无感切号。
  */
 
 let appState = {
@@ -15,6 +15,8 @@ let appState = {
 };
 
 let oauthPollTimer = null;
+let autoSaveTimer = null;
+let autoRefreshTimer = null;
 
 // 监听 pywebview 原生桥接就绪
 window.addEventListener('pywebviewready', () => {
@@ -37,6 +39,7 @@ async function initApp() {
   setupTabs();
   setupEvents();
   await loadInitialData();
+  startQuotaAutoRefresher();
 }
 
 /**
@@ -76,7 +79,12 @@ function switchToTab(tabName) {
     }
   });
 
-  // 3. 懒加载系统存储占用分析
+  // 3. 切换至账号池时静默刷新最新额度
+  if (tabName === 'accounts') {
+    silentRefreshPool();
+  }
+
+  // 4. 切换至系统维护时分析存储
   if (tabName === 'system') {
     loadStorageAnalysis();
   }
@@ -106,6 +114,30 @@ async function loadInitialData() {
 }
 
 /**
+ * 前端后台自动定时轮询刷新账号池额度 (解决额度不自动刷新的问题)
+ */
+function startQuotaAutoRefresher() {
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+  // 每 30 秒轮询一次后端状态，若后端后台线程已完成刷新则即时更新 UI
+  autoRefreshTimer = setInterval(async () => {
+    await silentRefreshPool();
+  }, 30000);
+}
+
+async function silentRefreshPool() {
+  if (!window.pywebview || !window.pywebview.api) return;
+  try {
+    const res = await window.pywebview.api.get_account_pool();
+    if (res && res.success && res.data) {
+      appState.account_pool = res.data;
+      renderAccountPool();
+    }
+  } catch (e) {
+    // 静默容错
+  }
+}
+
+/**
  * 全量渲染页面组件
  */
 function renderAll() {
@@ -117,13 +149,13 @@ function renderAll() {
 }
 
 /**
- * 渲染账号池与配额详情
+ * 渲染账号池：支持 Claude 与 Gemini 5H / 周限 对比矩阵
  */
 function renderAccountPool() {
   const pool = appState.account_pool || { accounts: [], total: 0, healthy: 0, low_or_exhausted: 0 };
   const accounts = pool.accounts || [];
 
-  // 1. 更新指标卡片
+  // 1. 更新顶部指标卡片
   const totalEl = document.getElementById('metric-total-count');
   const proEl = document.getElementById('metric-pro-count');
   const healthyEl = document.getElementById('metric-healthy-count');
@@ -139,95 +171,7 @@ function renderAccountPool() {
   if (healthyEl) healthyEl.textContent = pool.healthy || 0;
   if (lowEl) lowEl.textContent = pool.low_or_exhausted || 0;
 
-  // 2. 查找当前活跃账号
-  let activeAcc = accounts.find(a => a.is_active) || accounts[0];
-
-  const heroEmail = document.getElementById('hero-email');
-  const heroName = document.getElementById('hero-name');
-  const heroAvatar = document.getElementById('hero-avatar');
-  const heroBadge = document.getElementById('hero-plan-badge');
-  const hero5hVal = document.getElementById('hero-5h-val');
-  const hero5hBar = document.getElementById('hero-5h-bar');
-  const hero5hReset = document.getElementById('hero-5h-reset');
-  const heroWeeklyVal = document.getElementById('hero-weekly-val');
-  const heroWeeklyBar = document.getElementById('hero-weekly-bar');
-  const heroWeeklyReset = document.getElementById('hero-weekly-reset');
-  const heroLastRefreshed = document.getElementById('hero-last-refreshed');
-  const heroModelsGrid = document.getElementById('hero-models-grid');
-
-  if (activeAcc) {
-    const quota = activeAcc.quota || {};
-    const p5h = (typeof quota.five_hour_percent === 'number') ? quota.five_hour_percent : ((typeof quota.five_hour_pct === 'number') ? quota.five_hour_pct : 100);
-    const pW = (typeof quota.weekly_percent === 'number') ? quota.weekly_percent : ((typeof quota.weekly_pct === 'number') ? quota.weekly_pct : 100);
-    const tier = quota.tier_display || quota.tier || 'Google AI';
-
-    if (heroEmail) heroEmail.textContent = activeAcc.email || "本地账号";
-    if (heroName) heroName.textContent = activeAcc.name || "Antigravity 用户";
-    if (heroAvatar) {
-      if (activeAcc.avatar) {
-        heroAvatar.innerHTML = `<img src="${activeAcc.avatar}" alt="Avatar">`;
-      } else {
-        heroAvatar.textContent = (activeAcc.email || "A").charAt(0).toUpperCase();
-      }
-    }
-    if (heroBadge) {
-      heroBadge.textContent = tier.toUpperCase();
-      heroBadge.className = 'badge badge-plan ' + (tier.toLowerCase().includes('pro') ? 'badge-pro' : (tier.toLowerCase().includes('ultra') ? 'badge-ultra' : 'badge-free'));
-    }
-
-    if (hero5hVal) hero5hVal.textContent = `${p5h}% 可用`;
-    if (hero5hBar) {
-      hero5hBar.style.width = `${p5h}%`;
-      hero5hBar.className = 'progress-fill ' + getProgressColorClass(p5h);
-    }
-    if (hero5hReset) hero5hReset.textContent = quota.five_hour_reset ? `重置于 ${quota.five_hour_reset}` : '充足';
-
-    if (heroWeeklyVal) heroWeeklyVal.textContent = `${pW}% 可用`;
-    if (heroWeeklyBar) {
-      heroWeeklyBar.style.width = `${pW}%`;
-      heroWeeklyBar.className = 'progress-fill ' + getProgressColorClass(pW);
-    }
-    if (heroWeeklyReset) heroWeeklyReset.textContent = quota.weekly_reset ? `重置于 ${quota.weekly_reset}` : '充足';
-
-    if (heroLastRefreshed) heroLastRefreshed.textContent = activeAcc.last_refreshed_text || '刚刚';
-
-    // 渲染各模型独立配额胶囊
-    if (heroModelsGrid) {
-      const models = quota.models || {};
-      const modelKeys = Object.keys(models);
-      if (modelKeys.length > 0) {
-        heroModelsGrid.innerHTML = modelKeys.map(k => {
-          const m = models[k];
-          const mPct = (typeof m.percent === 'number') ? m.percent : 100;
-          const mName = m.displayName || k;
-          const fillClass = getProgressColorClass(mPct);
-          return `
-            <div class="model-quota-chip">
-              <div class="model-chip-header">
-                <span class="model-chip-name" title="${mName}">${mName}</span>
-                <span class="model-chip-pct">${mPct}%</span>
-              </div>
-              <div class="model-chip-track">
-                <div class="model-chip-fill ${fillClass}" style="width: ${mPct}%;"></div>
-              </div>
-            </div>
-          `;
-        }).join('');
-      } else {
-        heroModelsGrid.innerHTML = `<div style="font-size: 11.5px; color: var(--text-dim);">当前账号所有模型共享 5 小时与周度配额</div>`;
-      }
-    }
-  } else {
-    if (heroEmail) heroEmail.textContent = "未检测到已登录的账号";
-    if (heroName) heroName.textContent = "支持点击【网页登录】或【提取本地凭据】快速绑定";
-    if (hero5hVal) hero5hVal.textContent = "0%";
-    if (hero5hBar) hero5hBar.style.width = "0%";
-    if (heroWeeklyVal) heroWeeklyVal.textContent = "0%";
-    if (heroWeeklyBar) heroWeeklyBar.style.width = "0%";
-    if (heroModelsGrid) heroModelsGrid.innerHTML = `<div style="font-size: 11.5px; color: var(--text-dim);">未连接账号</div>`;
-  }
-
-  // 3. 渲染账号池卡片列表
+  // 2. 渲染多账号卡片流 (按 Claude 与 Gemini 5H/周限 双列矩阵展示)
   const container = document.getElementById('account-cards-container');
   if (!container) return;
 
@@ -236,7 +180,7 @@ function renderAccountPool() {
       <div class="empty-state">
         <div class="empty-icon">👥</div>
         <div class="empty-title">暂无已导入账号</div>
-        <div class="empty-desc">支持点击右上角【网页登录】直接授权，或【提取本地凭据】无感导入</div>
+        <div class="empty-desc">点击右上角【网页登录】快速授权，或【手动导入】粘贴 Token</div>
       </div>
     `;
     return;
@@ -244,19 +188,36 @@ function renderAccountPool() {
 
   container.innerHTML = accounts.map(acc => {
     const q = acc.quota || {};
-    const p5h = (typeof q.five_hour_percent === 'number') ? q.five_hour_percent : ((typeof q.five_hour_pct === 'number') ? q.five_hour_pct : 100);
-    const pW = (typeof q.weekly_percent === 'number') ? q.weekly_percent : ((typeof q.weekly_pct === 'number') ? q.weekly_pct : 100);
+
+    // 解析 Claude 限额
+    const c5h = (typeof q.claude_5h_percent === 'number') ? q.claude_5h_percent 
+      : ((typeof q.five_hour_percent === 'number') ? q.five_hour_percent : 100);
+    const cW = (typeof q.claude_weekly_percent === 'number') ? q.claude_weekly_percent 
+      : ((typeof q.weekly_percent === 'number') ? q.weekly_percent : 100);
+
+    // 解析 Gemini 限额
+    const g5h = (typeof q.gemini_5h_percent === 'number') ? q.gemini_5h_percent 
+      : ((typeof q.five_hour_percent === 'number') ? q.five_hour_percent : 100);
+    const gW = (typeof q.gemini_weekly_percent === 'number') ? q.gemini_weekly_percent 
+      : ((typeof q.weekly_percent === 'number') ? q.weekly_percent : 100);
+
     const tier = q.tier_display || q.tier || 'Google AI';
     const isPro = tier.toLowerCase().includes('pro');
     const isUltra = tier.toLowerCase().includes('ultra');
     const badgeClass = isPro ? 'badge-pro' : (isUltra ? 'badge-ultra' : 'badge-free');
-    const fill5hClass = getProgressColorClass(p5h);
-    const fillWClass = getProgressColorClass(pW);
 
-    const status = q.status || (p5h <= 0 ? 'EXHAUSTED' : (p5h <= 20 ? 'LOW' : 'HEALTHY'));
-    let statusBadge = '<span class="status-tag status-online">健康</span>';
-    if (status === 'EXHAUSTED') statusBadge = '<span class="status-tag" style="background:#fef2f2;color:#ef4444;">耗尽</span>';
-    else if (status === 'LOW') statusBadge = '<span class="status-tag" style="background:#fffbeb;color:#d97706;">紧张</span>';
+    const fillC5h = getProgressColorClass(c5h);
+    const fillCW = getProgressColorClass(cW);
+    const fillG5h = getProgressColorClass(g5h);
+    const fillGW = getProgressColorClass(gW);
+
+    const minPct = Math.min(c5h, cW, g5h, gW);
+    let statusBadge = '<span class="status-tag status-online">正常</span>';
+    if (minPct <= 0) {
+      statusBadge = '<span class="status-tag" style="background:#fef2f2;color:#ef4444;">耗尽</span>';
+    } else if (minPct <= 20) {
+      statusBadge = '<span class="status-tag" style="background:#fffbeb;color:#d97706;">紧张</span>';
+    }
 
     const avatarHtml = acc.avatar 
       ? `<img src="${acc.avatar}" alt="Avatar">`
@@ -272,20 +233,67 @@ function renderAccountPool() {
               <div class="account-card-name">${acc.name || 'Antigravity 用户'}</div>
             </div>
           </div>
-          <span class="badge badge-plan ${badgeClass}">${tier.toUpperCase()}</span>
-        </div>
-
-        <div class="account-card-quota-row">
-          <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">
-            <span>5h: <strong>${p5h}%</strong></span>
-            <span>周度: <strong>${pW}%</strong></span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="badge badge-plan ${badgeClass}">${tier.toUpperCase()}</span>
             ${statusBadge}
           </div>
-          <div class="progress-track" style="height: 5px; margin-bottom: 3px;" title="5小时滚动配额: ${p5h}%">
-            <div class="progress-fill ${fill5hClass}" style="width: ${p5h}%;"></div>
+        </div>
+
+        <!-- Claude 与 Gemini 5H / 周限 对比矩阵 -->
+        <div class="account-quota-matrix">
+          <!-- Claude 列 -->
+          <div class="quota-matrix-col">
+            <div class="quota-col-title">
+              <span class="quota-brand-dot claude-dot"></span>
+              <span>Claude</span>
+            </div>
+            <div class="quota-cell">
+              <div class="quota-cell-label">5H</div>
+              <div class="quota-cell-bar-wrap">
+                <div class="progress-track" style="height: 5px;">
+                  <div class="progress-fill ${fillC5h}" style="width: ${c5h}%;"></div>
+                </div>
+                <span class="quota-cell-val">${c5h}%</span>
+              </div>
+            </div>
+            <div class="quota-cell">
+              <div class="quota-cell-label">周限</div>
+              <div class="quota-cell-bar-wrap">
+                <div class="progress-track" style="height: 5px;">
+                  <div class="progress-fill ${fillCW}" style="width: ${cW}%;"></div>
+                </div>
+                <span class="quota-cell-val">${cW}%</span>
+              </div>
+            </div>
           </div>
-          <div class="progress-track" style="height: 5px;" title="每周周期配额: ${pW}%">
-            <div class="progress-fill ${fillWClass}" style="width: ${pW}%;"></div>
+
+          <!-- 分隔中线 -->
+          <div class="quota-matrix-divider"></div>
+
+          <!-- Gemini 列 -->
+          <div class="quota-matrix-col">
+            <div class="quota-col-title">
+              <span class="quota-brand-dot gemini-dot"></span>
+              <span>Gemini</span>
+            </div>
+            <div class="quota-cell">
+              <div class="quota-cell-label">5H</div>
+              <div class="quota-cell-bar-wrap">
+                <div class="progress-track" style="height: 5px;">
+                  <div class="progress-fill ${fillG5h}" style="width: ${g5h}%;"></div>
+                </div>
+                <span class="quota-cell-val">${g5h}%</span>
+              </div>
+            </div>
+            <div class="quota-cell">
+              <div class="quota-cell-label">周限</div>
+              <div class="quota-cell-bar-wrap">
+                <div class="progress-track" style="height: 5px;">
+                  <div class="progress-fill ${fillGW}" style="width: ${gW}%;"></div>
+                </div>
+                <span class="quota-cell-val">${gW}%</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -316,7 +324,7 @@ function getProgressColorClass(pct) {
 }
 
 /**
- * 渲染配置表单 (代理、性能加速、自动化自愈与推送)
+ * 渲染配置表单
  */
 function renderConfigForm() {
   const cfg = appState.config || {};
@@ -354,7 +362,7 @@ function renderConfigForm() {
   setCheckbox('wecom-enabled', wc.enabled);
   setInput('wecom-webhook', wc.webhook || '');
 
-  // 3. 系统与外观
+  // 3. 系统维护
   setSelect('custom-lang', custom.language || 'zh-CN');
   setCheckbox('custom-quota-badge', custom.show_quota_badge !== false);
   setCheckbox('custom-clean-ui', custom.clean_ui);
@@ -362,7 +370,7 @@ function renderConfigForm() {
 }
 
 /**
- * 渲染系统状态 (守护服务、开机自启)
+ * 渲染系统状态
  */
 function renderSystemStatus() {
   const st = appState.status || {};
@@ -394,7 +402,7 @@ function renderSystemStatus() {
 }
 
 /**
- * 异步按需懒加载磁盘垃圾占用分析
+ * 懒加载磁盘占用分析
  */
 async function loadStorageAnalysis() {
   if (!window.pywebview || !window.pywebview.api) return;
@@ -417,7 +425,7 @@ async function loadStorageAnalysis() {
 }
 
 /**
- * 渲染系统提示词 (直接展示 AGENTS.md 默认规则)
+ * 渲染系统提示词
  */
 function renderPromptEditor() {
   const p = appState.prompt || {};
@@ -502,44 +510,66 @@ function gatherCurrentConfig() {
 }
 
 /**
- * 事件挂载
+ * 实时修改自动保存生效引擎 (彻底解决每个页面悬浮保存按钮突兀的问题)
+ */
+function triggerAutoSave(debounceMs = 0) {
+  if (autoSaveTimer) clearTimeout(autoSaveTimer);
+  if (debounceMs > 0) {
+    autoSaveTimer = setTimeout(() => handleAutoSaveConfig(), debounceMs);
+  } else {
+    handleAutoSaveConfig();
+  }
+}
+
+async function handleAutoSaveConfig() {
+  try {
+    const updatedCfg = gatherCurrentConfig();
+    if (window.pywebview && window.pywebview.api) {
+      const res = await window.pywebview.api.save_and_apply(updatedCfg);
+      if (res && res.success) {
+        appState.config = updatedCfg;
+        showToast("已实时自动保存生效", "success");
+      }
+    }
+  } catch (e) {
+    console.error("自动保存失败:", e);
+  }
+}
+
+/**
+ * 事件挂载与实时监听
  */
 function setupEvents() {
-  // 全局底部操作栏
-  const btnSave = document.getElementById('btn-save-all');
-  if (btnSave) {
-    btnSave.addEventListener('click', handleSaveAll);
-  }
+  // 1. 实时变更自动生效绑定 (开关 & 下拉框立即生效，文本框防抖生效)
+  const immediateInputs = [
+    'custom-proxy-enabled', 'custom-proxy-type', 'custom-opt-gpu', 'custom-opt-max-heap',
+    'custom-opt-nosleep', 'custom-opt-telemetry', 'custom-auto-retry', 'custom-notify-quota',
+    'tg-enabled', 'feishu-enabled', 'wecom-enabled', 'custom-lang', 'custom-quota-badge',
+    'custom-clean-ui', 'custom-close-tray'
+  ];
+  immediateInputs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', () => triggerAutoSave(0));
+    }
+  });
 
-  const btnRestore = document.getElementById('btn-restore-all');
-  if (btnRestore) {
-    btnRestore.addEventListener('click', handleRestoreEnglish);
-  }
+  const textInputs = [
+    'custom-proxy-host', 'custom-proxy-port', 'custom-proxy-bypass', 'custom-max-retries',
+    'tg-bot-token', 'tg-chat-id', 'tg-proxy', 'feishu-webhook', 'wecom-webhook'
+  ];
+  textInputs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', () => triggerAutoSave(0));
+      el.addEventListener('input', () => triggerAutoSave(600));
+    }
+  });
 
-  const btnRestart = document.getElementById('btn-restart-app');
-  if (btnRestart) {
-    btnRestart.addEventListener('click', handleRestartApp);
-  }
-
-  const linkGithub = document.getElementById('footer-link-github');
-  if (linkGithub) {
-    linkGithub.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (window.pywebview && window.pywebview.api) {
-        window.pywebview.api.open_external('https://github.com/akasls/Antigravity-Orbit');
-      }
-    });
-  }
-
-  // 账号池工具栏
+  // 2. 账号池工具栏
   const btnOpenOAuthModal = document.getElementById('btn-open-oauth-modal');
   if (btnOpenOAuthModal) {
     btnOpenOAuthModal.addEventListener('click', handleOpenOAuthModal);
-  }
-
-  const btnImportCurrent = document.getElementById('btn-import-current');
-  if (btnImportCurrent) {
-    btnImportCurrent.addEventListener('click', handleImportCurrentAccount);
   }
 
   const btnRefreshAll = document.getElementById('btn-refresh-all-quotas');
@@ -547,19 +577,7 @@ function setupEvents() {
     btnRefreshAll.addEventListener('click', handleRefreshAllQuotas);
   }
 
-  const btnRefreshHero = document.getElementById('btn-refresh-hero-quota');
-  if (btnRefreshHero) {
-    btnRefreshHero.addEventListener('click', () => {
-      const active = (appState.account_pool.accounts || []).find(a => a.is_active);
-      if (active) {
-        handleRefreshSingleQuota(active.id);
-      } else {
-        handleImportCurrentAccount();
-      }
-    });
-  }
-
-  // Google OAuth 网页登录弹窗
+  // 3. Google OAuth 网页登录弹窗
   const btnCloseOAuthModal = document.getElementById('btn-close-oauth-modal');
   const btnCancelOAuthModal = document.getElementById('btn-cancel-oauth-modal');
   const btnStartOAuthBrowser = document.getElementById('btn-start-oauth-browser');
@@ -570,7 +588,7 @@ function setupEvents() {
   if (btnStartOAuthBrowser) btnStartOAuthBrowser.addEventListener('click', handleStartOAuthBrowser);
   if (btnSubmitOAuthCode) btnSubmitOAuthCode.addEventListener('click', handleSubmitOAuthCode);
 
-  // 手动添加账号模态框 (Token / JSON)
+  // 4. 手动添加账号模态框 (Token / JSON)
   const btnOpenAddModal = document.getElementById('btn-open-add-modal');
   const modalAdd = document.getElementById('modal-add-account');
   const btnCloseModal = document.getElementById('btn-close-modal');
@@ -594,13 +612,10 @@ function setupEvents() {
     btnSubmitModal.addEventListener('click', handleAddAccountSubmit);
   }
 
-  // 测试代理
+  // 5. 测试按钮
   const btnTestProxy = document.getElementById('btn-test-proxy');
-  if (btnTestProxy) {
-    btnTestProxy.addEventListener('click', handleTestProxy);
-  }
+  if (btnTestProxy) btnTestProxy.addEventListener('click', handleTestProxy);
 
-  // 推送测试
   const btnTestTg = document.getElementById('btn-test-tg');
   if (btnTestTg) btnTestTg.addEventListener('click', () => handleTestPush('telegram'));
 
@@ -610,27 +625,25 @@ function setupEvents() {
   const btnTestWecom = document.getElementById('btn-test-wecom');
   if (btnTestWecom) btnTestWecom.addEventListener('click', () => handleTestPush('wecom'));
 
-  // 系统提示词
+  // 6. 系统提示词
   const textareaPrompt = document.getElementById('prompt-editor-content');
-  if (textareaPrompt) {
-    textareaPrompt.addEventListener('input', updatePromptStats);
-  }
+  if (textareaPrompt) textareaPrompt.addEventListener('input', updatePromptStats);
 
   const btnSavePrompt = document.getElementById('btn-save-prompt');
-  if (btnSavePrompt) {
-    btnSavePrompt.addEventListener('click', handleSavePrompt);
-  }
+  if (btnSavePrompt) btnSavePrompt.addEventListener('click', handleSavePrompt);
 
   const btnSavePromptTop = document.getElementById('btn-save-prompt-top');
-  if (btnSavePromptTop) {
-    btnSavePromptTop.addEventListener('click', handleSavePrompt);
-  }
+  if (btnSavePromptTop) btnSavePromptTop.addEventListener('click', handleSavePrompt);
 
-  // 系统管理与维护
+  // 7. 系统维护中的客户端核心操作 (从底部移入此处)
+  const btnRestart = document.getElementById('btn-restart-app');
+  if (btnRestart) btnRestart.addEventListener('click', handleRestartApp);
+
+  const btnRestore = document.getElementById('btn-restore-all');
+  if (btnRestore) btnRestore.addEventListener('click', handleRestoreEnglish);
+
   const btnToggleDaemon = document.getElementById('btn-toggle-daemon');
-  if (btnToggleDaemon) {
-    btnToggleDaemon.addEventListener('click', handleToggleDaemon);
-  }
+  if (btnToggleDaemon) btnToggleDaemon.addEventListener('click', handleToggleDaemon);
 
   const appAutoCheck = document.getElementById('custom-app-autostart');
   if (appAutoCheck) {
@@ -642,9 +655,7 @@ function setupEvents() {
   }
 
   const btnClean = document.getElementById('btn-clean-storage');
-  if (btnClean) {
-    btnClean.addEventListener('click', handleCleanStorage);
-  }
+  if (btnClean) btnClean.addEventListener('click', handleCleanStorage);
 
   const btnRefLogs = document.getElementById('btn-refresh-logs');
   if (btnRefLogs) {
@@ -801,29 +812,6 @@ async function handleSubmitOAuthCode() {
 // 核心业务处理函数
 // -------------------------------------------------------------
 
-async function handleSaveAll() {
-  if (appState.isSaving) return;
-  appState.isSaving = true;
-  const btn = document.getElementById('btn-save-all');
-  if (btn) btn.textContent = "正在应用...";
-
-  try {
-    const updatedCfg = gatherCurrentConfig();
-    if (window.pywebview && window.pywebview.api) {
-      const res = await window.pywebview.api.save_and_apply(updatedCfg);
-      showToast(res.message, res.success ? "success" : "error");
-      appState.config = updatedCfg;
-    } else {
-      showToast("演示模式：配置已保存", "success");
-    }
-  } catch (e) {
-    showToast("保存配置异常: " + e, "error");
-  } finally {
-    appState.isSaving = false;
-    if (btn) btn.textContent = "保存并一键生效";
-  }
-}
-
 async function handleRestoreEnglish() {
   if (!confirm("确定要恢复 Antigravity 官方英文原版备份吗？\n这将撤销所有汉化与定制。")) return;
   if (!window.pywebview || !window.pywebview.api) return;
@@ -836,22 +824,6 @@ async function handleRestartApp() {
   if (!window.pywebview || !window.pywebview.api) return;
   const res = await window.pywebview.api.restart_antigravity();
   showToast(res.message, res.success ? "success" : "error");
-}
-
-async function handleImportCurrentAccount() {
-  if (!window.pywebview || !window.pywebview.api) return;
-  showToast("正在从本地客户端凭据读取并校验配额...", "warning");
-  const res = await window.pywebview.api.import_current_account();
-  showToast(res.message, res.success ? "success" : "error");
-  if (res.success) {
-    const data = await window.pywebview.api.get_account_pool();
-    if (data && data.success) {
-      appState.account_pool = data.data;
-    } else if (data && data.accounts) {
-      appState.account_pool = data;
-    }
-    renderAccountPool();
-  }
 }
 
 async function handleRefreshAllQuotas() {
@@ -1045,7 +1017,7 @@ function showToast(msg, type = "success") {
     toast.style.opacity = '0';
     toast.style.transform = 'translateX(20px)';
     setTimeout(() => toast.remove(), 250);
-  }, 3200);
+  }, 2800);
 }
 
 function setCheckbox(id, val) {
@@ -1088,13 +1060,10 @@ function renderMockData() {
       last_refreshed_text: '刚刚',
       quota: {
         tier_display: 'Google AI Pro',
-        five_hour_percent: 100,
-        weekly_percent: 95,
-        models: {
-          'claude-3-5-sonnet': { displayName: 'Claude 3.5 Sonnet', percent: 100 },
-          'gemini-1.5-pro': { displayName: 'Gemini 1.5 Pro', percent: 90 },
-          'gemini-1.5-flash': { displayName: 'Gemini 1.5 Flash', percent: 100 }
-        }
+        claude_5h_percent: 100,
+        claude_weekly_percent: 95,
+        gemini_5h_percent: 100,
+        gemini_weekly_percent: 90
       }
     }]
   };
