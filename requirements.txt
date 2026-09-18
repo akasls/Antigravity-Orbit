@@ -1,4 +1,5 @@
 # Antigravity Orbit Dependencies
-# 核心功能与可视化管理界面基于 Python 标准库与系统原生 Tkinter 实现，零第三方运行时依赖
+pystray>=0.19.5
+pillow>=10.0.0
 pyinstaller>=6.0.0
 

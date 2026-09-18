@@ -482,22 +482,25 @@ def cmd_clean(args):
     print(f"✅ 深度清理完成！共安全释放磁盘空间 {freed_mb:.1f} MB。")
 
 def main():
-    # 极速秒开旁路：双击启动独立客户端或直接带 gui 参数时，直接唤起图形界面，零 argparse 消耗
-    if len(sys.argv) <= 1:
-        if getattr(sys, "frozen", False):
+    # 极速秒开旁路：双击启动独立客户端或直接带 gui / --tray 参数时，直接唤起图形界面，零 argparse 消耗
+    start_in_tray = "--tray" in sys.argv
+    clean_argv = [a for a in sys.argv[1:] if a != "--tray"]
+    if len(clean_argv) == 0:
+        if getattr(sys, "frozen", False) or start_in_tray:
             from core.gui import launch_gui
-            launch_gui()
+            launch_gui(start_in_tray=start_in_tray)
             return
-    elif len(sys.argv) == 2 and sys.argv[1] == "gui":
+    elif len(clean_argv) == 1 and clean_argv[0] == "gui":
         from core.gui import launch_gui
-        launch_gui()
+        launch_gui(start_in_tray=start_in_tray)
         return
 
     parser = argparse.ArgumentParser(description="Antigravity Task Completion Notifier & Localization CLI")
     subparsers = parser.add_subparsers(dest="subcommand", help="子命令")
 
     # gui
-    subparsers.add_parser("gui", help="启动 Antigravity Orbit 桌面可视化管理客户端")
+    p_gui = subparsers.add_parser("gui", help="启动 Antigravity Orbit 桌面可视化管理客户端")
+    p_gui.add_argument("--tray", action="store_true", help="启动后自动最小化到系统托盘")
 
     # setup
     subparsers.add_parser("setup", help="运行交互式安装与配置向导")
@@ -546,7 +549,7 @@ def main():
             cmd_setup(args)
     elif args.subcommand == "gui":
         from core.gui import launch_gui
-        launch_gui()
+        launch_gui(start_in_tray=getattr(args, "tray", False))
     elif args.subcommand == "setup":
         cmd_setup(args)
     elif args.subcommand == "run":

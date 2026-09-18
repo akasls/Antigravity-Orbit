@@ -38,6 +38,8 @@ DEFAULT_CONFIG = {
     "enabled": True,
     "scan_interval": 3.0,
     "lock_port": 49222,
+    "close_to_tray": True,          # 默认点击关闭窗口时最小化到系统托盘
+    "app_autostart": False,         # Orbit 客户端开机静默驻留托盘
     "customization": {
         "language": "zh-CN",            # "zh-CN" (简体), "zh-TW" (繁体), "en" (原版英文)
         "show_quota_badge": True,        # 是否在顶栏显示模型额度胶囊徽章

@@ -58,8 +58,6 @@ def build():
         "--exclude-module", "scipy",
         "--exclude-module", "matplotlib",
         "--exclude-module", "pandas",
-        "--exclude-module", "PIL",
-        "--exclude-module", "pillow",
         "--exclude-module", "playwright",
         "--exclude-module", "pytest",
         "--exclude-module", "unittest",

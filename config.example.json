@@ -2,6 +2,8 @@
   "enabled": true,
   "scan_interval": 3.0,
   "lock_port": 49222,
+  "close_to_tray": true,
+  "app_autostart": false,
   "customization": {
     "language": "zh-CN",
     "show_quota_badge": true,

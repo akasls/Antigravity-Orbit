@@ -134,3 +134,138 @@ WantedBy=default.target
                 return True, "已注销 Linux systemd 服务"
             return True, "服务不存在"
         return False, f"不支持的操作系统: {system}"
+
+    @staticmethod
+    def is_app_autostart_enabled() -> bool:
+        """检查 Orbit 管理中心客户端是否配置了开机自启"""
+        system = AutostartManager.get_os()
+        if system == "windows":
+            try:
+                import winreg
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_READ)
+                winreg.QueryValueEx(key, "AntigravityOrbitApp")
+                winreg.CloseKey(key)
+                return True
+            except Exception:
+                return False
+        elif system == "darwin":
+            plist_path = Path.home() / "Library" / "LaunchAgents" / "com.antigravity.orbit.app.plist"
+            return plist_path.exists()
+        elif system == "linux":
+            autostart_path = Path.home() / ".config" / "autostart" / "antigravity-orbit.desktop"
+            return autostart_path.exists()
+        return False
+
+    @staticmethod
+    def enable_app_autostart() -> tuple[bool, str]:
+        """启用 Orbit 客户端开机自启 (开机以 --tray 参数静默驻留托盘)"""
+        system = AutostartManager.get_os()
+        is_frozen = getattr(sys, "frozen", False)
+        python_exe = sys.executable
+
+        if system == "windows":
+            if is_frozen:
+                cmd = f'"{python_exe}" --tray'
+            else:
+                pythonw_exe = Path(python_exe).parent / "pythonw.exe"
+                runner_exe = str(pythonw_exe) if pythonw_exe.exists() else python_exe
+                main_py = Path(__file__).resolve().parent.parent / "main.py"
+                cmd = f'"{runner_exe}" "{main_py}" gui --tray'
+            try:
+                import winreg
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE)
+                winreg.SetValueEx(key, "AntigravityOrbitApp", 0, winreg.REG_SZ, cmd)
+                winreg.CloseKey(key)
+                return True, "已成功设置 Orbit 客户端开机自启 (开机自动静默驻留系统托盘)"
+            except Exception as e:
+                return False, f"写入注册表失败: {e}"
+
+        elif system == "darwin":
+            launch_dir = Path.home() / "Library" / "LaunchAgents"
+            launch_dir.mkdir(parents=True, exist_ok=True)
+            plist_path = launch_dir / "com.antigravity.orbit.app.plist"
+            if is_frozen:
+                prog_args = f"<string>{python_exe}</string>\n        <string>--tray</string>"
+            else:
+                main_py = Path(__file__).resolve().parent.parent / "main.py"
+                prog_args = f"<string>{python_exe}</string>\n        <string>{main_py}</string>\n        <string>gui</string>\n        <string>--tray</string>"
+
+            plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.antigravity.orbit.app</string>
+    <key>ProgramArguments</key>
+    <array>
+        {prog_args}
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
+"""
+            try:
+                with open(plist_path, "w", encoding="utf-8") as f:
+                    f.write(plist_content)
+                os.system(f"launchctl load {plist_path} >/dev/null 2>&1")
+                return True, "已成功配置 macOS 客户端开机自启动项"
+            except Exception as e:
+                return False, f"配置 macOS 开机自启失败: {e}"
+
+        elif system == "linux":
+            autostart_dir = Path.home() / ".config" / "autostart"
+            autostart_dir.mkdir(parents=True, exist_ok=True)
+            desktop_path = autostart_dir / "antigravity-orbit.desktop"
+            if is_frozen:
+                exec_cmd = f"{python_exe} --tray"
+            else:
+                main_py = Path(__file__).resolve().parent.parent / "main.py"
+                exec_cmd = f"{python_exe} {main_py} gui --tray"
+            desktop_content = f"""[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Antigravity Orbit
+Comment=Antigravity Orbit Management Center
+Exec={exec_cmd}
+Icon=utilities-system-monitor
+Terminal=false
+Categories=Utility;Development;
+"""
+            try:
+                with open(desktop_path, "w", encoding="utf-8") as f:
+                    f.write(desktop_content)
+                return True, "已成功配置 Linux 客户端开机自启动桌面项"
+            except Exception as e:
+                return False, f"配置 Linux 自启动失败: {e}"
+
+        return False, f"不支持的操作系统: {system}"
+
+    @staticmethod
+    def disable_app_autostart() -> tuple[bool, str]:
+        """关闭 Orbit 客户端开机自启动"""
+        system = AutostartManager.get_os()
+        if system == "windows":
+            try:
+                import winreg
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE)
+                winreg.DeleteValue(key, "AntigravityOrbitApp")
+                winreg.CloseKey(key)
+                return True, "已成功取消 Orbit 客户端开机自启动"
+            except Exception as e:
+                return False, f"移除注册表项失败: {e}"
+        elif system == "darwin":
+            plist_path = Path.home() / "Library" / "LaunchAgents" / "com.antigravity.orbit.app.plist"
+            if plist_path.exists():
+                os.system(f"launchctl unload {plist_path} >/dev/null 2>&1")
+                plist_path.unlink()
+                return True, "已成功取消 macOS 客户端开机启动"
+            return True, "开机启动项不存在"
+        elif system == "linux":
+            desktop_path = Path.home() / ".config" / "autostart" / "antigravity-orbit.desktop"
+            if desktop_path.exists():
+                desktop_path.unlink()
+                return True, "已成功取消 Linux 客户端开机启动"
+            return True, "开机启动项不存在"
+        return False, f"不支持的操作系统: {system}"
+
