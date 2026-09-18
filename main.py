@@ -214,37 +214,37 @@ def cmd_setup(args):
     print("=" * 60)
 
     # -------------------------------------------------------------
-    # 步骤 1/2: 询问用户是否汉化
+    # 步骤 1/2: 询问用户是否汉化与性能优化
     # -------------------------------------------------------------
-    print("\n【步骤 1/2: Antigravity 客户端界面汉化】")
+    print("\n【步骤 1/2: Antigravity 界面汉化、性能加速与去遥测】")
     loc_status = LocalizationManager.get_status()
     if loc_status.get("installed"):
         is_loc = loc_status.get("is_localized")
         lang_name = "繁体中文" if loc_status.get("lang") == "zh-TW" else "简体中文"
-        stat_label = f"🟢 已安装汉化 ({lang_name})" if is_loc else "⚪ 官方原版英文"
+        stat_label = f"🟢 已安装汉化 ({lang_name}) + 性能加速 & 去遥测" if is_loc else "⚪ 官方原版英文"
         print(f"• 检测到客户端路径: {loc_status.get('install_dir')}")
         print(f"• 当前界面语言状态: {stat_label}")
     else:
         print("• 客户端状态: ⚪ 未自动检测到默认安装路径")
 
-    print("\n请选择是否进行客户端界面汉化:")
-    print("1. 安装 / 更新【简体中文】汉化 (默认推荐)")
-    print("2. 安装 / 更新【繁体中文】汉化")
+    print("\n请选择客户端配置方案:")
+    print("1. 安装 / 更新【简体中文】汉化 + 性能加速 & 去遥测 (默认推荐)")
+    print("2. 安装 / 更新【繁体中文】汉化 + 性能加速 & 去遥测")
     print("3. 还原官方原版英文界面")
-    print("4. 跳过汉化设置 (不进行修改)")
+    print("4. 跳过此步骤 (不进行修改)")
 
     loc_choice = input("请输入选项 [1/2/3/4, 默认 1]: ").strip()
     if loc_choice in ["", "1", "y", "yes"]:
-        print("\n🚀 正在执行简体中文汉化...")
+        print("\n🚀 正在执行简体中文汉化、硬件加速与全栈去遥测配置...")
         LocalizationManager.install(tw=False)
     elif loc_choice in ["2", "tw", "t"]:
-        print("\n🚀 正在执行繁体中文汉化...")
+        print("\n🚀 正在执行繁体中文汉化、硬件加速与全栈去遥测配置...")
         LocalizationManager.install(tw=True)
     elif loc_choice in ["3", "r", "restore"]:
         print("\n🔄 正在还原官方原版英文...")
         LocalizationManager.restore()
     else:
-        print("⏩ 已跳过客户端汉化设置。")
+        print("⏩ 已跳过客户端汉化与优化设置。")
 
     # -------------------------------------------------------------
     # 步骤 2/2: 询问用户是否需要配置任务完成通知
@@ -471,6 +471,11 @@ def main():
         p_loc.add_argument("--dir", default=None, help="手动指定 Antigravity 安装目录")
         p_loc.add_argument("--no-kill", action="store_true", help="不自动终止运行中的 Antigravity 进程")
 
+    # optimize
+    p_opt = subparsers.add_parser("optimize", help="一键应用 GPU 硬件加速、后台防降频与全栈去遥测")
+    p_opt.add_argument("--dir", default=None, help="手动指定 Antigravity 安装目录")
+    p_opt.add_argument("--no-kill", action="store_true", help="不自动终止运行中的 Antigravity 进程")
+
     args = parser.parse_args()
 
     if not args.subcommand:
@@ -492,6 +497,13 @@ def main():
         cmd_autostart(args)
     elif args.subcommand in ["localize", "hanhua"]:
         cmd_localize(args)
+    elif args.subcommand == "optimize":
+        print("🚀 正在应用 Antigravity 极限性能加速与去遥测优化...")
+        ok, msg = LocalizationManager.install(tw=False, install_dir=args.dir, no_kill=args.no_kill)
+        if ok:
+            print("✅ 性能加速与去遥测补丁已成功部署生效！")
+        else:
+            print(f"❌ 部署失败: {msg}")
 
 if __name__ == "__main__":
     main()

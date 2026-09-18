@@ -410,9 +410,9 @@
     }
 
     /**
-     * 自动移除右上角多余的“安装 IDE”按钮
+     * 自动拦截并彻底隐藏顶部及界面各处的“打开 / 安装 IDE”多余按钮
      */
-    function removeIdeInstallButtons(scope = document) {
+    function removeIdeHeaderButtons(scope = document) {
         if (!scope || !scope.querySelectorAll) return;
         try {
             const targets = scope.querySelectorAll('button, a, [role="button"]');
@@ -420,21 +420,37 @@
                 const text = (el.textContent || '').trim();
                 const aria = (el.getAttribute('aria-label') || '').trim();
                 const title = (el.getAttribute('title') || '').trim();
-                if (
-                    text === '安装 IDE' || text === '安裝 IDE' || text === 'Install IDE' ||
-                    aria === '安装 IDE' || aria === '安裝 IDE' || aria === 'Install IDE' ||
-                    title === '安装 IDE' || title === '安裝 IDE' || title === 'Install IDE' ||
-                    text.includes('安装 IDE') || text.includes('安裝 IDE') || text.includes('Install IDE')
-                ) {
+
+                const isIdeButton =
+                    text === 'Open IDE' || text === '打开 IDE' || text === '開啟 IDE' ||
+                    text === 'Install IDE' || text === '安装 IDE' || text === '安裝 IDE' ||
+                    text === 'Open in IDE' || text === '在 IDE 中打开' || text === '在 IDE 中開啟' ||
+                    text === '打开IDE' || text === '安装IDE' || text === '開啟IDE' || text === '安裝IDE' ||
+                    text.includes('Open IDE') || text.includes('Install IDE') ||
+                    aria.includes('Open IDE') || aria.includes('Install IDE') ||
+                    title.includes('Open IDE') || title.includes('Install IDE');
+
+                if (isIdeButton) {
                     el.style.setProperty('display', 'none', 'important');
+                    el.style.setProperty('visibility', 'hidden', 'important');
+                    el.style.setProperty('width', '0', 'important');
+                    el.style.setProperty('height', '0', 'important');
+                    el.style.setProperty('margin', '0', 'important');
+                    el.style.setProperty('padding', '0', 'important');
                     el.setAttribute('data-ide-hidden', 'true');
+
+                    // 如果父容器仅容纳此 IDE 按钮，连同父容器一同隐藏，彻底防止留下空白占位
+                    const parent = el.parentElement;
+                    if (parent && parent.children && parent.children.length === 1 && !parent.classList.contains('min-w-0')) {
+                        parent.style.setProperty('display', 'none', 'important');
+                    }
                 }
             }
         } catch (e) {}
     }
 
     /**
-     * 注入全局隐藏安装 IDE 按钮样式
+     * 注入全局隐藏 IDE 按钮强力样式规则
      */
     function injectIdeHidingStyle(doc = document) {
         if (!doc || !doc.head || doc.getElementById('antigravity-ide-hider-style')) return;
@@ -443,13 +459,28 @@
             style.id = 'antigravity-ide-hider-style';
             style.textContent = `
                 [data-ide-hidden="true"],
-                button[aria-label*="Install IDE"],
+                button[aria-label*="Install IDE" i],
+                button[aria-label*="Open IDE" i],
                 button[aria-label*="安装 IDE"],
                 button[aria-label*="安裝 IDE"],
-                button[title*="Install IDE"],
+                button[aria-label*="打开 IDE"],
+                button[aria-label*="開啟 IDE"],
+                button[title*="Install IDE" i],
+                button[title*="Open IDE" i],
                 button[title*="安装 IDE"],
-                button[title*="安裝 IDE"] {
+                button[title*="安裝 IDE"],
+                button[title*="打开 IDE"],
+                button[title*="開啟 IDE"],
+                a[href*="antigravity-ide"],
+                a[href*="ide-install"] {
                     display: none !important;
+                    visibility: hidden !important;
+                    width: 0 !important;
+                    height: 0 !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    border: none !important;
+                    pointer-events: none !important;
                 }
             `;
             doc.head.appendChild(style);
@@ -464,15 +495,15 @@
         if (!root) return;
 
         injectIdeHidingStyle(document);
-        removeIdeInstallButtons(root);
+        removeIdeHeaderButtons(root);
 
         const observer = new MutationObserver((mutations) => {
-            removeIdeInstallButtons(root);
+            removeIdeHeaderButtons(root);
             for (const m of mutations) {
                 if (m.type === 'childList') {
                     for (const n of m.addedNodes) {
                         translateNode(n);
-                        if (n.nodeType === Node.ELEMENT_NODE) removeIdeInstallButtons(n);
+                        if (n.nodeType === Node.ELEMENT_NODE) removeIdeHeaderButtons(n);
                     }
                 } else if (m.type === 'characterData') {
                     translateNode(m.target);
@@ -492,7 +523,7 @@
             const shadowRoot = originalAttachShadow.apply(this, args);
             try {
                 injectIdeHidingStyle(shadowRoot);
-                removeIdeInstallButtons(shadowRoot);
+                removeIdeHeaderButtons(shadowRoot);
                 observer.observe(shadowRoot, config);
                 translateNode(shadowRoot);
             } catch (e) {}
@@ -507,8 +538,10 @@
         startLocalizationObserver();
     }
     window.addEventListener('load', startLocalizationObserver);
-    setTimeout(startLocalizationObserver, 100);
+    setTimeout(startLocalizationObserver, 50);
+    setTimeout(startLocalizationObserver, 150);
     setTimeout(startLocalizationObserver, 300);
-    setTimeout(startLocalizationObserver, 800);
-    setTimeout(startLocalizationObserver, 2000);
+    setTimeout(startLocalizationObserver, 600);
+    setTimeout(startLocalizationObserver, 1200);
+    setTimeout(startLocalizationObserver, 2500);
 })();

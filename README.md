@@ -30,15 +30,31 @@
   - **AI 对话页面与工件卡片**：交付件（Walkthrough、实施计划、任务清单）、代码修改统计（`X files changed`）、深度思考时长（`已深度思考 X 秒` / `已思考 X 秒`）动态计算。
   - **右键菜单与工作区侧边栏**：会话列表操作、分栏、重命名、终端列表、上传列表、暂存区与未提交代码变更面板。
 - **简繁双模一键切换**：内置严格镜像对齐的简体中文 (`zh-CN`) 与繁体中文 (`zh-TW`) 词库。
-- **纯净品牌与界面优化**：
+- **纯净品牌与界面净化**：
   - **100% 保持官方原生品牌**：坚决不篡改品牌名，严格保留官方英文 `Antigravity`。
-  - **移除多余推广按钮**：三层阻断并彻底隐藏界面右上角冗余的“安装 IDE”按钮。
+  - **彻底移除多余推广按钮**：无论处于 `Open IDE` 还是 `Install IDE` 状态，均全方位阻断并自动消除其外层容器，右上角彻底整洁无残留。
 - **代码沙箱隔离保护**：内置 Monaco 编辑器、代码块、用户消息正文的高优先级隔离沙箱，**坚决不误译任何实际代码**。
 - **一键无损还原**：注入前自动生成官方原始备份 (`app.asar.bak`)，随时可一键秒级还原官方原版英文。
 
 ---
 
-### 🔔 2. 任务完工智能感知与即时通知
+### ⚡ 2. 极致性能加速与后台防冻结 (Performance Boost)
+- **GPU 硬件加速与零拷贝渲染**：强制开启 2D 页面与 Canvas 的 GPU 栅格化加速（`enable-gpu-rasterization` / `enable-zero-copy`），显卡硬件直推，流式打字与超长文档滚动丝滑流畅，CPU 占用骤降。
+- **解除后台防降频与防冻结**：
+  - 默认情况下，Electron 会在窗口置于后台或被其他窗口遮挡时将定时器降频至 1Hz。
+  - 本套件注入 `disable-background-timer-throttling` 与 `disable-backgrounding-occluded-windows`，彻底解决**切到其他 IDE 窗口编码时 Antigravity 生成变慢、后台任务被挂起**的痛点。
+- **V8 引擎 4GB 堆内存扩容**：注入 `--js-flags="--max-old-space-size=4096"`，大幅扩充 JavaScript 垃圾回收堆内存空间，彻底告别超大项目索引与几十轮超长会话下的频繁 GC 卡顿。
+
+---
+
+### 🛡️ 3. 全栈关闭遥测与数据隐私保护 (Anti-Telemetry)
+- **Go 核心服务级阻断**：利用官方 Language Server 原生未公开参数 `--disable_telemetry=true`，从后端进程根源掐断遥测采集。
+- **Chromium / Electron 客户端级屏蔽**：注入 `--disable-metrics`、`--disable-telemetry`、`--disable-breakpad`、`--no-report-upload` 与 `--disable-domain-reliability`，阻断匿名行为打点、系统诊断与崩溃转储上报。
+- **DevTools MCP 收集器中和**：全面中和内置 `chrome-devtools-mcp` 插件中的 Google Clearcut 遥测回传与 Watchdog 进程网络外发。
+
+---
+
+### 🔔 4. 任务完工智能感知与即时通知
 - **零骚扰·精准状态感知**：深入底层状态引擎，严格识别任务完整结束点，彻底过滤中间工具调用过程，仅在长跑任务彻底完成时触发提醒。
 - **真实工程名称解析**：自动解析对话主题与工作区真实项目名称（如 `📁 工程: Antigravity-Orbit`），告别临时文件名乱码。
 - **多通道即时推送**：
@@ -114,7 +130,14 @@ python main.py localize restore
 python main.py localize
 ```
 
-### 🔔 2. 监控服务与通知管理
+### ⚡ 2. 性能加速与去遥测独立部署
+
+```bash
+# 一键部署 GPU 硬件加速、后台防降频与全栈去遥测补丁
+python main.py optimize
+```
+
+### 🔔 3. 监控服务与通知管理
 
 ```bash
 # 查看当前监控状态、实时日志与运行健康度
