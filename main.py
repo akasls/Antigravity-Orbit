@@ -392,7 +392,8 @@ def cmd_localize(args):
 
     if action == "install":
         tw = getattr(args, "tw", False)
-        ok, msg = LocalizationManager.install(tw=tw, install_dir=install_dir, no_kill=no_kill)
+        en = getattr(args, "en", False)
+        ok, msg = LocalizationManager.install(tw=tw, en=en, install_dir=install_dir, no_kill=no_kill)
         if not ok:
             print(f"❌ {msg}")
         return
@@ -446,6 +447,9 @@ def main():
     parser = argparse.ArgumentParser(description="Antigravity Task Completion Notifier & Localization CLI")
     subparsers = parser.add_subparsers(dest="subcommand", help="子命令")
 
+    # gui
+    subparsers.add_parser("gui", help="启动 Antigravity Orbit 桌面可视化管理客户端")
+
     # setup
     subparsers.add_parser("setup", help="运行交互式安装与配置向导")
     # run
@@ -468,6 +472,7 @@ def main():
         p_loc = subparsers.add_parser(sub_name, help="安装、更新或还原 Antigravity 界面中文汉化")
         p_loc.add_argument("action", nargs="?", choices=["status", "install", "restore"], help="操作: status (查看状态), install (安装汉化), restore (恢复英文)")
         p_loc.add_argument("--tw", "--traditional", action="store_true", dest="tw", help="安装繁体中文语言包")
+        p_loc.add_argument("--en", "--english", action="store_true", dest="en", help="保持原版英文，仅应用优化")
         p_loc.add_argument("--dir", default=None, help="手动指定 Antigravity 安装目录")
         p_loc.add_argument("--no-kill", action="store_true", help="不自动终止运行中的 Antigravity 进程")
 
@@ -481,6 +486,9 @@ def main():
     if not args.subcommand:
         # 无参数默认进入 setup 向导
         cmd_setup(args)
+    elif args.subcommand == "gui":
+        from core.gui import launch_gui
+        launch_gui()
     elif args.subcommand == "setup":
         cmd_setup(args)
     elif args.subcommand == "run":

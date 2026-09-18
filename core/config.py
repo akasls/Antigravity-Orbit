@@ -17,6 +17,16 @@ DEFAULT_CONFIG = {
     "enabled": True,
     "scan_interval": 3.0,
     "lock_port": 49222,
+    "customization": {
+        "language": "zh-CN",            # "zh-CN" (简体), "zh-TW" (繁体), "en" (原版英文)
+        "show_quota_badge": True,        # 是否在顶栏显示模型额度胶囊徽章
+        "quota_refresh_interval": 60,    # 顶栏模型额度自动刷新间隔 (秒)
+        "enable_gpu_acceleration": True, # GPU 硬件栅格化加速与零拷贝
+        "disable_background_throttling": True, # 解除后台定时器降频与窗口遮挡冻结
+        "expand_v8_memory": True,        # 扩充 V8 垃圾回收堆内存至 4GB
+        "disable_telemetry": True,       # 全栈关闭遥测与数据回传
+        "hide_ide_buttons": True         # 彻底隐藏右上角多余推广按钮
+    },
     "channels": {
         "telegram": {
             "enabled": True,
@@ -43,13 +53,17 @@ def load_config() -> dict:
             user_config = json.load(f)
             merged = DEFAULT_CONFIG.copy()
             merged.update(user_config)
-            # channels 也要合并
+            # 合并 channels
             if "channels" in user_config:
                 for k, v in user_config["channels"].items():
                     if k in merged["channels"]:
                         merged["channels"][k].update(v)
                     else:
                         merged["channels"][k] = v
+            # 合并 customization
+            if "customization" in user_config:
+                merged["customization"] = DEFAULT_CONFIG["customization"].copy()
+                merged["customization"].update(user_config["customization"])
             return merged
     except Exception:
         return DEFAULT_CONFIG.copy()

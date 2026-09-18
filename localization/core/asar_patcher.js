@@ -12,6 +12,8 @@ class AsarPatcher {
         this.bakPath = path.join(this.resourcesDir, 'app.asar.bak');
         this.metaPath = path.join(this.resourcesDir, '.localization_info.json');
         this.isTraditional = !!options.tw;
+        this.options = options;
+        this.customConfig = options.customConfig || {};
         this.tempDir = path.join(this.resourcesDir, '_temp_asar_build');
     }
 
@@ -175,6 +177,11 @@ class AsarPatcher {
     }
 
     _patchIdeInstalled() {
+        if (this.customConfig && this.customConfig.hide_ide_buttons === false) {
+            console.log('[跳过] 用户配置保留 IDE 推广按钮，跳过相关补丁。');
+            return;
+        }
+
         // 1. 拦截 preload.js 中的 ideAPI.isInstalled，直接返回 true 已安装
         const preloadPath = path.join(this.tempDir, 'dist', 'preload.js');
         if (fs.existsSync(preloadPath)) {
@@ -339,80 +346,105 @@ class AsarPatcher {
     }
 
     _patchPerformanceAndTelemetry() {
-        console.log('[优化] 正在注入极限性能加速与全栈遥测阻断补丁...');
+        const cfg = this.customConfig || {};
+        console.log('[优化] 正在注入性能加速与遥测配置补丁...');
 
         // 1. 注入 Electron / Chromium 启动参数 (main.js)
         const mainPath = path.join(this.tempDir, 'dist', 'main.js');
         if (fs.existsSync(mainPath)) {
             let mContent = fs.readFileSync(mainPath, 'utf-8');
             const targetLock = "const gotTheLock = electron_1.app.requestSingleInstanceLock();";
-            const optSwitches = `
-/* === ANTIGRAVITY_OPTIMIZATION_START === */
-// 1. 全面阻断 Chromium/Electron 遥测、指标采集、崩溃与可靠性回传
-electron_1.app.commandLine.appendSwitch('disable-metrics');
-electron_1.app.commandLine.appendSwitch('disable-telemetry');
-electron_1.app.commandLine.appendSwitch('disable-breakpad');
-electron_1.app.commandLine.appendSwitch('disable-component-update');
-electron_1.app.commandLine.appendSwitch('no-report-upload');
-electron_1.app.commandLine.appendSwitch('disable-domain-reliability');
+            
+            let switchLines = [];
 
-// 2. 启用 GPU 硬件加速与零拷贝 (大幅降低界面与流式代码渲染 CPU 开销)
-electron_1.app.commandLine.appendSwitch('enable-gpu-rasterization');
-electron_1.app.commandLine.appendSwitch('enable-zero-copy');
-electron_1.app.commandLine.appendSwitch('ignore-gpu-blocklist');
-electron_1.app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');
+            if (cfg.disable_telemetry !== false) {
+                switchLines.push(
+                    "// 1. 全面阻断 Chromium/Electron 遥测、指标采集、崩溃与可靠性回传",
+                    "electron_1.app.commandLine.appendSwitch('disable-metrics');",
+                    "electron_1.app.commandLine.appendSwitch('disable-telemetry');",
+                    "electron_1.app.commandLine.appendSwitch('disable-breakpad');",
+                    "electron_1.app.commandLine.appendSwitch('disable-component-update');",
+                    "electron_1.app.commandLine.appendSwitch('no-report-upload');",
+                    "electron_1.app.commandLine.appendSwitch('disable-domain-reliability');"
+                );
+            }
 
-// 3. 解除后台降频与冻结 (保证后台多任务切换及代码流式打印满速执行)
-electron_1.app.commandLine.appendSwitch('disable-background-timer-throttling');
-electron_1.app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
-electron_1.app.commandLine.appendSwitch('disable-renderer-backgrounding');
+            if (cfg.enable_gpu_acceleration !== false) {
+                switchLines.push(
+                    "// 2. 启用 GPU 硬件加速与零拷贝 (大幅降低界面与流式代码渲染 CPU 开销)",
+                    "electron_1.app.commandLine.appendSwitch('enable-gpu-rasterization');",
+                    "electron_1.app.commandLine.appendSwitch('enable-zero-copy');",
+                    "electron_1.app.commandLine.appendSwitch('ignore-gpu-blocklist');",
+                    "electron_1.app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');"
+                );
+            }
 
-// 4. 扩充 V8 垃圾回收堆内存至 4GB (杜绝大工程索引与长上下文频繁卡顿)
-electron_1.app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
-/* === ANTIGRAVITY_OPTIMIZATION_END === */
-`;
-            if (mContent.includes(targetLock) && !mContent.includes('/* === ANTIGRAVITY_OPTIMIZATION_START === */')) {
-                mContent = mContent.replace(targetLock, optSwitches + "\n" + targetLock);
-                fs.writeFileSync(mainPath, mContent, 'utf-8');
-                console.log('[优化] main.js 已注入 Chromium 硬件渲染加速与全套防降频、去遥测参数。');
+            if (cfg.disable_background_throttling !== false) {
+                switchLines.push(
+                    "// 3. 解除后台降频与冻结 (保证后台多任务切换及代码流式打印满速执行)",
+                    "electron_1.app.commandLine.appendSwitch('disable-background-timer-throttling');",
+                    "electron_1.app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');",
+                    "electron_1.app.commandLine.appendSwitch('disable-renderer-backgrounding');"
+                );
+            }
+
+            if (cfg.expand_v8_memory !== false) {
+                switchLines.push(
+                    "// 4. 扩充 V8 垃圾回收堆内存至 4GB (杜绝大工程索引与长上下文频繁卡顿)",
+                    "electron_1.app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');"
+                );
+            }
+
+            if (switchLines.length > 0) {
+                const optSwitches = "\n/* === ANTIGRAVITY_OPTIMIZATION_START === */\n" +
+                    switchLines.join("\n") +
+                    "\n/* === ANTIGRAVITY_OPTIMIZATION_END === */\n";
+
+                if (mContent.includes(targetLock) && !mContent.includes('/* === ANTIGRAVITY_OPTIMIZATION_START === */')) {
+                    mContent = mContent.replace(targetLock, optSwitches + "\n" + targetLock);
+                    fs.writeFileSync(mainPath, mContent, 'utf-8');
+                    console.log('[优化] main.js 已按需注入硬件渲染加速与全套防降频、去遥测参数。');
+                }
             }
         }
 
-        // 2. 注入 Go 后端核心 Language Server 遥测禁用参数 (languageServer.js)
-        const lsPath = path.join(this.tempDir, 'dist', 'languageServer.js');
-        if (fs.existsSync(lsPath)) {
-            let lsContent = fs.readFileSync(lsPath, 'utf-8');
-            const targetRegex = /'--override_user_agent_name',\s*'antigravity',/;
-            if (targetRegex.test(lsContent) && !lsContent.includes("'--disable_telemetry=true'")) {
-                lsContent = lsContent.replace(targetRegex, "'--override_user_agent_name',\n            'antigravity',\n            '--disable_telemetry=true',");
-                fs.writeFileSync(lsPath, lsContent, 'utf-8');
-                console.log('[优化] languageServer.js 已注入 --disable_telemetry=true 彻底切断后端核心遥测。');
+        if (cfg.disable_telemetry !== false) {
+            // 2. 注入 Go 后端核心 Language Server 遥测禁用参数 (languageServer.js)
+            const lsPath = path.join(this.tempDir, 'dist', 'languageServer.js');
+            if (fs.existsSync(lsPath)) {
+                let lsContent = fs.readFileSync(lsPath, 'utf-8');
+                const targetRegex = /'--override_user_agent_name',\s*'antigravity',/;
+                if (targetRegex.test(lsContent) && !lsContent.includes("'--disable_telemetry=true'")) {
+                    lsContent = lsContent.replace(targetRegex, "'--override_user_agent_name',\n            'antigravity',\n            '--disable_telemetry=true',");
+                    fs.writeFileSync(lsPath, lsContent, 'utf-8');
+                    console.log('[优化] languageServer.js 已注入 --disable_telemetry=true 彻底切断后端核心遥测。');
+                }
             }
-        }
 
-        // 3. 中和 Chrome DevTools MCP 中的 Clearcut 遥测外发
-        const clearcutPath = path.join(this.tempDir, 'node_modules', 'chrome-devtools-mcp', 'build', 'src', 'telemetry', 'ClearcutLogger.js');
-        if (fs.existsSync(clearcutPath)) {
-            let cContent = fs.readFileSync(clearcutPath, 'utf-8');
-            if (!cContent.includes('/* === CLEARCUT_TELEMETRY_DISABLED === */')) {
-                cContent = cContent.replace('async logToolInvocation(args) {', 'async logToolInvocation(args) { return; /* clearcut disabled */');
-                cContent = cContent.replace('async logServerStart(flagUsage) {', 'async logServerStart(flagUsage) { return; /* clearcut disabled */');
-                cContent = cContent.replace('async logDailyActiveIfNeeded() {', 'async logDailyActiveIfNeeded() { return; /* clearcut disabled */');
-                cContent = cContent.replace('async logServerError(args) {', 'async logServerError(args) { return; /* clearcut disabled */');
-                cContent = "/* === CLEARCUT_TELEMETRY_DISABLED === */\n" + cContent;
-                fs.writeFileSync(clearcutPath, cContent, 'utf-8');
-                console.log('[优化] ClearcutLogger.js 已中和 Google Clearcut 数据回传。');
+            // 3. 中和 Chrome DevTools MCP 中的 Clearcut 遥测外发
+            const clearcutPath = path.join(this.tempDir, 'node_modules', 'chrome-devtools-mcp', 'build', 'src', 'telemetry', 'ClearcutLogger.js');
+            if (fs.existsSync(clearcutPath)) {
+                let cContent = fs.readFileSync(clearcutPath, 'utf-8');
+                if (!cContent.includes('/* === CLEARCUT_TELEMETRY_DISABLED === */')) {
+                    cContent = cContent.replace('async logToolInvocation(args) {', 'async logToolInvocation(args) { return; /* clearcut disabled */');
+                    cContent = cContent.replace('async logServerStart(flagUsage) {', 'async logServerStart(flagUsage) { return; /* clearcut disabled */');
+                    cContent = cContent.replace('async logDailyActiveIfNeeded() {', 'async logDailyActiveIfNeeded() { return; /* clearcut disabled */');
+                    cContent = cContent.replace('async logServerError(args) {', 'async logServerError(args) { return; /* clearcut disabled */');
+                    cContent = "/* === CLEARCUT_TELEMETRY_DISABLED === */\n" + cContent;
+                    fs.writeFileSync(clearcutPath, cContent, 'utf-8');
+                    console.log('[优化] ClearcutLogger.js 已中和 Google Clearcut 数据回传。');
+                }
             }
-        }
 
-        const watchdogPath = path.join(this.tempDir, 'node_modules', 'chrome-devtools-mcp', 'build', 'src', 'telemetry', 'WatchdogClient.js');
-        if (fs.existsSync(watchdogPath)) {
-            let wContent = fs.readFileSync(watchdogPath, 'utf-8');
-            if (!wContent.includes('/* === WATCHDOG_DISABLED === */')) {
-                wContent = wContent.replace('send(message) {', 'send(message) { return; /* watchdog disabled */');
-                wContent = "/* === WATCHDOG_DISABLED === */\n" + wContent;
-                fs.writeFileSync(watchdogPath, wContent, 'utf-8');
-                console.log('[优化] WatchdogClient.js 已彻底阻断看门狗进程遥测网络外发。');
+            const watchdogPath = path.join(this.tempDir, 'node_modules', 'chrome-devtools-mcp', 'build', 'src', 'telemetry', 'WatchdogClient.js');
+            if (fs.existsSync(watchdogPath)) {
+                let wContent = fs.readFileSync(watchdogPath, 'utf-8');
+                if (!wContent.includes('/* === WATCHDOG_DISABLED === */')) {
+                    wContent = wContent.replace('send(message) {', 'send(message) { return; /* watchdog disabled */');
+                    wContent = "/* === WATCHDOG_DISABLED === */\n" + wContent;
+                    fs.writeFileSync(watchdogPath, wContent, 'utf-8');
+                    console.log('[优化] WatchdogClient.js 已彻底阻断看门狗进程遥测网络外发。');
+                }
             }
         }
     }

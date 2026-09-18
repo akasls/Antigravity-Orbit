@@ -47,6 +47,8 @@ function parseArgs() {
             opts.json = true;
         } else if (a === '--tw' || a === '--traditional') {
             opts.tw = true;
+        } else if (a === '--en' || a === '--english') {
+            opts.en = true;
         } else if (a === '--no-kill') {
             opts.noKill = true;
         } else if (a === '--install-dir') {

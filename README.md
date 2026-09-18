@@ -14,14 +14,41 @@
   <img src="https://img.shields.io/badge/Antigravity-2.0+-FF6F00?style=flat-square" alt="Antigravity 2.0+" />
 </p>
 
-> 🚀 **Antigravity Orbit** 是专为 **Google Antigravity** 打造的一体化生产力伴侣套件。  
-> 深度整合 **【现代化客户端全界面深度汉化】** 与 **【长跑任务完工跨平台即时推送（Telegram / 飞书 / 企微）】**，让您的 AI 编程与智能体协同如在轨道运行般顺畅。
+> 🚀 **Antigravity Orbit** 是专为 **Google Antigravity** 打造的一体化独立桌面管理与生产力伴侣套件。  
+> 拥有 **【独立桌面客户端可视化控制中心 (Native GUI)】**、**【顶栏实时模型额度胶囊 (Gemini / Claude / GPT)】**、**【全界面深度汉化】**、**【极限性能加速与全栈去遥测】** 与 **【长跑任务完工跨平台推送（Telegram / 飞书 / 企微）】**，让您的 AI 编程与智能体协同如在轨道运行般顺畅。
 
 ---
 
 ## 🌟 核心功能特性
 
-### 🌐 1. 现代化客户端全界面深度汉化
+### 🖥️ 1. 独立桌面可视化管理客户端 (Native GUI Client)
+- **原生桌面客户端应用**：双击 `gui.bat` 或运行 `python main.py gui` 即刻呼出专属桌面控制中心。
+- **现代化深色视觉交互**：全面适配 Windows 高 DPI 高清屏幕，卡片式功能布局与即时状态指示。
+- **全方位可视化配置**：
+  - 🌐 界面语言一键切换（简体中文 / 繁体中文 / 官方原版英文）。
+  - 📊 顶栏模型额度胶囊开关与刷新频率自定义。
+  - 🧹 彻底移除右上角多余推广按钮。
+  - ⚡ GPU 硬件栅格化加速、解除后台定时器降频、扩充 V8 垃圾回收堆至 4GB。
+  - 🛡️ 全栈遥测阻断与隐私保护。
+  - 🔔 Telegram / 飞书 / 企业微信推送配置与一键免重启在线测试。
+  - 🚀 后台常驻监听服务与 Windows 开机静默自启动启停。
+- **一键热应用与一键无损还原**：一键保存并注入生效，也可一键随时无痕撤销所有补丁恢复官方原版。
+
+---
+
+### 📊 2. 顶部标题栏实时模型额度显示 (Top-Right Quota Badge)
+- **免鉴权内部直连**：逆向重构 ConnectRPC 内部端点 `/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary`，直接获取各模型限额。
+- **原生融入顶部标题栏**：无缝挂载于右上角安全区，微磨砂圆角半透明胶囊，不影响窗口拖拽与系统控制按钮。
+- **双模型状态指示灯**：
+  - `🟢 Gemini XX% · 🟣 Claude XX%`（正常时采用官方模型主色，低于 50% 自动变橙黄，低于 20% 自动变红告警）。
+- **交互式浮动详情面板**：
+  - 点击胶囊展开半透明详情卡片，显示 Gemini 与 Claude & GPT 的 **5 小时限额进度条** 与 **周限额进度条**。
+  - 倒计时精确计算（`距离刷新还有 X 天 X 小时` / `距离刷新还有 X 小时 X 分钟`）。
+  - 内置“🔄 立即刷新”按钮，支持自定义定时轮询及窗口聚焦自动极速刷新。
+
+---
+
+### 🌐 3. 现代化客户端全界面深度汉化
 - **深度适配 Antigravity 2.0+ 架构**：针对 Electron ASAR 架构与 DOM 渲染特性定制，原子级安全注入。
 - **全方位模块化词库**：
   - **通用设置与浏览器子代理**：完整覆盖浏览器代理、常规设置、偏好选项与链接。
@@ -82,22 +109,27 @@
 
 ## ⚡ 快速开始 (1 分钟上手)
 
-### 方式一：Windows 用户（强烈推荐）
+### 方式一：独立桌面可视化控制中心（原生软件，强烈推荐）
 
-1. 下载或克隆本项目到本地：
-   ```bash
-   git clone https://github.com/akasls/Antigravity-Orbit.git
-   cd Antigravity-Orbit
-   ```
-2. 双击运行根目录下的 **`install.bat`**。
-3. 按照控制台向导顺序操作：
-   - **【步骤 1/2】界面汉化**：自动检测客户端，选择 `1` 安装简体中文（或 `2` 繁体中文）。
-   - **【步骤 2/2】通知配置**：选择配置 Telegram / 飞书 / 企业微信机器人，输入 Token/Webhook，即时发送连通性测试。
-   - **开机自启**：按提示输入 `y` 即可写入开机启动项并立即后台运行。
+1. 双击运行根目录下的 **`gui.bat`**（或在命令行输入 `python main.py gui`）。
+2. 在弹出的桌面控制中心窗口中：
+   - 切换界面语言（简体中文 / 繁体中文 / 官方英文）。
+   - 勾选是否开启【顶栏实时模型额度胶囊】与刷新频率。
+   - 勾选【GPU 硬件加速】、【后台防降频】与【全栈遥测阻断】。
+   - 配置 Telegram / 飞书 / 企业微信机器人并在线发送测试。
+3. 点击右下角 **【⚡ 保存并应用配置到 Antigravity】**，即刻完成一键热部署！
+4. 点击 **【🚀 重启 Antigravity】** 即可实时查看崭新的汉化与顶栏额度胶囊！
 
 ---
 
-### 方式二：macOS / Linux 用户
+### 方式二：命令行交互式向导
+
+1. 双击运行根目录下的 **`install.bat`**，选择 `[2]` 运行命令行向导。
+2. 按照控制台向导逐步完成汉化与通知设置。
+
+---
+
+### 方式三：macOS / Linux 用户
 
 ```bash
 git clone https://github.com/akasls/Antigravity-Orbit.git
@@ -111,7 +143,15 @@ bash install.sh
 
 本项目提供全功能命令行工具 `main.py`：
 
-### 🌐 1. 客户端汉化管理
+### 🖥️ 1. 桌面可视化管理客户端
+
+```bash
+# 启动独立桌面可视化管理客户端
+python main.py gui
+# 或者直接双击运行 gui.bat
+```
+
+### 🌐 2. 客户端汉化管理
 
 ```bash
 # 查看 Antigravity 安装路径及当前汉化状态
@@ -130,14 +170,14 @@ python main.py localize restore
 python main.py localize
 ```
 
-### ⚡ 2. 性能加速与去遥测独立部署
+### ⚡ 3. 性能加速与去遥测独立部署
 
 ```bash
 # 一键部署 GPU 硬件加速、后台防降频与全栈去遥测补丁
 python main.py optimize
 ```
 
-### 🔔 3. 监控服务与通知管理
+### 🔔 4. 监控服务与通知管理
 
 ```bash
 # 查看当前监控状态、实时日志与运行健康度
@@ -178,13 +218,23 @@ python main.py autostart disable   # 禁用开机自启
 
 ## ⚙️ 配置文件说明 (`config.json`)
 
-运行 `main.py setup` 后会自动生成配置，也可以参考 `config.example.json` 手动修改：
+在桌面客户端或命令行配置后会自动生成，也可参考 `config.example.json` 手动修改：
 
 ```json
 {
   "enabled": true,
   "scan_interval": 3.0,
   "lock_port": 49222,
+  "customization": {
+    "language": "zh-CN",
+    "show_quota_badge": true,
+    "quota_refresh_interval": 60,
+    "enable_gpu_acceleration": true,
+    "disable_background_throttling": true,
+    "expand_v8_memory": true,
+    "disable_telemetry": true,
+    "hide_ide_buttons": true
+  },
   "channels": {
     "telegram": {
       "enabled": true,
@@ -213,6 +263,7 @@ Antigravity-Orbit/
 ├── core/                              # 核心业务逻辑
 │   ├── autostart.py                   # 跨平台开机自启管理器 (Windows 注册表/macOS plist)
 │   ├── config.py                      # 配置加载、合并与持久化
+│   ├── gui.py                         # 独立桌面可视化管理客户端 (Native Tkinter/ttk)
 │   ├── localization.py                # 客户端汉化管理器桥接模块
 │   ├── monitor.py                     # Antigravity 任务状态嗅探与通知调度
 │   └── utils.py                       # 进程单例锁、日志与格式化工具
@@ -220,26 +271,18 @@ Antigravity-Orbit/
 │   ├── core/
 │   │   ├── asar_patcher.js            # Electron ASAR 安全原子解包、打补丁与重新封装
 │   │   ├── engine.js                  # 汉化主调度控制器
-│   │   └── runtime_template.js        # 前端 DOM 注入、正则模式匹配与动态沙箱
+│   │   └── runtime_template.js        # 前端 DOM 注入、顶栏额度胶囊与动态沙箱
 │   ├── dictionaries/                  # 简体中文模块化专业词典 (8 大维度)
-│   │   ├── chat.json                  # AI 对话、工件、徽章
-│   │   ├── context_menus.json         # 右键与上下文菜单
-│   │   ├── navigation.json            # 导航栏与主菜单
-│   │   ├── settings_app.json          # 应用与远程控制
-│   │   ├── settings_browser.json      # 浏览器子代理设置
-│   │   ├── settings_customization.json# 技能、规则、MCP 插件
-│   │   ├── settings_general.json      # 通用设置与权限
-│   │   ├── settings_models.json       # 驱动模型与配额用量
-│   │   └── common.json                # 通用基础词汇
 │   └── dictionaries_tw/               # 繁体中文镜像词典 (结构完全对齐)
 ├── notifiers/                         # 推送通知模块
 │   ├── base.py                        # 通知基类
 │   ├── telegram.py                    # Telegram 通道 (含代理自适应)
 │   ├── feishu.py                      # 飞书 Webhook 通道
 │   └── wecom.py                       # 企业微信 Webhook 通道
-├── install.bat                        # Windows 单一交互配置向导脚本
+├── gui.bat                            # Windows 一键拉起桌面可视化客户端
+├── install.bat                        # Windows 综合配置入口 (GUI / CLI)
 ├── install.sh                         # macOS / Linux 交互配置向导脚本
-├── main.py                            # 统一 CLI 命令行入口
+├── main.py                            # 统一 CLI / GUI 命令行入口
 ├── config.example.json                # 配置文件示例模板
 └── README.md                          # 项目说明文档
 ```

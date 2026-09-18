@@ -2,6 +2,16 @@
   "enabled": true,
   "scan_interval": 3.0,
   "lock_port": 49222,
+  "customization": {
+    "language": "zh-CN",
+    "show_quota_badge": true,
+    "quota_refresh_interval": 60,
+    "enable_gpu_acceleration": true,
+    "disable_background_throttling": true,
+    "expand_v8_memory": true,
+    "disable_telemetry": true,
+    "hide_ide_buttons": true
+  },
   "channels": {
     "telegram": {
       "enabled": true,

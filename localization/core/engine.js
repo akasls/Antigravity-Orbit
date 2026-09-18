@@ -111,7 +111,10 @@ class LocalizationEngine {
     /**
      * 加载所有模块化字典并根据语言编译
      */
-    loadDictionary(isTraditional = false) {
+    loadDictionary(isTraditional = false, isEnglish = false) {
+        if (isEnglish) {
+            return {};
+        }
         const dictDir = isTraditional ? this.dictDirTw : this.dictDirCn;
         const total = {};
 
@@ -138,19 +141,48 @@ class LocalizationEngine {
     }
 
     /**
+     * 读取项目 config.json 中的自定义配置
+     */
+    loadCustomConfig() {
+        const configPath = path.resolve(LOCALIZATION_ROOT, '..', 'config.json');
+        try {
+            if (fs.existsSync(configPath)) {
+                const raw = fs.readFileSync(configPath, 'utf-8');
+                const cfg = JSON.parse(raw);
+                if (cfg && cfg.customization) {
+                    return cfg.customization;
+                }
+            }
+        } catch (e) {}
+        return {
+            language: 'zh-CN',
+            show_quota_badge: true,
+            quota_refresh_interval: 60,
+            enable_gpu_acceleration: true,
+            disable_background_throttling: true,
+            expand_v8_memory: true,
+            disable_telemetry: true,
+            hide_ide_buttons: true
+        };
+    }
+
+    /**
      * 生成注入用的 runtime 脚本
      */
-    generateRuntimeScript(isTraditional = false) {
-        const dict = this.loadDictionary(isTraditional);
+    generateRuntimeScript(isTraditional = false, customConfig = null, isEnglish = false) {
+        const dict = this.loadDictionary(isTraditional, isEnglish);
         // 按英文短语长度从长到短排序
         const phraseEntries = Object.entries(dict).filter(([k]) => k.length >= 15);
         phraseEntries.sort((a, b) => b[0].length - a[0].length);
+
+        const cfg = customConfig || this.loadCustomConfig();
 
         let template = fs.readFileSync(this.runtimeTemplatePath, 'utf-8');
         const configCode = `
     const IS_TRADITIONAL = ${isTraditional ? 'true' : 'false'};
     const TRANSLATIONS_MAP = ${JSON.stringify(dict, null, 2)};
     const PHRASE_REPLACEMENTS = ${JSON.stringify(phraseEntries)};
+    const CUSTOM_CONFIG = ${JSON.stringify(cfg, null, 2)};
 `;
         return template.replace('/* --- I18N_CONFIG_PLACEHOLDER --- */', configCode);
     }
@@ -271,8 +303,11 @@ class LocalizationEngine {
         }
 
         const resDir = this.getResourcesDir(installDir);
-        const patcher = new AsarPatcher(resDir, options);
-        const runtimeJs = this.generateRuntimeScript(options.tw);
+        const customConfig = options.customConfig || this.loadCustomConfig();
+        const patcher = new AsarPatcher(resDir, { ...options, customConfig });
+        const isEnglish = !!options.en || (customConfig && customConfig.language === 'en');
+        const isTw = !!options.tw || (customConfig && customConfig.language === 'zh-TW');
+        const runtimeJs = this.generateRuntimeScript(isTw, customConfig, isEnglish);
 
         const ok = patcher.install(runtimeJs);
         if (ok && wasRunning && !options.noKill) {

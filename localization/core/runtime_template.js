@@ -488,22 +488,496 @@
     }
 
     /**
+     * =========================================================================
+     * 顶部标题栏实时模型额度胶囊组件 (Top-Right Live Model Quota Badge)
+     * =========================================================================
+     */
+    let latestQuotaData = null;
+    let isFetchingQuota = false;
+    let lastFetchTime = null;
+    let quotaPollTimer = null;
+
+    function injectQuotaBadgeStyle(doc = document) {
+        if (!doc || !doc.head || doc.getElementById('antigravity-quota-style')) return;
+        try {
+            const style = doc.createElement('style');
+            style.id = 'antigravity-quota-style';
+            style.textContent = `
+                @keyframes ag-spin { 100% { transform: rotate(360deg); } }
+                @keyframes ag-popover-in {
+                    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+                    to { opacity: 1; transform: translateY(0) scale(1); }
+                }
+                #antigravity-quota-root {
+                    display: inline-flex;
+                    align-items: center;
+                    margin-left: auto;
+                    margin-right: 145px;
+                    height: 24px;
+                    z-index: 9999;
+                    -webkit-app-region: no-drag !important;
+                    app-region: no-drag !important;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                    position: relative;
+                    user-select: none;
+                }
+                .ag-quota-pill {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 2px 10px;
+                    height: 22px;
+                    border-radius: 11px;
+                    background: rgba(255, 255, 255, 0.08);
+                    border: 1px solid rgba(255, 255, 255, 0.14);
+                    font-size: 11px;
+                    font-weight: 500;
+                    color: rgba(255, 255, 255, 0.9);
+                    cursor: pointer;
+                    box-sizing: border-box;
+                    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+                    backdrop-filter: blur(8px);
+                    -webkit-backdrop-filter: blur(8px);
+                }
+                .ag-quota-pill:hover {
+                    background: rgba(255, 255, 255, 0.16);
+                    border-color: rgba(255, 255, 255, 0.28);
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+                }
+                .ag-quota-dot {
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 50%;
+                    display: inline-block;
+                    flex-shrink: 0;
+                }
+                .ag-dot-green { background: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, 0.7); }
+                .ag-dot-purple { background: #a78bfa; box-shadow: 0 0 6px rgba(167, 139, 250, 0.7); }
+                .ag-dot-yellow { background: #fbbf24; box-shadow: 0 0 6px rgba(251, 191, 36, 0.7); }
+                .ag-dot-red { background: #f87171; box-shadow: 0 0 6px rgba(248, 113, 113, 0.7); }
+                .ag-quota-divider {
+                    width: 1px;
+                    height: 10px;
+                    background: rgba(255, 255, 255, 0.2);
+                    margin: 0 2px;
+                }
+                .ag-quota-popover {
+                    position: absolute;
+                    top: calc(100% + 8px);
+                    right: 0;
+                    width: 320px;
+                    background: #18181b;
+                    border: 1px solid rgba(255, 255, 255, 0.15);
+                    border-radius: 10px;
+                    padding: 14px 16px;
+                    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.3);
+                    z-index: 100000;
+                    color: #e4e4e7;
+                    font-size: 12px;
+                    display: none;
+                    box-sizing: border-box;
+                    backdrop-filter: blur(16px);
+                    -webkit-backdrop-filter: blur(16px);
+                }
+                .ag-quota-popover.open {
+                    display: block;
+                    animation: ag-popover-in 0.16s ease-out;
+                }
+                .ag-pop-head {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding-bottom: 10px;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                    margin-bottom: 12px;
+                }
+                .ag-pop-title {
+                    font-weight: 600;
+                    font-size: 13px;
+                    color: #fafafa;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+                .ag-pop-refresh-btn {
+                    background: rgba(255, 255, 255, 0.08);
+                    border: 1px solid rgba(255, 255, 255, 0.14);
+                    color: #d4d4d8;
+                    border-radius: 5px;
+                    padding: 3px 8px;
+                    cursor: pointer;
+                    font-size: 11px;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                    transition: all 0.2s;
+                }
+                .ag-pop-refresh-btn:hover {
+                    background: rgba(255, 255, 255, 0.18);
+                    color: #ffffff;
+                }
+                .ag-group {
+                    margin-bottom: 14px;
+                }
+                .ag-group:last-of-type {
+                    margin-bottom: 8px;
+                }
+                .ag-group-name {
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #a1a1aa;
+                    margin-bottom: 8px;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+                .ag-meter {
+                    margin-bottom: 8px;
+                }
+                .ag-meter:last-child {
+                    margin-bottom: 0;
+                }
+                .ag-meter-row {
+                    display: flex;
+                    justify-content: space-between;
+                    font-size: 11px;
+                    margin-bottom: 4px;
+                }
+                .ag-meter-label {
+                    color: #d4d4d8;
+                }
+                .ag-meter-pct {
+                    font-weight: 600;
+                }
+                .ag-track {
+                    height: 5px;
+                    background: rgba(255, 255, 255, 0.1);
+                    border-radius: 3px;
+                    overflow: hidden;
+                }
+                .ag-fill {
+                    height: 100%;
+                    border-radius: 3px;
+                    transition: width 0.3s ease;
+                }
+                .ag-meter-desc {
+                    font-size: 10px;
+                    color: #71717a;
+                    margin-top: 2px;
+                }
+                .ag-pop-foot {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-top: 10px;
+                    padding-top: 8px;
+                    border-top: 1px solid rgba(255, 255, 255, 0.08);
+                    font-size: 10px;
+                    color: #71717a;
+                }
+            `;
+            doc.head.appendChild(style);
+        } catch (e) {}
+    }
+
+    function formatCountdown(isoString) {
+        if (!isoString) return '';
+        try {
+            const target = new Date(isoString).getTime();
+            const now = Date.now();
+            const diff = target - now;
+            if (diff <= 0) return '即将刷新';
+            const totalHours = Math.floor(diff / 3600000);
+            const minutes = Math.floor((diff % 3600000) / 60000);
+            const days = Math.floor(totalHours / 24);
+            const hours = totalHours % 24;
+            if (days > 0) return `距离刷新还有 ${days} 天 ${hours} 小时`;
+            if (hours > 0) return `距离刷新还有 ${hours} 小时 ${minutes} 分钟`;
+            return `距离刷新还有 ${minutes} 分钟`;
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function getModelColor(pct, isGemini = true) {
+        if (pct < 20) return { dot: 'ag-dot-red', color: '#f87171' };
+        if (pct < 50) return { dot: 'ag-dot-yellow', color: '#fbbf24' };
+        if (isGemini) return { dot: 'ag-dot-green', color: '#34d399' };
+        return { dot: 'ag-dot-purple', color: '#a78bfa' };
+    }
+
+    function parseQuotaBuckets(data) {
+        let g5h = null, gWeekly = null;
+        let c5h = null, cWeekly = null;
+
+        if (data && Array.isArray(data.groups)) {
+            for (const g of data.groups) {
+                const name = (g.name || '').toLowerCase();
+                const isGemini = name.includes('gemini');
+                for (const b of (g.buckets || [])) {
+                    const period = (b.period || '').toUpperCase();
+                    if (period.includes('FIVE_HOURS') || period.includes('5H')) {
+                        if (isGemini) g5h = b; else c5h = b;
+                    } else if (period.includes('WEEKLY')) {
+                        if (isGemini) gWeekly = b; else cWeekly = b;
+                    }
+                }
+            }
+        }
+
+        const getPct = (b) => {
+            if (!b || typeof b.remainingFraction !== 'number') return 100;
+            return Math.min(100, Math.max(0, Math.round(b.remainingFraction * 100)));
+        };
+
+        return {
+            gemini: {
+                pct5h: getPct(g5h),
+                time5h: g5h ? g5h.resetTime : null,
+                pctWeekly: getPct(gWeekly),
+                timeWeekly: gWeekly ? gWeekly.resetTime : null
+            },
+            claude: {
+                pct5h: getPct(c5h),
+                time5h: c5h ? c5h.resetTime : null,
+                pctWeekly: getPct(cWeekly),
+                timeWeekly: cWeekly ? cWeekly.resetTime : null
+            }
+        };
+    }
+
+    function renderQuotaUi() {
+        const root = document.getElementById('antigravity-quota-root');
+        if (!root) return;
+
+        const info = parseQuotaBuckets(latestQuotaData);
+        const gColor = getModelColor(info.gemini.pct5h, true);
+        const cColor = getModelColor(info.claude.pct5h, false);
+
+        const pill = root.querySelector('.ag-quota-pill');
+        if (pill) {
+            pill.innerHTML = `
+                <span class="ag-quota-dot ${gColor.dot}"></span>
+                <span>Gemini ${info.gemini.pct5h}%</span>
+                <span class="ag-quota-divider"></span>
+                <span class="ag-quota-dot ${cColor.dot}"></span>
+                <span>Claude ${info.claude.pct5h}%</span>
+            `;
+        }
+
+        const popover = root.querySelector('.ag-quota-popover');
+        if (popover) {
+            const timeStr = lastFetchTime ? lastFetchTime.toTimeString().split(' ')[0] : '--:--:--';
+            const gWeekColor = getModelColor(info.gemini.pctWeekly, true);
+            const cWeekColor = getModelColor(info.claude.pctWeekly, false);
+
+            popover.innerHTML = `
+                <div class="ag-pop-head">
+                    <div class="ag-pop-title">
+                        <span>📊</span>
+                        <span>模型额度详情</span>
+                    </div>
+                    <button class="ag-pop-refresh-btn" type="button" title="点击立即刷新额度">
+                        <span class="ag-spin-icon">🔄</span>
+                        <span>刷新</span>
+                    </button>
+                </div>
+                
+                <div class="ag-group">
+                    <div class="ag-group-name">
+                        <span class="ag-quota-dot ${gColor.dot}"></span>
+                        <span>Gemini 模型</span>
+                    </div>
+                    <div class="ag-meter">
+                        <div class="ag-meter-row">
+                            <span class="ag-meter-label">5小时限制剩余</span>
+                            <span class="ag-meter-pct" style="color: ${gColor.color}">${info.gemini.pct5h}%</span>
+                        </div>
+                        <div class="ag-track">
+                            <div class="ag-fill" style="width: ${info.gemini.pct5h}%; background: ${gColor.color}"></div>
+                        </div>
+                        <div class="ag-meter-desc">${formatCountdown(info.gemini.time5h)}</div>
+                    </div>
+                    <div class="ag-meter" style="margin-top: 6px;">
+                        <div class="ag-meter-row">
+                            <span class="ag-meter-label">周限制剩余</span>
+                            <span class="ag-meter-pct" style="color: ${gWeekColor.color}">${info.gemini.pctWeekly}%</span>
+                        </div>
+                        <div class="ag-track">
+                            <div class="ag-fill" style="width: ${info.gemini.pctWeekly}%; background: ${gWeekColor.color}"></div>
+                        </div>
+                        <div class="ag-meter-desc">${formatCountdown(info.gemini.timeWeekly)}</div>
+                    </div>
+                </div>
+
+                <div class="ag-group">
+                    <div class="ag-group-name">
+                        <span class="ag-quota-dot ${cColor.dot}"></span>
+                        <span>Claude & GPT 模型</span>
+                    </div>
+                    <div class="ag-meter">
+                        <div class="ag-meter-row">
+                            <span class="ag-meter-label">5小时限制剩余</span>
+                            <span class="ag-meter-pct" style="color: ${cColor.color}">${info.claude.pct5h}%</span>
+                        </div>
+                        <div class="ag-track">
+                            <div class="ag-fill" style="width: ${info.claude.pct5h}%; background: ${cColor.color}"></div>
+                        </div>
+                        <div class="ag-meter-desc">${formatCountdown(info.claude.time5h)}</div>
+                    </div>
+                    <div class="ag-meter" style="margin-top: 6px;">
+                        <div class="ag-meter-row">
+                            <span class="ag-meter-label">周限制剩余</span>
+                            <span class="ag-meter-pct" style="color: ${cWeekColor.color}">${info.claude.pctWeekly}%</span>
+                        </div>
+                        <div class="ag-track">
+                            <div class="ag-fill" style="width: ${info.claude.pctWeekly}%; background: ${cWeekColor.color}"></div>
+                        </div>
+                        <div class="ag-meter-desc">${formatCountdown(info.claude.timeWeekly)}</div>
+                    </div>
+                </div>
+
+                <div class="ag-pop-foot">
+                    <span>更新于 ${timeStr}</span>
+                    <span>Antigravity Orbit</span>
+                </div>
+            `;
+
+            const refBtn = popover.querySelector('.ag-pop-refresh-btn');
+            if (refBtn) {
+                refBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const icon = refBtn.querySelector('.ag-spin-icon');
+                    if (icon) icon.style.animation = 'ag-spin 0.6s linear infinite';
+                    fetchQuotaSummary().finally(() => {
+                        if (icon) icon.style.animation = 'none';
+                    });
+                });
+            }
+        }
+    }
+
+    async function fetchQuotaSummary() {
+        if (isFetchingQuota) return latestQuotaData;
+        isFetchingQuota = true;
+
+        const csrf = (window.__APP_CONFIG__ && window.__APP_CONFIG__.csrfToken) ? window.__APP_CONFIG__.csrfToken : '';
+        try {
+            const res = await fetch('/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Connect-Protocol-Version': '1',
+                    'x-codeium-csrf-token': csrf
+                },
+                body: '{}'
+            });
+            if (res.ok) {
+                const data = await res.json();
+                latestQuotaData = data;
+                lastFetchTime = new Date();
+                renderQuotaUi();
+                return data;
+            }
+        } catch (err) {
+            // 静默处理网络或端口尚未就绪
+        } finally {
+            isFetchingQuota = false;
+        }
+        return latestQuotaData;
+    }
+
+    function mountQuotaBadge() {
+        const cfg = (typeof CUSTOM_CONFIG !== 'undefined' ? CUSTOM_CONFIG : {}) || {};
+        if (cfg.show_quota_badge === false) {
+            const existing = document.getElementById('antigravity-quota-root');
+            if (existing) existing.remove();
+            return;
+        }
+
+        const titleBar = document.querySelector('[data-testid="title-menu-bar"]');
+        if (!titleBar) return;
+
+        let root = document.getElementById('antigravity-quota-root');
+        if (!root) {
+            injectQuotaBadgeStyle(document);
+
+            root = document.createElement('div');
+            root.id = 'antigravity-quota-root';
+            root.innerHTML = `
+                <div class="ag-quota-pill" title="点击查看模型额度详情">
+                    <span class="ag-quota-dot ag-dot-green"></span>
+                    <span>额度载入中...</span>
+                </div>
+                <div class="ag-quota-popover"></div>
+            `;
+
+            const pill = root.querySelector('.ag-quota-pill');
+            const popover = root.querySelector('.ag-quota-popover');
+
+            pill.addEventListener('click', (e) => {
+                e.stopPropagation();
+                popover.classList.toggle('open');
+                if (popover.classList.contains('open')) {
+                    fetchQuotaSummary();
+                }
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!root.contains(e.target)) {
+                    popover.classList.remove('open');
+                }
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    popover.classList.remove('open');
+                }
+            });
+
+            titleBar.appendChild(root);
+            fetchQuotaSummary();
+
+            if (!quotaPollTimer) {
+                const intervalSec = (cfg.quota_refresh_interval && cfg.quota_refresh_interval >= 5) ? cfg.quota_refresh_interval : 60;
+                quotaPollTimer = setInterval(fetchQuotaSummary, intervalSec * 1000);
+                window.addEventListener('focus', fetchQuotaSummary);
+            }
+        }
+    }
+
+    /**
      * 启动 MutationObserver 监听引擎
      */
     function startLocalizationObserver() {
         const root = document.body || document.documentElement;
         if (!root) return;
 
-        injectIdeHidingStyle(document);
-        removeIdeHeaderButtons(root);
+        const cfg = (typeof CUSTOM_CONFIG !== 'undefined' ? CUSTOM_CONFIG : {}) || {};
+
+        if (cfg.hide_ide_buttons !== false) {
+            injectIdeHidingStyle(document);
+            removeIdeHeaderButtons(root);
+        }
+
+        if (cfg.show_quota_badge !== false) {
+            mountQuotaBadge();
+        }
 
         const observer = new MutationObserver((mutations) => {
-            removeIdeHeaderButtons(root);
+            if (cfg.hide_ide_buttons !== false) {
+                removeIdeHeaderButtons(root);
+            }
+            if (cfg.show_quota_badge !== false && !document.getElementById('antigravity-quota-root')) {
+                mountQuotaBadge();
+            }
             for (const m of mutations) {
                 if (m.type === 'childList') {
                     for (const n of m.addedNodes) {
                         translateNode(n);
-                        if (n.nodeType === Node.ELEMENT_NODE) removeIdeHeaderButtons(n);
+                        if (cfg.hide_ide_buttons !== false && n.nodeType === Node.ELEMENT_NODE) {
+                            removeIdeHeaderButtons(n);
+                        }
                     }
                 } else if (m.type === 'characterData') {
                     translateNode(m.target);
@@ -522,8 +996,10 @@
         Element.prototype.attachShadow = function(...args) {
             const shadowRoot = originalAttachShadow.apply(this, args);
             try {
-                injectIdeHidingStyle(shadowRoot);
-                removeIdeHeaderButtons(shadowRoot);
+                if (cfg.hide_ide_buttons !== false) {
+                    injectIdeHidingStyle(shadowRoot);
+                    removeIdeHeaderButtons(shadowRoot);
+                }
                 observer.observe(shadowRoot, config);
                 translateNode(shadowRoot);
             } catch (e) {}

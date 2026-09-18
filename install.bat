@@ -33,15 +33,41 @@ if %errorlevel% neq 0 (
     echo.
 )
 
-:: 执行主程序配置向导 (默认直接进入顺序向导: 先问汉化，再问通知)
-if "%~1"=="" (
-    %PY_CMD% "%~dp0main.py" setup
-) else (
+:: 执行模式选择
+if not "%~1"=="" (
     %PY_CMD% "%~dp0main.py" %*
+    echo.
+    pause
+    exit /b 0
 )
 
+echo ========================================================
+echo   🌌 Antigravity Orbit - 综合管理与配置
+echo ========================================================
 echo.
-pause
+echo   [1] 启动【桌面可视化控制中心】 (Native GUI 桌面软件, 推荐)
+echo   [2] 运行【命令行交互式配置向导】 (Console CLI 向导)
+echo   [0] 退出
+echo.
+set /p "CHOICE=请选择运行模式 [1/2/0, 默认 1]: "
+
+if "%CHOICE%"=="" set "CHOICE=1"
+if "%CHOICE%"=="1" (
+    where pythonw >nul 2>nul
+    if %errorlevel% equ 0 (
+        start "" pythonw "%~dp0main.py" gui
+    ) else (
+        start "" %PY_CMD% "%~dp0main.py" gui
+    )
+    exit /b 0
+)
+if "%CHOICE%"=="2" (
+    %PY_CMD% "%~dp0main.py" setup
+    echo.
+    pause
+    exit /b 0
+)
+exit /b 0
 
 
 

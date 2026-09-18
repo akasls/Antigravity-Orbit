@@ -103,14 +103,15 @@ class LocalizationManager:
     def install(
         cls,
         tw: bool = False,
+        en: bool = False,
         install_dir: Optional[str] = None,
         no_kill: bool = False,
         stream_output: bool = True
     ) -> Tuple[bool, str]:
-        """安装或更新汉化包"""
+        """安装或更新汉化包与优化配置"""
         node_ok, node_msg = cls.check_node_environment()
         if not node_ok:
-            return False, f"无法安装汉化: {node_msg}。\n请先安装 Node.js (https://nodejs.org) 并配置 PATH。"
+            return False, f"无法执行部署: {node_msg}。\n请先安装 Node.js (https://nodejs.org) 并配置 PATH。"
 
         if not ENGINE_SCRIPT.exists():
             return False, f"未找到核心汉化引擎脚本: {ENGINE_SCRIPT}"
@@ -118,6 +119,8 @@ class LocalizationManager:
         cmd = ["node", str(ENGINE_SCRIPT)]
         if tw:
             cmd.append("--tw")
+        elif en:
+            cmd.append("--en")
         if install_dir:
             cmd.extend(["--install-dir", install_dir])
         if no_kill:
