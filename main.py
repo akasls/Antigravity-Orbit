@@ -462,6 +462,17 @@ def cmd_localize(args):
         print("已取消操作。")
 
 def main():
+    # 极速秒开旁路：双击启动独立客户端或直接带 gui 参数时，直接唤起图形界面，零 argparse 消耗
+    if len(sys.argv) <= 1:
+        if getattr(sys, "frozen", False):
+            from core.gui import launch_gui
+            launch_gui()
+            return
+    elif len(sys.argv) == 2 and sys.argv[1] == "gui":
+        from core.gui import launch_gui
+        launch_gui()
+        return
+
     parser = argparse.ArgumentParser(description="Antigravity Task Completion Notifier & Localization CLI")
     subparsers = parser.add_subparsers(dest="subcommand", help="子命令")
 

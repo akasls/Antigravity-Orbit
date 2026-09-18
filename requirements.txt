@@ -1,5 +1,4 @@
 # Antigravity Orbit Dependencies
-# 核心功能基于 Python 标准库实现，零第三方运行时依赖
-# 本地与 CI 打包时使用 PyInstaller 与 Pillow (图标处理):
+# 核心功能与可视化管理界面基于 Python 标准库与系统原生 Tkinter 实现，零第三方运行时依赖
 pyinstaller>=6.0.0
-pillow>=10.0.0
+

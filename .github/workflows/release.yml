@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller pillow
+          pip install pyinstaller
 
       - name: Build Windows Executable
         run: |
@@ -35,7 +35,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Antigravity-Orbit-Windows-x64
-          path: dist/Antigravity-Orbit-Windows-x64.zip
+          path: |
+            dist/Antigravity-Orbit-Windows-x64.zip
+            dist/Antigravity-Orbit-Portable-x64.exe
           if-no-files-found: error
 
   build-macos:
@@ -53,7 +55,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          pip install pyinstaller pillow
+          pip install pyinstaller
 
       - name: Build macOS Application
         run: |
@@ -83,14 +85,16 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p final-release
-          find release-artifacts -type f -name "*.zip" -exec cp {} final-release/ \;
+          find release-artifacts -type f \( -name "*.zip" -o -name "*.exe" \) -exec cp {} final-release/ \;
           echo "Release files prepared:"
           ls -lh final-release/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: final-release/*.zip
+          files: |
+            final-release/*.zip
+            final-release/*.exe
           generate_release_notes: true
           draft: false
           prerelease: false

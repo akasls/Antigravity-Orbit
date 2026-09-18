@@ -51,15 +51,16 @@ class ModernCheckmark(tk.Canvas):
     高质感现代复选方块组件 (20x20 像素级几何绘制)：
     - 选中状态：宝蓝底色 (#2563eb) + 清晰居中纯白勾选符 ✔ (\u2714)
     - 未选状态：纯白底色 + 浅灰精致描边 (#cbd5e1)
-    - 支持鼠标悬停高亮与整行联动点击
+    - 严格使用电脑自带原生字体，支持鼠标悬停高亮与整行联动点击
     """
 
-    def __init__(self, parent, variable: tk.BooleanVar, command=None, size=20, bg="#ffffff"):
+    def __init__(self, parent, variable: tk.BooleanVar, command=None, size=20, bg="#ffffff", font_family=""):
         super().__init__(parent, width=size, height=size, bg=bg, bd=0, highlightthickness=0, cursor="hand2")
         self.variable = variable
         self.command = command
         self.size = size
         self.bg_color = bg
+        self.font_family = font_family or ("Microsoft YaHei UI" if sys.platform.startswith("win") else "TkDefaultFont")
 
         self.bind("<Button-1>", lambda e: self.toggle())
         self.bind("<Enter>", lambda e: self._on_hover(True))
@@ -89,9 +90,9 @@ class ModernCheckmark(tk.Canvas):
         # 绘制微圆角方块
         self.create_rectangle(1, 1, s - 2, s - 2, fill=box_bg, outline=box_border, width=1.5, tags="box")
 
-        # 绘制居中高对比白勾 ✔
+        # 绘制居中高对比白勾 ✔ (使用电脑自带原生字体)
         if is_checked:
-            self.create_text(s / 2, s / 2, text="✔", fill="#ffffff", font=("Segoe UI", 10, "bold"))
+            self.create_text(s / 2, s / 2, text="✔", fill="#ffffff", font=(self.font_family, 10, "bold"))
 
 
 class ModernOrbitApp(tk.Tk):
@@ -103,8 +104,12 @@ class ModernOrbitApp(tk.Tk):
         self.geometry("940x760")
         self.minsize(860, 640)
 
+        # 1. 严格使用电脑自带原生系统字体 (无需外挂任何自定义字体)
+        self._init_system_fonts()
         self._center_window(940, 760)
         self._init_theme_colors()
+
+        # 2. 原生秒载图标 (零 PIL 依赖，启动提速)
         self._setup_app_icons()
 
         # 读取用户配置 (多级路径智能嗅探)
@@ -117,6 +122,41 @@ class ModernOrbitApp(tk.Tk):
 
         # 异步非阻塞环境刷新 (零卡顿秒开)
         self.after(20, self._refresh_system_status_async)
+
+    def _init_system_fonts(self):
+        """严格使用电脑自带原生系统字体 (Windows: 微软雅黑 / macOS: 苹方 / 系统默认)，不使用自定义字体"""
+        sys_font_family = ""
+        try:
+            import tkinter.font as tkfont
+            sys_font_family = tkfont.nametofont("TkDefaultFont").cget("family")
+        except Exception:
+            pass
+
+        if sys.platform.startswith("win"):
+            # Windows 电脑自带系统原生界面字体: 微软雅黑 (Microsoft YaHei UI)
+            self.FONT_FAMILY = sys_font_family if sys_font_family in ["Microsoft YaHei UI", "Microsoft YaHei"] else "Microsoft YaHei UI"
+            self.FONT_MONO = "Consolas"
+        elif sys.platform.startswith("darwin"):
+            # macOS 电脑自带系统字体: 苹方 / 系统默认
+            self.FONT_FAMILY = sys_font_family or "PingFang SC"
+            self.FONT_MONO = "Menlo"
+        else:
+            self.FONT_FAMILY = sys_font_family or "TkDefaultFont"
+            self.FONT_MONO = "TkFixedFont"
+
+        self.font_main = (self.FONT_FAMILY, 9)
+        self.font_main_bold = (self.FONT_FAMILY, 9, "bold")
+        self.font_sm = (self.FONT_FAMILY, 8)
+        self.font_sm_bold = (self.FONT_FAMILY, 8, "bold")
+        self.font_title = (self.FONT_FAMILY, 10, "bold")
+        self.font_mono = (self.FONT_MONO, 9)
+        self.font_mono_sm = (self.FONT_MONO, 8)
+
+        # 注入 Tk 全局字体库规则
+        try:
+            self.option_add("*Font", self.font_main)
+        except Exception:
+            pass
 
     def _center_window(self, width, height):
         try:
@@ -153,33 +193,40 @@ class ModernOrbitApp(tk.Tk):
         self.configure(bg=self.C_BG)
 
     def _setup_app_icons(self):
-        """设置窗口与任务栏图标"""
+        """设置窗口与任务栏图标 (纯原生 Tkinter PhotoImage 载入，0 外部依赖，秒开启动)"""
         icon_ico = RESOURCE_DIR / "resources" / "icon.ico"
-        icon_png = RESOURCE_DIR / "resources" / "icon.png"
+        icon_32 = RESOURCE_DIR / "resources" / "icon_32.png"
+        gh_16 = RESOURCE_DIR / "resources" / "github_16.png"
 
-        if icon_ico.exists():
+        if icon_ico.exists() and sys.platform.startswith("win"):
             try:
                 self.iconbitmap(str(icon_ico))
             except Exception:
                 pass
 
         self.app_icon_img = None
-        if icon_png.exists():
+        if icon_32.exists():
             try:
-                from PIL import Image, ImageTk
-                im = Image.open(icon_png).resize((32, 32), Image.Resampling.LANCZOS)
-                self.app_icon_img = ImageTk.PhotoImage(im)
+                self.app_icon_img = tk.PhotoImage(file=str(icon_32))
+                self.iconphoto(True, self.app_icon_img)
+            except Exception:
+                pass
+        elif (RESOURCE_DIR / "resources" / "icon.png").exists():
+            try:
+                self.app_icon_img = tk.PhotoImage(file=str(RESOURCE_DIR / "resources" / "icon.png")).subsample(16, 16)
                 self.iconphoto(True, self.app_icon_img)
             except Exception:
                 pass
 
         self.github_icon_img = None
-        gh_png = RESOURCE_DIR / "resources" / "github.png"
-        if gh_png.exists():
+        if gh_16.exists():
             try:
-                from PIL import Image, ImageTk
-                im_gh = Image.open(gh_png).resize((16, 16), Image.Resampling.LANCZOS)
-                self.github_icon_img = ImageTk.PhotoImage(im_gh)
+                self.github_icon_img = tk.PhotoImage(file=str(gh_16))
+            except Exception:
+                pass
+        elif (RESOURCE_DIR / "resources" / "github.png").exists():
+            try:
+                self.github_icon_img = tk.PhotoImage(file=str(RESOURCE_DIR / "resources" / "github.png")).subsample(2, 2)
             except Exception:
                 pass
 
@@ -238,7 +285,7 @@ class ModernOrbitApp(tk.Tk):
             "Clean.TRadiobutton",
             background=self.C_CARD,
             foreground=self.C_TEXT_MAIN,
-            font=("Segoe UI", 9),
+            font=self.font_main,
             padding=3
         )
         self.style.map(
@@ -254,6 +301,7 @@ class ModernOrbitApp(tk.Tk):
             foreground=self.C_TEXT_MAIN,
             selectbackground=self.C_ACCENT,
             selectforeground="#ffffff",
+            font=self.font_main,
             padding=3
         )
 
@@ -318,10 +366,10 @@ class ModernOrbitApp(tk.Tk):
 
         left_c = tk.Frame(r_client, bg=self.C_CARD)
         left_c.pack(side="left", fill="x", expand=True)
-        tk.Label(left_c, text="Antigravity 客户端:", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
-        tk.Label(left_c, textvariable=self.var_stat_install, font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
+        tk.Label(left_c, text="Antigravity 客户端:", font=self.font_main_bold, fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
+        tk.Label(left_c, textvariable=self.var_stat_install, font=self.font_sm, fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
 
-        self.pill_install = tk.Label(r_client, text="检测中...", font=("Segoe UI", 8, "bold"), fg="#1e293b", bg="#f1f5f9", padx=10, pady=4)
+        self.pill_install = tk.Label(r_client, text="检测中...", font=self.font_sm_bold, fg="#1e293b", bg="#f1f5f9", padx=10, pady=4)
         self.pill_install.pack(side="right")
 
         self._create_row_separator(c)
@@ -335,14 +383,14 @@ class ModernOrbitApp(tk.Tk):
 
         d_title_row = tk.Frame(left_d, bg=self.C_CARD)
         d_title_row.pack(anchor="w")
-        tk.Label(d_title_row, text="任务完成守护监听:", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(side="left")
+        tk.Label(d_title_row, text="任务完成守护监听:", font=self.font_main_bold, fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(side="left")
 
         # 端口输入框
-        tk.Label(d_title_row, text="端口", font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left", padx=(12, 4))
-        e_port = tk.Entry(d_title_row, textvariable=self.var_daemon_port, width=6, bg="#f9fafb", fg=self.C_TEXT_MAIN, relief="solid", bd=1, font=("Consolas", 9))
+        tk.Label(d_title_row, text="端口", font=self.font_sm, fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left", padx=(12, 4))
+        e_port = tk.Entry(d_title_row, textvariable=self.var_daemon_port, width=6, bg="#f9fafb", fg=self.C_TEXT_MAIN, relief="solid", bd=1, font=self.font_mono)
         e_port.pack(side="left")
 
-        tk.Label(left_d, textvariable=self.var_stat_daemon, font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
+        tk.Label(left_d, textvariable=self.var_stat_daemon, font=self.font_sm, fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
 
         # 右侧操作按钮组
         right_d = tk.Frame(r_daemon, bg=self.C_CARD)
@@ -358,8 +406,8 @@ class ModernOrbitApp(tk.Tk):
 
         left_a = tk.Frame(r_auto, bg=self.C_CARD)
         left_a.pack(side="left", fill="x", expand=True)
-        tk.Label(left_a, text="系统开机自动启动:", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
-        tk.Label(left_a, textvariable=self.var_stat_autostart, font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
+        tk.Label(left_a, text="系统开机自动启动:", font=self.font_main_bold, fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
+        tk.Label(left_a, textvariable=self.var_stat_autostart, font=self.font_sm, fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
 
         # 右侧操作按钮组 (间距充足，绝不截断)
         right_a = tk.Frame(r_auto, bg=self.C_CARD)
@@ -377,7 +425,7 @@ class ModernOrbitApp(tk.Tk):
         r_lang = tk.Frame(c, bg=self.C_CARD, padx=20, pady=12)
         r_lang.pack(fill="x")
 
-        tk.Label(r_lang, text="客户端界面语言:", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w", pady=(0, 8))
+        tk.Label(r_lang, text="客户端界面语言:", font=self.font_main_bold, fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w", pady=(0, 8))
 
         rb_box = tk.Frame(r_lang, bg=self.C_CARD)
         rb_box.pack(fill="x")
@@ -430,23 +478,23 @@ class ModernOrbitApp(tk.Tk):
         left = tk.Frame(r_quota, bg=self.C_CARD)
         left.pack(side="left", fill="both", expand=True)
 
-        tk.Label(left, text="顶栏模型额度实时胶囊", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
-        tk.Label(left, text="在 Antigravity 标题栏右上角常驻显示 Gemini 与 Claude/GPT 限额比例与健康指示灯", font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
+        tk.Label(left, text="顶栏模型额度实时胶囊", font=self.font_main_bold, fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
+        tk.Label(left, text="在 Antigravity 标题栏右上角常驻显示 Gemini 与 Claude/GPT 限额比例与健康指示灯", font=self.font_sm, fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
 
         right = tk.Frame(r_quota, bg=self.C_CARD)
         right.pack(side="right", anchor="center")
 
-        tk.Label(right, text="轮询频率:", font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left", padx=(0, 4))
+        tk.Label(right, text="轮询频率:", font=self.font_sm, fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left", padx=(0, 4))
         cb_interval = ttk.Combobox(right, textvariable=self.var_quota_interval, values=[30, 60, 120, 300], width=5, state="readonly", style="Clean.TCombobox")
         cb_interval.pack(side="left", padx=(0, 10))
-        tk.Label(right, text="秒", font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left", padx=(0, 16))
+        tk.Label(right, text="秒", font=self.font_sm, fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left", padx=(0, 16))
 
         # Checkmark
         f_chk = tk.Frame(right, bg=self.C_CARD, cursor="hand2")
         f_chk.pack(side="left")
-        chk = ModernCheckmark(f_chk, variable=self.var_show_quota, bg=self.C_CARD)
+        chk = ModernCheckmark(f_chk, variable=self.var_show_quota, bg=self.C_CARD, font_family=self.FONT_FAMILY)
         chk.pack(side="left", padx=(0, 6))
-        lbl_txt = tk.Label(f_chk, text="启用显示", font=("Segoe UI", 9), fg=self.C_TEXT_MAIN, bg=self.C_CARD, cursor="hand2")
+        lbl_txt = tk.Label(f_chk, text="启用显示", font=self.font_main, fg=self.C_TEXT_MAIN, bg=self.C_CARD, cursor="hand2")
         lbl_txt.pack(side="left")
         lbl_txt.bind("<Button-1>", lambda e: chk.toggle())
         f_chk.bind("<Button-1>", lambda e: chk.toggle())
@@ -498,9 +546,9 @@ class ModernOrbitApp(tk.Tk):
 
         tg_check_box = tk.Frame(head_tg, bg=self.C_CARD, cursor="hand2")
         tg_check_box.pack(side="left")
-        chk_tg = ModernCheckmark(tg_check_box, variable=self.var_tg_enabled, bg=self.C_CARD)
+        chk_tg = ModernCheckmark(tg_check_box, variable=self.var_tg_enabled, bg=self.C_CARD, font_family=self.FONT_FAMILY)
         chk_tg.pack(side="left", padx=(0, 6))
-        lbl_tg = tk.Label(tg_check_box, text="启用 Telegram Bot 消息推送", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD, cursor="hand2")
+        lbl_tg = tk.Label(tg_check_box, text="启用 Telegram Bot 消息推送", font=self.font_main_bold, fg=self.C_TEXT_MAIN, bg=self.C_CARD, cursor="hand2")
         lbl_tg.pack(side="left")
         lbl_tg.bind("<Button-1>", lambda e: chk_tg.toggle())
         tg_check_box.bind("<Button-1>", lambda e: chk_tg.toggle())
@@ -522,9 +570,9 @@ class ModernOrbitApp(tk.Tk):
 
         fs_check_box = tk.Frame(head_fs, bg=self.C_CARD, cursor="hand2")
         fs_check_box.pack(side="left")
-        chk_fs = ModernCheckmark(fs_check_box, variable=self.var_fs_enabled, bg=self.C_CARD)
+        chk_fs = ModernCheckmark(fs_check_box, variable=self.var_fs_enabled, bg=self.C_CARD, font_family=self.FONT_FAMILY)
         chk_fs.pack(side="left", padx=(0, 6))
-        lbl_fs = tk.Label(fs_check_box, text="启用飞书自定义机器人 (Feishu)", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD, cursor="hand2")
+        lbl_fs = tk.Label(fs_check_box, text="启用飞书自定义机器人 (Feishu)", font=self.font_main_bold, fg=self.C_TEXT_MAIN, bg=self.C_CARD, cursor="hand2")
         lbl_fs.pack(side="left")
         lbl_fs.bind("<Button-1>", lambda e: chk_fs.toggle())
         fs_check_box.bind("<Button-1>", lambda e: chk_fs.toggle())
@@ -544,9 +592,9 @@ class ModernOrbitApp(tk.Tk):
 
         wc_check_box = tk.Frame(head_wc, bg=self.C_CARD, cursor="hand2")
         wc_check_box.pack(side="left")
-        chk_wc = ModernCheckmark(wc_check_box, variable=self.var_wc_enabled, bg=self.C_CARD)
+        chk_wc = ModernCheckmark(wc_check_box, variable=self.var_wc_enabled, bg=self.C_CARD, font_family=self.FONT_FAMILY)
         chk_wc.pack(side="left", padx=(0, 6))
-        lbl_wc = tk.Label(wc_check_box, text="启用企业微信群机器人 (WeCom)", font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD, cursor="hand2")
+        lbl_wc = tk.Label(wc_check_box, text="启用企业微信群机器人 (WeCom)", font=self.font_main_bold, fg=self.C_TEXT_MAIN, bg=self.C_CARD, cursor="hand2")
         lbl_wc.pack(side="left")
         lbl_wc.bind("<Button-1>", lambda e: chk_wc.toggle())
         wc_check_box.bind("<Button-1>", lambda e: chk_wc.toggle())
@@ -571,7 +619,7 @@ class ModernOrbitApp(tk.Tk):
             bg="#f9fafb",
             fg="#1e293b",
             insertbackground="#0f172a",
-            font=("Consolas", 8),
+            font=self.font_mono_sm,
             relief="solid",
             bd=1,
             wrap="word",
@@ -579,7 +627,9 @@ class ModernOrbitApp(tk.Tk):
             pady=6
         )
         self.txt_log.pack(fill="both", expand=True, padx=20, pady=(0, 14))
-        self._refresh_log_preview()
+        self.txt_log.insert(tk.END, "正在载入运行日志...")
+        # 异步非阻塞载入日志，确保主窗口零卡顿瞬时弹出
+        self.after(50, self._refresh_log_preview)
 
     # -------------------------------------------------------------
     # 底部全局操作栏 (严格等高对齐设计，消除高低不一的问题)
@@ -600,18 +650,18 @@ class ModernOrbitApp(tk.Tk):
         self.lbl_github = tk.Label(
             f_left,
             text="GitHub: akasls/Antigravity-Orbit",
-            font=("Segoe UI", 9),
+            font=self.font_main,
             fg="#2563eb",
             bg="#ffffff",
             cursor="hand2"
         )
         self.lbl_github.pack(side="left")
         self.lbl_github.bind("<Button-1>", lambda e: self._open_github())
-        self.lbl_github.bind("<Enter>", lambda e: self.lbl_github.configure(font=("Segoe UI", 9, "underline")))
-        self.lbl_github.bind("<Leave>", lambda e: self.lbl_github.configure(font=("Segoe UI", 9)))
+        self.lbl_github.bind("<Enter>", lambda e: self.lbl_github.configure(font=(self.FONT_FAMILY, 9, "underline")))
+        self.lbl_github.bind("<Leave>", lambda e: self.lbl_github.configure(font=self.font_main))
 
         # 中间：操作状态提示文案
-        self.lbl_msg = tk.Label(self.footer_frame, textvariable=self.var_status_msg, font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg="#ffffff")
+        self.lbl_msg = tk.Label(self.footer_frame, textvariable=self.var_status_msg, font=self.font_sm, fg=self.C_TEXT_MUTED, bg="#ffffff")
         self.lbl_msg.pack(side="left", padx=16, anchor="center")
 
         # 右侧：核心动作按钮组 (高度、字体、内边距严格等高统一)
@@ -647,7 +697,7 @@ class ModernOrbitApp(tk.Tk):
             - "secondary": 纯白底色 + 浅灰细边 + 深灰字
             - "danger": 纯白底色 + 浅红细边 + 红字
         """
-        font_spec = ("Segoe UI", 9)
+        font_spec = self.font_main
         pad_x = 16
         pad_y = 6
 
@@ -693,7 +743,7 @@ class ModernOrbitApp(tk.Tk):
             parent,
             text=text,
             command=command,
-            font=("Segoe UI", 8),
+            font=self.font_sm,
             bg=self.C_BTN_SEC,
             fg=self.C_TEXT_MAIN,
             activebackground=self.C_BTN_SEC_HOVER,
@@ -714,9 +764,9 @@ class ModernOrbitApp(tk.Tk):
         h = tk.Frame(c, bg=self.C_CARD, padx=20, pady=12)
         h.pack(fill="x")
 
-        tk.Label(h, text=title, font=("Segoe UI", 10, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
+        tk.Label(h, text=title, font=self.font_title, fg=self.C_TEXT_MAIN, bg=self.C_CARD).pack(anchor="w")
         if subtitle:
-            tk.Label(h, text=subtitle, font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
+            tk.Label(h, text=subtitle, font=self.font_sm, fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(anchor="w", pady=(2, 0))
 
         sep = tk.Frame(c, bg=self.C_BORDER, height=1)
         sep.pack(fill="x")
@@ -734,19 +784,19 @@ class ModernOrbitApp(tk.Tk):
         left = tk.Frame(row, bg=self.C_CARD, cursor="hand2")
         left.pack(side="left", fill="both", expand=True)
 
-        lbl_t = tk.Label(left, text=title, font=("Segoe UI", 9, "bold"), fg=self.C_TEXT_MAIN, bg=self.C_CARD, cursor="hand2")
+        lbl_t = tk.Label(left, text=title, font=self.font_main_bold, fg=self.C_TEXT_MAIN, bg=self.C_CARD, cursor="hand2")
         lbl_t.pack(anchor="w")
         if desc:
-            lbl_d = tk.Label(left, text=desc, font=("Segoe UI", 8), fg=self.C_TEXT_MUTED, bg=self.C_CARD, cursor="hand2")
+            lbl_d = tk.Label(left, text=desc, font=self.font_sm, fg=self.C_TEXT_MUTED, bg=self.C_CARD, cursor="hand2")
             lbl_d.pack(anchor="w", pady=(2, 0))
 
         right = tk.Frame(row, bg=self.C_CARD, cursor="hand2")
         right.pack(side="right", anchor="center")
 
-        chk = ModernCheckmark(right, variable=variable, bg=self.C_CARD)
+        chk = ModernCheckmark(right, variable=variable, bg=self.C_CARD, font_family=self.FONT_FAMILY)
         chk.pack(side="left", padx=(0, 6))
 
-        lbl_state = tk.Label(right, text="已启用", font=("Segoe UI", 9), fg=self.C_TEXT_MAIN, bg=self.C_CARD, cursor="hand2")
+        lbl_state = tk.Label(right, text="已启用", font=self.font_main, fg=self.C_TEXT_MAIN, bg=self.C_CARD, cursor="hand2")
         lbl_state.pack(side="left")
 
         # 绑定整行点击切换
@@ -762,7 +812,7 @@ class ModernOrbitApp(tk.Tk):
         row = tk.Frame(parent, bg=self.C_CARD, pady=4)
         row.pack(fill="x")
 
-        tk.Label(row, text=label_text, width=13, anchor="w", font=("Segoe UI", 8, "bold"), fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left")
+        tk.Label(row, text=label_text, width=13, anchor="w", font=self.font_sm_bold, fg=self.C_TEXT_MUTED, bg=self.C_CARD).pack(side="left")
         e = tk.Entry(
             row,
             textvariable=var,
@@ -771,11 +821,11 @@ class ModernOrbitApp(tk.Tk):
             insertbackground="#0f172a",
             relief="solid",
             bd=1,
-            font=("Consolas", 9)
+            font=self.font_mono
         )
         e.pack(side="left", fill="x", expand=True)
         if hint:
-            tk.Label(row, text=hint, font=("Segoe UI", 8), fg=self.C_TEXT_DIM, bg=self.C_CARD).pack(side="left", padx=8)
+            tk.Label(row, text=hint, font=self.font_sm, fg=self.C_TEXT_DIM, bg=self.C_CARD).pack(side="left", padx=8)
 
     # -------------------------------------------------------------
     # 极速异步状态更新

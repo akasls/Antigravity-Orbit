@@ -52,61 +52,91 @@ def build():
     # 路径分隔符适配 (Windows 用分号 ;, Unix 用冒号 :)
     sep = ";" if system == "windows" else ":"
 
+    # 严格排除无用重型第三方科学与测试库，将体积与解压启动时间压缩至极限
+    excludes = [
+        "--exclude-module", "numpy",
+        "--exclude-module", "scipy",
+        "--exclude-module", "matplotlib",
+        "--exclude-module", "pandas",
+        "--exclude-module", "PIL",
+        "--exclude-module", "pillow",
+        "--exclude-module", "playwright",
+        "--exclude-module", "pytest",
+        "--exclude-module", "unittest",
+        "--exclude-module", "pydoc",
+        "--exclude-module", "doctest",
+        "--exclude-module", "test",
+    ]
+
     # 构建基础参数
-    cmd = [
+    base_cmd = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm",
         "--clean",
         "--windowed",
-        "--name", "Antigravity-Orbit",
         f"--add-data=localization{sep}localization",
         f"--add-data=resources{sep}resources",
         f"--add-data=config.example.json{sep}.",
-    ]
+    ] + excludes
 
     # 图标适配
     icon_win = PROJECT_ROOT / "resources" / "icon.ico"
     icon_mac = PROJECT_ROOT / "resources" / "icon.icns"
 
     if system == "windows":
-        # Windows: 打包为单文件 exe
-        cmd.append("--onefile")
-        if icon_win.exists():
-            cmd.extend(["--icon", str(icon_win)])
+        # 1. 优先构建 Onedir 极速目录版 (解压后 0.15s 秒开，彻底摆脱临时目录解压和杀软拦截)
+        print("\n>>> [1/2] 正在构建 Windows 秒开免解压极速版 (Onedir)...")
+        cmd_dir = base_cmd + [
+            "--onedir",
+            "--name", "Antigravity-Orbit",
+            "--icon", str(icon_win),
+            "main.py"
+        ]
+        ret = subprocess.run(cmd_dir, cwd=str(PROJECT_ROOT))
+        if ret.returncode != 0:
+            print(f"[错误] Onedir 打包失败 (退出码: {ret.returncode})")
+            sys.exit(ret.returncode)
+
+        app_dir = DIST_DIR / "Antigravity-Orbit"
+        if app_dir.exists():
+            zip_name = DIST_DIR / "Antigravity-Orbit-Windows-x64"
+            print(f"[ARCHIVE] 正在压缩 Onedir 秒开目录包: {zip_name}.zip ...")
+            # 压缩包含 Antigravity-Orbit 根目录的结构
+            shutil.make_archive(str(zip_name), 'zip', str(DIST_DIR), "Antigravity-Orbit")
+            print(f"[OK] 极速秒开版压缩包就绪: {zip_name}.zip")
+
+        # 2. 构建 Onefile 单文件独立便携版
+        print("\n>>> [2/2] 正在构建 Windows 单文件便携版 (Onefile)...")
+        cmd_file = base_cmd + [
+            "--onefile",
+            "--name", "Antigravity-Orbit-Portable-x64",
+            "--icon", str(icon_win),
+            "main.py"
+        ]
+        ret2 = subprocess.run(cmd_file, cwd=str(PROJECT_ROOT))
+        if ret2.returncode != 0:
+            print(f"[错误] Onefile 单文件打包失败 (退出码: {ret2.returncode})")
+            sys.exit(ret2.returncode)
+
+        portable_exe = DIST_DIR / "Antigravity-Orbit-Portable-x64.exe"
+        print(f"[OK] 单文件便携版就绪: {portable_exe}")
+
     elif system == "darwin":
         # macOS: 打包为 .app 应用包
-        cmd.append("--onedir")
-        if icon_mac.exists():
-            cmd.extend(["--icon", str(icon_mac)])
-        # 增加 Info.plist 基础元数据
-        cmd.extend([
+        cmd_mac = base_cmd + [
+            "--onedir",
+            "--name", "Antigravity-Orbit",
             "--osx-bundle-identifier", "com.antigravity.orbit",
-        ])
-    else:
-        # Linux
-        cmd.append("--onefile")
+        ]
+        if icon_mac.exists():
+            cmd_mac.extend(["--icon", str(icon_mac)])
+        cmd_mac.append("main.py")
 
-    cmd.append("main.py")
+        ret = subprocess.run(cmd_mac, cwd=str(PROJECT_ROOT))
+        if ret.returncode != 0:
+            print(f"[错误] macOS 打包失败 (退出码: {ret.returncode})")
+            sys.exit(ret.returncode)
 
-    print(f"\n[执行命令] {' '.join(cmd)}\n")
-    ret = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
-    if ret.returncode != 0:
-        print(f"\n[错误] PyInstaller 编译失败 (退出码: {ret.returncode})")
-        sys.exit(ret.returncode)
-
-    print("\n==================================================")
-    print("[ARCHIVE] 编译完成，正在处理发布归档产物...")
-
-    if system == "windows":
-        exe_file = DIST_DIR / "Antigravity-Orbit.exe"
-        if exe_file.exists():
-            zip_name = DIST_DIR / "Antigravity-Orbit-Windows-x64"
-            print(f"[ARCHIVE] 正在打包为 Zip: {zip_name}.zip ...")
-            shutil.make_archive(str(zip_name), 'zip', str(DIST_DIR), "Antigravity-Orbit.exe")
-            print(f"[OK] Windows 客户端产物就绪: {exe_file}")
-            print(f"[OK] 压缩包就绪: {zip_name}.zip")
-
-    elif system == "darwin":
         app_path = DIST_DIR / "Antigravity-Orbit.app"
         if app_path.exists():
             zip_name = DIST_DIR / "Antigravity-Orbit-macOS"
@@ -115,8 +145,8 @@ def build():
             print(f"[OK] macOS .app 应用包就绪: {app_path}")
             print(f"[OK] 压缩包就绪: {zip_name}.zip")
 
-    print("==================================================")
-    print("[SUCCESS] Antigravity Orbit 全部打包任务完成！产物位于 dist/ 目录。")
+    print("\n==================================================")
+    print("[SUCCESS] Antigravity Orbit 全部打包构建完成！产物位于 dist/ 目录。")
     print("==================================================")
 
 

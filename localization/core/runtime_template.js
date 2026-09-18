@@ -516,8 +516,7 @@
                     height: 24px;
                     z-index: 9999;
                     -webkit-app-region: no-drag !important;
-                    app-region: no-drag !important;
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                    font-family: system-ui, -apple-system, "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
                     position: relative;
                     user-select: none;
                 }
