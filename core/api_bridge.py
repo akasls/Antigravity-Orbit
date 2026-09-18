@@ -275,11 +275,13 @@ class OrbitApi:
         """执行安全深度瘦身"""
         try:
             freed, details = StorageManager.clean_storage(clean_cache=True, clean_temp_logs=True, vacuum_db=True)
-            freed_mb = freed / (1024 * 1024)
-            size_str = f"{freed / (1024 * 1024 * 1024):.2f} GB" if freed_mb >= 1024 else f"{freed_mb:.1f} MB"
+            from core.storage import format_bytes
+            size_str = format_bytes(freed)
+            latest = StorageManager.get_storage_breakdown()
             return {
                 "success": True,
-                "message": f"深度瘦身完成！共成功释放磁盘空间 {size_str}。"
+                "message": f"深度瘦身完成！共成功释放磁盘空间 {size_str}。",
+                "data": latest
             }
         except Exception as e:
             return {"success": False, "message": f"瘦身异常: {e}"}
@@ -420,3 +422,42 @@ class OrbitApi:
             return {"success": ok, "message": msg, "data": pool}
         except Exception as e:
             return {"success": False, "message": f"删除账号失败: {e}"}
+
+    def start_oauth_login(self, open_browser: bool = True) -> dict:
+        """启动 Google OAuth 网页授权流程并尝试唤起浏览器"""
+        try:
+            res = self._account_mgr.start_oauth_login(port=51121)
+            auth_url = res.get("auth_url")
+            if open_browser and auth_url:
+                try:
+                    webbrowser.open(auth_url)
+                except Exception:
+                    pass
+            return res
+        except Exception as e:
+            return {"success": False, "message": f"启动授权失败: {e}"}
+
+    def check_oauth_status(self) -> dict:
+        """轮询检查 OAuth 回调状态"""
+        try:
+            return self._account_mgr.check_oauth_status()
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def submit_oauth_code(self, code_or_url: str, custom_name: str = "") -> dict:
+        """手动提交网页授权重定向链接或授权码"""
+        try:
+            ok, info, msg = self._account_mgr.submit_oauth_code(code_or_url, custom_name=custom_name or None)
+            pool = self._account_mgr.get_accounts_summary()
+            return {"success": ok, "message": msg, "data": pool}
+        except Exception as e:
+            return {"success": False, "message": f"提交授权失败: {e}"}
+
+    def cancel_oauth_login(self) -> dict:
+        """取消 OAuth 授权监听"""
+        try:
+            self._account_mgr.cancel_oauth_login()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+

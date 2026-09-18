@@ -12,14 +12,17 @@ import json
 import time
 import uuid
 import base64
+import re
 import ctypes
 import threading
 import urllib.request
 import urllib.parse
 import urllib.error
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
+
 
 # Windows API Types
 if sys.platform == "win32":
@@ -65,10 +68,155 @@ GOOGLE_CLIENT_ID = bytes([b ^ _OAUTH_KEY for b in _ENC_CID]).decode("utf-8")
 GOOGLE_CLIENT_SECRET = bytes([b ^ _OAUTH_KEY for b in _ENC_CSEC]).decode("utf-8")
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+GOOGLE_OAUTH_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_OAUTH_SCOPES = [
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/cloud-platform"
+]
 
 # Cloud Code Quota API 端点
 CLOUD_CODE_PROD_URL = "https://cloudcode-pa.googleapis.com"
 USER_AGENT = "antigravity/1.20.5 windows/amd64"
+
+OAUTH_SUCCESS_HTML = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Antigravity Orbit - 授权成功</title>
+  <style>
+    body { background: #0c0e14; color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .card { background: #151823; border: 1px solid #232838; border-radius: 14px; padding: 36px 44px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.6); max-width: 440px; }
+    .icon { width: 60px; height: 60px; background: rgba(16, 185, 129, 0.15); border: 2px solid rgba(16, 185, 129, 0.4); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; color: #10b981; font-size: 30px; }
+    h1 { font-size: 20px; margin: 0 0 10px; font-weight: 600; color: #f8fafc; }
+    p { font-size: 14px; color: #94a3b8; line-height: 1.6; margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✓</div>
+    <h1>Google 账号授权成功</h1>
+    <p>凭据已安全接收并导入 Antigravity Orbit。<br>您可以安全关闭此浏览器标签页，返回客户端继续使用。</p>
+  </div>
+</body>
+</html>"""
+
+OAUTH_FAIL_HTML = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Antigravity Orbit - 授权失败</title>
+  <style>
+    body { background: #0c0e14; color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .card { background: #151823; border: 1px solid #ef444433; border-radius: 14px; padding: 36px 44px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.6); max-width: 440px; }
+    .icon { width: 60px; height: 60px; background: rgba(239, 68, 68, 0.15); border: 2px solid rgba(239, 68, 68, 0.4); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; color: #ef4444; font-size: 30px; }
+    h1 { font-size: 20px; margin: 0 0 10px; font-weight: 600; color: #f8fafc; }
+    p { font-size: 14px; color: #94a3b8; line-height: 1.6; margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✕</div>
+    <h1>授权未完成或已被拒绝</h1>
+    <p>未能获取有效的 Google 授权码，请返回客户端重新尝试。</p>
+  </div>
+</body>
+</html>"""
+
+
+def extract_oauth_code(code_or_url: str) -> str:
+    """从重定向 URL 或纯字符串中提取 OAuth 授权码"""
+    raw = code_or_url.strip()
+    if not raw:
+        return ""
+    if "code=" in raw:
+        try:
+            parsed = urllib.parse.urlparse(raw)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if "code" in qs and qs["code"]:
+                return qs["code"][0]
+        except Exception:
+            pass
+        match = re.search(r"[?&]code=([^&]+)", raw)
+        if match:
+            return urllib.parse.unquote(match.group(1))
+    return raw
+
+
+class OAuthCallbackServer:
+    """本地轻量级 OAuth 回调监听服务器 (默认端口 51121)"""
+    def __init__(self, port: int = 51121):
+        self.port = port
+        self.server: Optional[HTTPServer] = None
+        self.thread: Optional[threading.Thread] = None
+        self.received_code: Optional[str] = None
+        self.error_msg: Optional[str] = None
+        self.is_running = False
+
+    def start(self) -> bool:
+        if self.is_running:
+            return True
+        self.received_code = None
+        self.error_msg = None
+        outer = self
+
+        class _Handler(BaseHTTPRequestHandler):
+            def log_message(self, format, *args):
+                pass
+
+            def do_GET(self):
+                parsed = urllib.parse.urlparse(self.path)
+                if parsed.path == "/oauth-callback":
+                    qs = urllib.parse.parse_qs(parsed.query)
+                    code = qs.get("code", [""])[0]
+                    error = qs.get("error", [""])[0]
+                    if code:
+                        outer.received_code = code
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/html; charset=utf-8")
+                        self.end_headers()
+                        self.wfile.write(OAUTH_SUCCESS_HTML.encode("utf-8"))
+                    else:
+                        outer.error_msg = error or "未收到授权码"
+                        self.send_response(400)
+                        self.send_header("Content-Type", "text/html; charset=utf-8")
+                        self.end_headers()
+                        self.wfile.write(OAUTH_FAIL_HTML.encode("utf-8"))
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+        try:
+            self.server = HTTPServer(("127.0.0.1", self.port), _Handler)
+            self.server.timeout = 1.0
+            self.is_running = True
+            self.thread = threading.Thread(target=self._serve, daemon=True)
+            self.thread.start()
+            return True
+        except Exception as e:
+            print(f"[OAuthServer] 无法监听端口 {self.port}: {e}", file=sys.stderr)
+            self.is_running = False
+            return False
+
+    def _serve(self):
+        while self.is_running and self.server:
+            if self.received_code or self.error_msg:
+                time.sleep(1.0)
+                break
+            try:
+                self.server.handle_request()
+            except Exception:
+                break
+        self.stop()
+
+    def stop(self):
+        self.is_running = False
+        if self.server:
+            try:
+                self.server.server_close()
+            except Exception:
+                pass
+            self.server = None
 
 
 def _format_time_ago(timestamp: int) -> str:
@@ -84,6 +232,7 @@ def _format_time_ago(timestamp: int) -> str:
     return f"{delta // 86400} 天前"
 
 
+
 class AccountPoolManager:
     def __init__(self, data_dir: Optional[Path] = None):
         if data_dir is None:
@@ -96,6 +245,7 @@ class AccountPoolManager:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.db_path = self.data_dir / "orbit_accounts.json"
         self._pool_cache: Dict[str, Any] = {"accounts": [], "active_account_id": None}
+        self._oauth_server: Optional[OAuthCallbackServer] = None
         self.load_pool()
 
     # ------------------------------------------------------------------
@@ -358,6 +508,10 @@ class AccountPoolManager:
             quota_result["status"] = "LOW"
         else:
             quota_result["status"] = "HEALTHY"
+
+        quota_result["five_hour_pct"] = quota_result["five_hour_percent"]
+        quota_result["weekly_pct"] = quota_result["weekly_percent"]
+        quota_result["tier"] = quota_result["tier_display"]
 
         return quota_result
 
@@ -733,3 +887,188 @@ class AccountPoolManager:
             self.save_pool()
             return True, "已从账号池移除该账号"
         return False, "未找到该账号"
+
+    # ------------------------------------------------------------------
+    # Google OAuth 网页授权与本地回调支持
+    # ------------------------------------------------------------------
+    @staticmethod
+    def generate_oauth_url(port: int = 51121, state: Optional[str] = None) -> str:
+        """生成标准 Google OAuth 授权跳转 URL"""
+        redirect_uri = f"http://localhost:{port}/oauth-callback"
+        params = {
+            "client_id": GOOGLE_CLIENT_ID,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": " ".join(GOOGLE_OAUTH_SCOPES),
+            "access_type": "offline",
+            "prompt": "consent",
+        }
+        if state:
+            params["state"] = state
+        return f"{GOOGLE_OAUTH_AUTH_URL}?{urllib.parse.urlencode(params)}"
+
+    @staticmethod
+    def exchange_code_for_token(code_or_url: str, redirect_uri: str = "http://localhost:51121/oauth-callback") -> Tuple[bool, Optional[Dict[str, Any]], str]:
+        """使用授权码 (code) 向 Google 换取 Token 凭据"""
+        code = extract_oauth_code(code_or_url)
+        if not code:
+            return False, None, "未解析到有效的授权码 (code)"
+
+        data = urllib.parse.urlencode({
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": redirect_uri,
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            GOOGLE_TOKEN_URL,
+            data=data,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "User-Agent": USER_AGENT
+            }
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                return True, result, "成功换取 OAuth Token"
+        except urllib.error.HTTPError as e:
+            err_msg = e.read().decode("utf-8", errors="ignore")
+            try:
+                err_json = json.loads(err_msg)
+                err_desc = err_json.get("error_description") or err_json.get("error") or err_msg
+            except Exception:
+                err_desc = err_msg
+            return False, None, f"换取 Token 失败 (HTTP {e.code}): {err_desc}"
+        except Exception as e:
+            return False, None, f"请求 Token 异常: {e}"
+
+    def add_account_by_token_data(self, token_data: Dict[str, Any], custom_name: Optional[str] = None) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+        """将换取或刷新的 Token 凭据装载为账号池实体"""
+        access_token = token_data.get("access_token", "")
+        refresh_token = token_data.get("refresh_token", "")
+        if not refresh_token:
+            return False, None, "授权返回中未包含 refresh_token，请确保初次授权并已勾选所有权限"
+
+        expiry = datetime.now(timezone.utc).isoformat()
+
+        # 获取用户信息
+        user_ok, user_info, _ = self.fetch_user_info(access_token)
+        email = (user_info.get("email") if user_ok and user_info else "") or "google_user@gmail.com"
+        name = custom_name or (user_info.get("name") if user_ok and user_info else "") or email.split("@")[0]
+        avatar = user_info.get("picture", "") if user_ok and user_info else ""
+
+        # 获取配额
+        quota_data = self.fetch_account_quota_data(access_token)
+
+        # 查重保存
+        account_id = None
+        for acc in self._pool_cache.get("accounts", []):
+            if acc.get("token", {}).get("refresh_token") == refresh_token or (email and acc.get("email") == email):
+                account_id = acc["id"]
+                acc["email"] = email
+                acc["name"] = name
+                acc["avatar"] = avatar
+                acc["token"] = {
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "token_type": "Bearer",
+                    "expiry": expiry,
+                }
+                acc["quota"] = quota_data
+                break
+
+        if not account_id:
+            account_id = str(uuid.uuid4())
+            new_acc = {
+                "id": account_id,
+                "email": email,
+                "name": name,
+                "avatar": avatar,
+                "added_at": int(time.time()),
+                "token": {
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "token_type": "Bearer",
+                    "expiry": expiry,
+                },
+                "quota": quota_data
+            }
+            self._pool_cache.setdefault("accounts", []).append(new_acc)
+
+        if not self._pool_cache.get("active_account_id"):
+            self._pool_cache["active_account_id"] = account_id
+
+        self.save_pool()
+        return True, {"id": account_id, "email": email, "name": name}, f"成功绑定 Google 账号: {email}"
+
+    def start_oauth_login(self, port: int = 51121) -> Dict[str, Any]:
+        """开启本地监听并生成授权 URL"""
+        if self._oauth_server:
+            self._oauth_server.stop()
+
+        self._oauth_server = OAuthCallbackServer(port=port)
+        server_ok = self._oauth_server.start()
+        auth_url = self.generate_oauth_url(port=port)
+
+        return {
+            "success": True,
+            "auth_url": auth_url,
+            "port": port,
+            "server_started": server_ok,
+            "message": "已生成授权链接并就绪本地回调监听" if server_ok else "授权链接已生成（注意：本地回调端口占用，可手动粘贴重定向链接）"
+        }
+
+    def check_oauth_status(self) -> Dict[str, Any]:
+        """轮询检查本地回调是否已收到授权码"""
+        if not self._oauth_server or not self._oauth_server.is_running:
+            return {"status": "idle", "message": "监听服务未运行"}
+
+        if self._oauth_server.error_msg:
+            err = self._oauth_server.error_msg
+            self.cancel_oauth_login()
+            return {"status": "error", "message": f"授权失败: {err}"}
+
+        code = self._oauth_server.received_code
+        if code:
+            self.cancel_oauth_login()
+            # 换取 Token 并添加账号
+            ok, token_data, msg = self.exchange_code_for_token(code)
+            if not ok or not token_data:
+                return {"status": "error", "message": msg}
+
+            add_ok, info, add_msg = self.add_account_by_token_data(token_data)
+            if not add_ok:
+                return {"status": "error", "message": add_msg}
+
+            return {
+                "status": "completed",
+                "success": True,
+                "message": add_msg,
+                "account": info,
+                "data": self.get_accounts_summary()
+            }
+
+        return {"status": "waiting", "message": "正在等待网页端授权回调..."}
+
+    def submit_oauth_code(self, code_or_url: str, custom_name: Optional[str] = None) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+        """手动提交授权码或重定向完整 URL"""
+        self.cancel_oauth_login()
+        ok, token_data, msg = self.exchange_code_for_token(code_or_url)
+        if not ok or not token_data:
+            return False, None, msg
+
+        return self.add_account_by_token_data(token_data, custom_name=custom_name)
+
+    def cancel_oauth_login(self):
+        """关闭授权回调监听"""
+        if self._oauth_server:
+            try:
+                self._oauth_server.stop()
+            except Exception:
+                pass
+            self._oauth_server = None
+

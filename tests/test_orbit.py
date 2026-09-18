@@ -53,7 +53,36 @@ class TestOrbitCore(unittest.TestCase):
         self.assertIsNotNone(QUOTA_ERROR_REGEX.search("HTTP 429 Too Many Requests: Rate limit reached"))
         self.assertIsNotNone(QUOTA_ERROR_REGEX.search("Exceeded your current quota. Please check your plan."))
         self.assertIsNotNone(QUOTA_ERROR_REGEX.search("当前账号 Gemini 模型额度已耗尽"))
+    def test_oauth_flow(self):
+        from core.account_pool import extract_oauth_code
+        # 1. 授权 URL 生成与参数校验
+        url = AccountPoolManager.generate_oauth_url(port=51121)
+        self.assertTrue(url.startswith("https://accounts.google.com/o/oauth2/v2/auth"))
+        self.assertIn("client_id=", url)
+        self.assertIn("redirect_uri=http%3A%2F%2Flocalhost%3A51121%2Foauth-callback", url)
+
+        # 2. 授权码提取
+        raw_code = "4/0AcvDUpBP9y"
+        full_url = f"http://localhost:51121/oauth-callback?code={raw_code}&scope=email"
+        self.assertEqual(extract_oauth_code(full_url), raw_code)
+        self.assertEqual(extract_oauth_code(raw_code), raw_code)
+
+        # 3. 启动与停止本地回调服务
+        api = OrbitApi()
+        res = api.start_oauth_login(open_browser=False)
+        self.assertTrue(res.get("success"))
+        cancel_res = api.cancel_oauth_login()
+        self.assertTrue(cancel_res.get("success"))
+
+    def test_storage_breakdown(self):
+        from core.storage import StorageManager
+        breakdown = StorageManager.get_storage_breakdown()
+        self.assertIn("cleanable_total_bytes", breakdown)
+        self.assertIn("cleanable_total_str", breakdown)
+        self.assertIn("chromium_cache_str", breakdown)
+        self.assertIn("brain_temp_str", breakdown)
 
 
 if __name__ == "__main__":
+
     unittest.main()

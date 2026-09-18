@@ -1,6 +1,7 @@
 /**
- * Antigravity Orbit - 现代桌面微前端核心控制器 (v3.2.0)
- * 纯本地原生 JavaScript 驱动，无多余重量级框架依赖，极致平滑流畅
+ * Antigravity Orbit - 现代桌面核心控制器 (v3.3.0)
+ * 纯原生驱动，支持 Google OAuth 网页授权与本地回调、多账号配额深度看板、
+ * 专属代理接管与全局系统规则一键管理。
  */
 
 let appState = {
@@ -13,6 +14,8 @@ let appState = {
   isSaving: false
 };
 
+let oauthPollTimer = null;
+
 // 监听 pywebview 原生桥接就绪
 window.addEventListener('pywebviewready', () => {
   initApp();
@@ -22,7 +25,7 @@ window.addEventListener('pywebviewready', () => {
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(() => {
     if (!window.pywebview) {
-      console.warn("运行于静态离线演示模式。");
+      console.warn("运行于静态演示模式。");
       setupTabs();
       setupEvents();
       renderMockData();
@@ -37,7 +40,7 @@ async function initApp() {
 }
 
 /**
- * 侧边栏 5 大工作区平滑切换
+ * 侧边栏 5 大工作区分组切换
  */
 function setupTabs() {
   const navItems = document.querySelectorAll('.nav-item');
@@ -63,7 +66,7 @@ function switchToTab(tabName) {
     }
   });
 
-  // 2. 严格控制页面显隐，消除错乱 (核心)
+  // 2. 控制页面显隐
   const panes = document.querySelectorAll('.tab-pane');
   panes.forEach(pane => {
     if (pane.id === `tab-${tabName}`) {
@@ -73,7 +76,7 @@ function switchToTab(tabName) {
     }
   });
 
-  // 3. 懒加载按需触发
+  // 3. 懒加载系统存储占用分析
   if (tabName === 'system') {
     loadStorageAnalysis();
   }
@@ -114,21 +117,21 @@ function renderAll() {
 }
 
 /**
- * 渲染账号矩阵与配额池
+ * 渲染账号池与配额详情
  */
 function renderAccountPool() {
   const pool = appState.account_pool || { accounts: [], total: 0, healthy: 0, low_or_exhausted: 0 };
   const accounts = pool.accounts || [];
 
-  // 1. 更新指标栏
+  // 1. 更新指标卡片
   const totalEl = document.getElementById('metric-total-count');
   const proEl = document.getElementById('metric-pro-count');
   const healthyEl = document.getElementById('metric-healthy-count');
   const lowEl = document.getElementById('metric-low-count');
 
   const proCount = accounts.filter(a => {
-    const tier = (a.quota && a.quota.tier) ? a.quota.tier.toLowerCase() : '';
-    return tier.includes('pro') || tier.includes('plus');
+    const tier = (a.quota && (a.quota.tier || a.quota.tier_display || '')) ? (a.quota.tier || a.quota.tier_display).toLowerCase() : '';
+    return tier.includes('pro') || tier.includes('plus') || tier.includes('ultra');
   }).length;
 
   if (totalEl) totalEl.textContent = accounts.length;
@@ -150,12 +153,13 @@ function renderAccountPool() {
   const heroWeeklyBar = document.getElementById('hero-weekly-bar');
   const heroWeeklyReset = document.getElementById('hero-weekly-reset');
   const heroLastRefreshed = document.getElementById('hero-last-refreshed');
+  const heroModelsGrid = document.getElementById('hero-models-grid');
 
   if (activeAcc) {
     const quota = activeAcc.quota || {};
-    const p5h = (typeof quota.five_hour_pct === 'number') ? quota.five_hour_pct : 100;
-    const pW = (typeof quota.weekly_pct === 'number') ? quota.weekly_pct : 100;
-    const tier = quota.tier || 'Google AI';
+    const p5h = (typeof quota.five_hour_percent === 'number') ? quota.five_hour_percent : ((typeof quota.five_hour_pct === 'number') ? quota.five_hour_pct : 100);
+    const pW = (typeof quota.weekly_percent === 'number') ? quota.weekly_percent : ((typeof quota.weekly_pct === 'number') ? quota.weekly_pct : 100);
+    const tier = quota.tier_display || quota.tier || 'Google AI';
 
     if (heroEmail) heroEmail.textContent = activeAcc.email || "本地账号";
     if (heroName) heroName.textContent = activeAcc.name || "Antigravity 用户";
@@ -186,16 +190,44 @@ function renderAccountPool() {
     if (heroWeeklyReset) heroWeeklyReset.textContent = quota.weekly_reset ? `重置于 ${quota.weekly_reset}` : '充足';
 
     if (heroLastRefreshed) heroLastRefreshed.textContent = activeAcc.last_refreshed_text || '刚刚';
+
+    // 渲染各模型独立配额胶囊
+    if (heroModelsGrid) {
+      const models = quota.models || {};
+      const modelKeys = Object.keys(models);
+      if (modelKeys.length > 0) {
+        heroModelsGrid.innerHTML = modelKeys.map(k => {
+          const m = models[k];
+          const mPct = (typeof m.percent === 'number') ? m.percent : 100;
+          const mName = m.displayName || k;
+          const fillClass = getProgressColorClass(mPct);
+          return `
+            <div class="model-quota-chip">
+              <div class="model-chip-header">
+                <span class="model-chip-name" title="${mName}">${mName}</span>
+                <span class="model-chip-pct">${mPct}%</span>
+              </div>
+              <div class="model-chip-track">
+                <div class="model-chip-fill ${fillClass}" style="width: ${mPct}%;"></div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } else {
+        heroModelsGrid.innerHTML = `<div style="font-size: 11.5px; color: var(--text-dim);">当前账号所有模型共享 5 小时与周度配额</div>`;
+      }
+    }
   } else {
     if (heroEmail) heroEmail.textContent = "未检测到已登录的账号";
-    if (heroName) heroName.textContent = "点击右上角【提取客户端账号】快速绑定";
+    if (heroName) heroName.textContent = "支持点击【网页登录】或【提取本地凭据】快速绑定";
     if (hero5hVal) hero5hVal.textContent = "0%";
     if (hero5hBar) hero5hBar.style.width = "0%";
     if (heroWeeklyVal) heroWeeklyVal.textContent = "0%";
     if (heroWeeklyBar) heroWeeklyBar.style.width = "0%";
+    if (heroModelsGrid) heroModelsGrid.innerHTML = `<div style="font-size: 11.5px; color: var(--text-dim);">未连接账号</div>`;
   }
 
-  // 3. 渲染账号池网格流
+  // 3. 渲染账号池卡片列表
   const container = document.getElementById('account-cards-container');
   if (!container) return;
 
@@ -203,8 +235,8 @@ function renderAccountPool() {
     container.innerHTML = `
       <div class="empty-state">
         <div class="empty-icon">👥</div>
-        <div class="empty-title">暂无已导入的账号</div>
-        <div class="empty-desc">点击右上角【提取客户端账号】快速绑定当前已登录身份，或【添加新账号】粘贴 Token</div>
+        <div class="empty-title">暂无已导入账号</div>
+        <div class="empty-desc">支持点击右上角【网页登录】直接授权，或【提取本地凭据】无感导入</div>
       </div>
     `;
     return;
@@ -212,12 +244,19 @@ function renderAccountPool() {
 
   container.innerHTML = accounts.map(acc => {
     const q = acc.quota || {};
-    const p5h = (typeof q.five_hour_pct === 'number') ? q.five_hour_pct : 100;
-    const tier = q.tier || 'Google AI';
+    const p5h = (typeof q.five_hour_percent === 'number') ? q.five_hour_percent : ((typeof q.five_hour_pct === 'number') ? q.five_hour_pct : 100);
+    const pW = (typeof q.weekly_percent === 'number') ? q.weekly_percent : ((typeof q.weekly_pct === 'number') ? q.weekly_pct : 100);
+    const tier = q.tier_display || q.tier || 'Google AI';
     const isPro = tier.toLowerCase().includes('pro');
     const isUltra = tier.toLowerCase().includes('ultra');
     const badgeClass = isPro ? 'badge-pro' : (isUltra ? 'badge-ultra' : 'badge-free');
-    const fillClass = getProgressColorClass(p5h);
+    const fill5hClass = getProgressColorClass(p5h);
+    const fillWClass = getProgressColorClass(pW);
+
+    const status = q.status || (p5h <= 0 ? 'EXHAUSTED' : (p5h <= 20 ? 'LOW' : 'HEALTHY'));
+    let statusBadge = '<span class="status-tag status-online">健康</span>';
+    if (status === 'EXHAUSTED') statusBadge = '<span class="status-tag" style="background:#fef2f2;color:#ef4444;">耗尽</span>';
+    else if (status === 'LOW') statusBadge = '<span class="status-tag" style="background:#fffbeb;color:#d97706;">紧张</span>';
 
     const avatarHtml = acc.avatar 
       ? `<img src="${acc.avatar}" alt="Avatar">`
@@ -237,12 +276,16 @@ function renderAccountPool() {
         </div>
 
         <div class="account-card-quota-row">
-          <div class="progress-header" style="margin-bottom: 5px;">
-            <span style="font-size: 11px; color: var(--text-muted); font-weight: 500;">5h 滚动配额余量</span>
-            <span style="font-size: 11.5px; font-weight: 700; color: var(--text-main);">${p5h}%</span>
+          <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">
+            <span>5h: <strong>${p5h}%</strong></span>
+            <span>周度: <strong>${pW}%</strong></span>
+            ${statusBadge}
           </div>
-          <div class="progress-track" style="height: 6px;">
-            <div class="progress-fill ${fillClass}" style="width: ${p5h}%;"></div>
+          <div class="progress-track" style="height: 5px; margin-bottom: 3px;" title="5小时滚动配额: ${p5h}%">
+            <div class="progress-fill ${fill5hClass}" style="width: ${p5h}%;"></div>
+          </div>
+          <div class="progress-track" style="height: 5px;" title="每周周期配额: ${pW}%">
+            <div class="progress-fill ${fillWClass}" style="width: ${pW}%;"></div>
           </div>
         </div>
 
@@ -251,7 +294,7 @@ function renderAccountPool() {
           <div class="account-card-actions">
             ${acc.is_active 
               ? `<span class="badge-status-active"><span class="status-dot-pulse"></span> 使用中</span>`
-              : `<button class="btn btn-secondary btn-sm" onclick="handleSwitchAccount('${acc.id}')">切换至此账号</button>`
+              : `<button class="btn btn-secondary btn-sm" onclick="handleSwitchAccount('${acc.id}')">切换</button>`
             }
             <button class="btn-icon" title="刷新该账号配额" onclick="handleRefreshSingleQuota('${acc.id}')">
               <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
@@ -374,7 +417,7 @@ async function loadStorageAnalysis() {
 }
 
 /**
- * 渲染系统提示词与模板选择器
+ * 渲染系统提示词 (直接展示 AGENTS.md 默认规则)
  */
 function renderPromptEditor() {
   const p = appState.prompt || {};
@@ -382,12 +425,6 @@ function renderPromptEditor() {
   if (textarea && typeof p.content === 'string') {
     textarea.value = p.content;
     updatePromptStats();
-  }
-
-  const select = document.getElementById('prompt-template-select');
-  if (select && Array.isArray(p.templates)) {
-    select.innerHTML = `<option value="">载入行业精选模板...</option>` + 
-      p.templates.map(t => `<option value="${t.key}">${t.name} - ${t.desc}</option>`).join('');
   }
 }
 
@@ -495,6 +532,11 @@ function setupEvents() {
   }
 
   // 账号池工具栏
+  const btnOpenOAuthModal = document.getElementById('btn-open-oauth-modal');
+  if (btnOpenOAuthModal) {
+    btnOpenOAuthModal.addEventListener('click', handleOpenOAuthModal);
+  }
+
   const btnImportCurrent = document.getElementById('btn-import-current');
   if (btnImportCurrent) {
     btnImportCurrent.addEventListener('click', handleImportCurrentAccount);
@@ -517,25 +559,36 @@ function setupEvents() {
     });
   }
 
-  // 添加账号模态框
-  const btnOpenModal = document.getElementById('btn-open-add-modal');
-  const modal = document.getElementById('modal-add-account');
+  // Google OAuth 网页登录弹窗
+  const btnCloseOAuthModal = document.getElementById('btn-close-oauth-modal');
+  const btnCancelOAuthModal = document.getElementById('btn-cancel-oauth-modal');
+  const btnStartOAuthBrowser = document.getElementById('btn-start-oauth-browser');
+  const btnSubmitOAuthCode = document.getElementById('btn-submit-oauth-code');
+
+  if (btnCloseOAuthModal) btnCloseOAuthModal.addEventListener('click', handleCloseOAuthModal);
+  if (btnCancelOAuthModal) btnCancelOAuthModal.addEventListener('click', handleCloseOAuthModal);
+  if (btnStartOAuthBrowser) btnStartOAuthBrowser.addEventListener('click', handleStartOAuthBrowser);
+  if (btnSubmitOAuthCode) btnSubmitOAuthCode.addEventListener('click', handleSubmitOAuthCode);
+
+  // 手动添加账号模态框 (Token / JSON)
+  const btnOpenAddModal = document.getElementById('btn-open-add-modal');
+  const modalAdd = document.getElementById('modal-add-account');
   const btnCloseModal = document.getElementById('btn-close-modal');
   const btnCancelModal = document.getElementById('btn-cancel-modal');
   const btnSubmitModal = document.getElementById('btn-submit-add-account');
 
-  if (btnOpenModal && modal) {
-    btnOpenModal.addEventListener('click', () => {
+  if (btnOpenAddModal && modalAdd) {
+    btnOpenAddModal.addEventListener('click', () => {
       document.getElementById('input-account-token').value = '';
       document.getElementById('input-account-name').value = '';
-      modal.classList.add('active');
+      modalAdd.classList.add('active');
     });
   }
-  if (btnCloseModal && modal) {
-    btnCloseModal.addEventListener('click', () => modal.classList.remove('active'));
+  if (btnCloseModal && modalAdd) {
+    btnCloseModal.addEventListener('click', () => modalAdd.classList.remove('active'));
   }
-  if (btnCancelModal && modal) {
-    btnCancelModal.addEventListener('click', () => modal.classList.remove('active'));
+  if (btnCancelModal && modalAdd) {
+    btnCancelModal.addEventListener('click', () => modalAdd.classList.remove('active'));
   }
   if (btnSubmitModal) {
     btnSubmitModal.addEventListener('click', handleAddAccountSubmit);
@@ -563,19 +616,14 @@ function setupEvents() {
     textareaPrompt.addEventListener('input', updatePromptStats);
   }
 
-  const btnApplyTpl = document.getElementById('btn-apply-template');
-  if (btnApplyTpl) {
-    btnApplyTpl.addEventListener('click', handleApplyTemplate);
-  }
-
   const btnSavePrompt = document.getElementById('btn-save-prompt');
   if (btnSavePrompt) {
     btnSavePrompt.addEventListener('click', handleSavePrompt);
   }
 
-  const btnRestorePrompt = document.getElementById('btn-restore-prompt-backup');
-  if (btnRestorePrompt) {
-    btnRestorePrompt.addEventListener('click', handleRestorePromptBackup);
+  const btnSavePromptTop = document.getElementById('btn-save-prompt-top');
+  if (btnSavePromptTop) {
+    btnSavePromptTop.addEventListener('click', handleSavePrompt);
   }
 
   // 系统管理与维护
@@ -616,7 +664,7 @@ function setupEvents() {
     btnClrLogs.addEventListener('click', async () => {
       if (!window.pywebview || !window.pywebview.api) return;
       const res = await window.pywebview.api.clear_logs();
-      showToast(res.message, res.success ? 'success' : 'error');
+      showToast(res.message, res.success ? "success" : "error");
       appState.logs = "日志已清空";
       renderLogs();
     });
@@ -624,7 +672,133 @@ function setupEvents() {
 }
 
 // -------------------------------------------------------------
-// 核心动作处理函数
+// Google OAuth 网页登录流程控制器
+// -------------------------------------------------------------
+
+function handleOpenOAuthModal() {
+  const modal = document.getElementById('modal-oauth-login');
+  const statusBox = document.getElementById('oauth-status-text');
+  const codeInput = document.getElementById('input-oauth-code');
+  const nameInput = document.getElementById('input-oauth-name');
+  if (codeInput) codeInput.value = '';
+  if (nameInput) nameInput.value = '';
+  if (statusBox) {
+    statusBox.className = 'oauth-status-box';
+    statusBox.innerHTML = '点击上方按钮将在系统默认浏览器打开授权页';
+  }
+  if (modal) modal.classList.add('active');
+}
+
+function handleCloseOAuthModal() {
+  const modal = document.getElementById('modal-oauth-login');
+  if (modal) modal.classList.remove('active');
+  if (oauthPollTimer) {
+    clearInterval(oauthPollTimer);
+    oauthPollTimer = null;
+  }
+  if (window.pywebview && window.pywebview.api) {
+    window.pywebview.api.cancel_oauth_login();
+  }
+}
+
+async function handleStartOAuthBrowser() {
+  if (!window.pywebview || !window.pywebview.api) {
+    showToast("当前运行于演示模式，无法打开系统浏览器", "warning");
+    return;
+  }
+
+  const statusBox = document.getElementById('oauth-status-text');
+  if (statusBox) {
+    statusBox.className = 'oauth-status-box active';
+    statusBox.innerHTML = '<span class="status-dot-pulse"></span> 浏览器已唤起，等待网页端登录回调 (127.0.0.1:51121)...';
+  }
+
+  showToast("正在启动授权并打开系统默认浏览器...", "warning");
+  try {
+    const res = await window.pywebview.api.start_oauth_login(true);
+    if (res && res.success) {
+      if (oauthPollTimer) clearInterval(oauthPollTimer);
+      oauthPollTimer = setInterval(pollOAuthStatus, 1200);
+    } else {
+      showToast(res ? res.message : "启动授权失败", "error");
+    }
+  } catch (e) {
+    showToast("启动授权异常: " + e, "error");
+  }
+}
+
+async function pollOAuthStatus() {
+  if (!window.pywebview || !window.pywebview.api) return;
+  try {
+    const res = await window.pywebview.api.check_oauth_status();
+    if (res && res.status === 'completed') {
+      if (oauthPollTimer) {
+        clearInterval(oauthPollTimer);
+        oauthPollTimer = null;
+      }
+      const statusBox = document.getElementById('oauth-status-text');
+      if (statusBox) {
+        statusBox.className = 'oauth-status-box success';
+        statusBox.innerHTML = '✓ 授权成功！已成功绑定 Google 账号';
+      }
+      showToast(res.message || "账号绑定成功！", "success");
+      setTimeout(() => {
+        handleCloseOAuthModal();
+      }, 1000);
+      const data = await window.pywebview.api.get_account_pool();
+      if (data && data.success) {
+        appState.account_pool = data.data;
+      } else if (data && data.accounts) {
+        appState.account_pool = data;
+      }
+      renderAccountPool();
+    } else if (res && res.status === 'error') {
+      if (oauthPollTimer) {
+        clearInterval(oauthPollTimer);
+        oauthPollTimer = null;
+      }
+      const statusBox = document.getElementById('oauth-status-text');
+      if (statusBox) {
+        statusBox.className = 'oauth-status-box';
+        statusBox.innerHTML = `✕ 授权失败: ${res.message}`;
+      }
+      showToast(res.message, "error");
+    }
+  } catch (e) {
+    // 轮询异常静默
+  }
+}
+
+async function handleSubmitOAuthCode() {
+  const code = (document.getElementById('input-oauth-code').value || '').trim();
+  const name = (document.getElementById('input-oauth-name').value || '').trim();
+  if (!code) {
+    showToast("请粘贴浏览器重定向网址或 code 授权码", "warning");
+    return;
+  }
+  if (!window.pywebview || !window.pywebview.api) return;
+
+  showToast("正在提交授权并换取凭据...", "warning");
+  try {
+    const res = await window.pywebview.api.submit_oauth_code(code, name);
+    showToast(res.message, res.success ? "success" : "error");
+    if (res.success) {
+      handleCloseOAuthModal();
+      const data = await window.pywebview.api.get_account_pool();
+      if (data && data.success) {
+        appState.account_pool = data.data;
+      } else if (data && data.accounts) {
+        appState.account_pool = data;
+      }
+      renderAccountPool();
+    }
+  } catch (e) {
+    showToast("提交异常: " + e, "error");
+  }
+}
+
+// -------------------------------------------------------------
+// 核心业务处理函数
 // -------------------------------------------------------------
 
 async function handleSaveAll() {
@@ -640,7 +814,7 @@ async function handleSaveAll() {
       showToast(res.message, res.success ? "success" : "error");
       appState.config = updatedCfg;
     } else {
-      showToast("本地演示模式：配置已保存", "success");
+      showToast("演示模式：配置已保存", "success");
     }
   } catch (e) {
     showToast("保存配置异常: " + e, "error");
@@ -651,7 +825,7 @@ async function handleSaveAll() {
 }
 
 async function handleRestoreEnglish() {
-  if (!confirm("确定要恢复 Antigravity 官方英文原版备份吗？\n这将撤销所有界面的汉化与定制。")) return;
+  if (!confirm("确定要恢复 Antigravity 官方英文原版备份吗？\n这将撤销所有汉化与定制。")) return;
   if (!window.pywebview || !window.pywebview.api) return;
 
   const res = await window.pywebview.api.restore_english();
@@ -666,12 +840,16 @@ async function handleRestartApp() {
 
 async function handleImportCurrentAccount() {
   if (!window.pywebview || !window.pywebview.api) return;
-  showToast("正在从本地客户端提取凭据并校验配额...", "warning");
+  showToast("正在从本地客户端凭据读取并校验配额...", "warning");
   const res = await window.pywebview.api.import_current_account();
   showToast(res.message, res.success ? "success" : "error");
   if (res.success) {
     const data = await window.pywebview.api.get_account_pool();
-    appState.account_pool = data;
+    if (data && data.success) {
+      appState.account_pool = data.data;
+    } else if (data && data.accounts) {
+      appState.account_pool = data;
+    }
     renderAccountPool();
   }
 }
@@ -680,13 +858,17 @@ async function handleRefreshAllQuotas() {
   if (!window.pywebview || !window.pywebview.api) return;
   const btn = document.getElementById('btn-refresh-all-quotas');
   if (btn) btn.classList.add('loading');
-  showToast("正在批量刷新所有账号最新配额...", "warning");
+  showToast("正在批量刷新所有账号配额...", "warning");
 
   try {
     const res = await window.pywebview.api.refresh_all_quotas();
     showToast(res.message, res.success ? "success" : "error");
     const data = await window.pywebview.api.get_account_pool();
-    appState.account_pool = data;
+    if (data && data.success) {
+      appState.account_pool = data.data;
+    } else if (data && data.accounts) {
+      appState.account_pool = data;
+    }
     renderAccountPool();
   } catch (e) {
     showToast("刷新失败: " + e, "error");
@@ -702,19 +884,27 @@ async function handleRefreshSingleQuota(accountId) {
   showToast(res.message, res.success ? "success" : "error");
   if (res.success) {
     const data = await window.pywebview.api.get_account_pool();
-    appState.account_pool = data;
+    if (data && data.success) {
+      appState.account_pool = data.data;
+    } else if (data && data.accounts) {
+      appState.account_pool = data;
+    }
     renderAccountPool();
   }
 }
 
 async function handleSwitchAccount(accountId) {
   if (!window.pywebview || !window.pywebview.api) return;
-  showToast("正在切换并写入系统凭据管理器...", "warning");
+  showToast("正在切换至目标账号...", "warning");
   const res = await window.pywebview.api.switch_account(accountId);
   showToast(res.message, res.success ? "success" : "error");
   if (res.success) {
     const data = await window.pywebview.api.get_account_pool();
-    appState.account_pool = data;
+    if (data && data.success) {
+      appState.account_pool = data.data;
+    } else if (data && data.accounts) {
+      appState.account_pool = data;
+    }
     renderAccountPool();
   }
 }
@@ -726,7 +916,11 @@ async function handleDeleteAccount(accountId, email) {
   showToast(res.message, res.success ? "success" : "error");
   if (res.success) {
     const data = await window.pywebview.api.get_account_pool();
-    appState.account_pool = data;
+    if (data && data.success) {
+      appState.account_pool = data.data;
+    } else if (data && data.accounts) {
+      appState.account_pool = data;
+    }
     renderAccountPool();
   }
 }
@@ -748,7 +942,11 @@ async function handleAddAccountSubmit() {
   if (res.success) {
     document.getElementById('modal-add-account').classList.remove('active');
     const data = await window.pywebview.api.get_account_pool();
-    appState.account_pool = data;
+    if (data && data.success) {
+      appState.account_pool = data.data;
+    } else if (data && data.accounts) {
+      appState.account_pool = data;
+    }
     renderAccountPool();
   }
 }
@@ -764,13 +962,12 @@ async function handleTestProxy() {
     label.className = "test-result-label text-warning";
   }
 
-  // 简易 TCP 测活
   setTimeout(() => {
     if (label) {
-      label.textContent = `✓ 代理通道响应正常 (${type.toUpperCase()}://${host}:${port})`;
+      label.textContent = `✓ 代理连接正常 (${type.toUpperCase()}://${host}:${port})`;
       label.className = "test-result-label text-success";
     }
-  }, 400);
+  }, 350);
 }
 
 async function handleTestPush(channel) {
@@ -783,41 +980,11 @@ async function handleTestPush(channel) {
   showToast(res.message, res.success ? "success" : "error");
 }
 
-function handleApplyTemplate() {
-  const select = document.getElementById('prompt-template-select');
-  const key = select ? select.value : '';
-  if (!key) return;
-
-  const tpl = (appState.prompt.templates || []).find(t => t.key === key);
-  if (!tpl) return;
-
-  const textarea = document.getElementById('prompt-editor-content');
-  if (textarea) {
-    textarea.value = tpl.content;
-    updatePromptStats();
-    showToast(`已插入【${tpl.name}】模板`, "success");
-  }
-}
-
 async function handleSavePrompt() {
   if (!window.pywebview || !window.pywebview.api) return;
   const content = document.getElementById('prompt-editor-content').value;
   const res = await window.pywebview.api.save_system_prompt(content);
   showToast(res.message, res.success ? "success" : "error");
-}
-
-async function handleRestorePromptBackup() {
-  if (!confirm("确定要回滚到上一次系统提示词备份吗？")) return;
-  if (!window.pywebview || !window.pywebview.api) return;
-  const res = await window.pywebview.api.restore_prompt_backup();
-  showToast(res.message, res.success ? "success" : "error");
-  if (res.success && res.content) {
-    const textarea = document.getElementById('prompt-editor-content');
-    if (textarea) {
-      textarea.value = res.content;
-      updatePromptStats();
-    }
-  }
 }
 
 async function handleToggleDaemon() {
@@ -829,7 +996,6 @@ async function handleToggleDaemon() {
   const res = await window.pywebview.api.control_daemon(action, port);
   showToast(res.message, res.success ? "success" : "error");
 
-  // 刷新状态
   const data = await window.pywebview.api.get_initial_data();
   if (data) {
     appState.status = data.status;
@@ -844,7 +1010,17 @@ async function handleCleanStorage() {
   showToast("正在深度整理磁盘碎片...", "warning");
   const res = await window.pywebview.api.clean_storage();
   showToast(res.message, res.success ? "success" : "error");
-  loadStorageAnalysis();
+  if (res && res.data) {
+    const d = res.data;
+    const cacheEl = document.getElementById('storage-cache-val');
+    const logsEl = document.getElementById('storage-logs-val');
+    const totalEl = document.getElementById('storage-total-val');
+    if (cacheEl) cacheEl.textContent = d.chromium_cache_str || "0 MB";
+    if (logsEl) logsEl.textContent = d.brain_temp_str || "0 MB";
+    if (totalEl) totalEl.textContent = d.cleanable_total_str || "0 MB";
+  } else {
+    loadStorageAnalysis();
+  }
 }
 
 // -------------------------------------------------------------
@@ -911,9 +1087,14 @@ function renderMockData() {
       is_active: true,
       last_refreshed_text: '刚刚',
       quota: {
-        tier: 'Google AI Pro',
-        five_hour_pct: 100,
-        weekly_pct: 95
+        tier_display: 'Google AI Pro',
+        five_hour_percent: 100,
+        weekly_percent: 95,
+        models: {
+          'claude-3-5-sonnet': { displayName: 'Claude 3.5 Sonnet', percent: 100 },
+          'gemini-1.5-pro': { displayName: 'Gemini 1.5 Pro', percent: 90 },
+          'gemini-1.5-flash': { displayName: 'Gemini 1.5 Flash', percent: 100 }
+        }
       }
     }]
   };
