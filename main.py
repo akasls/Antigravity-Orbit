@@ -7,11 +7,21 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-# 适配 Windows 控制台编码，防止 GBK 终端下打印 Emoji 导致 UnicodeEncodeError 崩溃
+# 适配 Windows 控制台编码与窗口化应用 CLI 输出
 if sys.platform.startswith("win"):
+    if getattr(sys, "frozen", False) and len(sys.argv) > 1:
+        try:
+            import ctypes
+            if ctypes.windll.kernel32.AttachConsole(-1):
+                sys.stdout = open("CONOUT$", "w", encoding="utf-8", errors="replace")
+                sys.stderr = open("CONOUT$", "w", encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        if sys.stdout is not None:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        if sys.stderr is not None:
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
@@ -484,8 +494,13 @@ def main():
     args = parser.parse_args()
 
     if not args.subcommand:
-        # 无参数默认进入 setup 向导
-        cmd_setup(args)
+        if getattr(sys, "frozen", False):
+            # 打包独立客户端双击运行时默认启动桌面可视化管理中心
+            from core.gui import launch_gui
+            launch_gui()
+        else:
+            # 命令行源码环境直接运行时默认进入交互向导
+            cmd_setup(args)
     elif args.subcommand == "gui":
         from core.gui import launch_gui
         launch_gui()

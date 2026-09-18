@@ -29,3 +29,8 @@ _temp_asar/
 .localization_info.json
 .daemon.pid
 
+# PyInstaller 打包构建产物
+build/
+dist/
+*.spec
+
