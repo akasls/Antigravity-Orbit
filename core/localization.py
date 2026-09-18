@@ -17,11 +17,13 @@ class LocalizationManager:
     """Antigravity 界面汉化与本地化管理核心类"""
 
     @staticmethod
-    def check_node_environment() -> Tuple[bool, str]:
-        """检测系统是否存在 Node.js 环境"""
+    def check_node_environment(fast: bool = True) -> Tuple[bool, str]:
+        """检测系统是否存在 Node.js 环境 (fast=True 仅探测 PATH，0毫秒无开销)"""
         node_exe = shutil.which("node")
         if not node_exe:
-            return False, "未在系统中检测到 Node.js 环境 (提取与打包 ASAR 资源包需要 Node.js)"
+            return False, "未在系统中检测到 Node.js 环境"
+        if fast:
+            return True, "已就绪"
         try:
             res = subprocess.run([node_exe, "-v"], capture_output=True, text=True, timeout=5)
             version = res.stdout.strip()
@@ -30,9 +32,9 @@ class LocalizationManager:
             return False, f"检测 Node.js 异常: {e}"
 
     @classmethod
-    def get_status(cls, install_dir: Optional[str] = None) -> Dict[str, Any]:
-        """获取 Antigravity 客户端及其汉化状态"""
-        node_ok, node_ver = cls.check_node_environment()
+    def get_status(cls, install_dir: Optional[str] = None, fast: bool = True) -> Dict[str, Any]:
+        """获取 Antigravity 客户端及其汉化状态 (默认极速秒级纯 Python 检测)"""
+        node_ok, node_ver = cls.check_node_environment(fast=fast)
 
         status: Dict[str, Any] = {
             "installed": False,
@@ -46,29 +48,7 @@ class LocalizationManager:
             "node_version": node_ver if node_ok else None,
         }
 
-        # 如果 node 可用且 engine.js 存在，优先调用 engine.js 获取最权威状态
-        if node_ok and ENGINE_SCRIPT.exists():
-            cmd = ["node", str(ENGINE_SCRIPT), "--status", "--json"]
-            if CONFIG_FILE.exists():
-                cmd.extend(["--config-file", str(CONFIG_FILE)])
-            if install_dir:
-                cmd.extend(["--install-dir", install_dir])
-            try:
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=10, cwd=str(RESOURCE_DIR))
-                if res.returncode == 0:
-                    data = json.loads(res.stdout.strip())
-                    status["installed"] = data.get("installed", False)
-                    status["install_dir"] = data.get("installDir", "")
-                    status["resources_dir"] = data.get("resourcesDir", "")
-                    status["is_v2"] = data.get("isV2", False)
-                    status["is_localized"] = data.get("isLocalized", False)
-                    status["lang"] = data.get("lang")
-                    status["has_backup"] = data.get("hasBackup", False)
-                    return status
-            except Exception:
-                pass
-
-        # 回退：纯 Python 路径嗅探与检测
+        # 快速纯 Python 检测 (毫秒级响应，无子进程阻塞)
         found_dir = cls._fallback_detect_dir(install_dir)
         if found_dir and Path(found_dir).exists():
             status["installed"] = True
@@ -99,6 +79,31 @@ class LocalizationManager:
             elif asar_bak.exists():
                 status["is_localized"] = True
                 status["lang"] = "zh-CN"
+
+            if fast:
+                return status
+
+        # 若 fast=False，才通过 node engine.js 深入检测
+        if not fast and node_ok and ENGINE_SCRIPT.exists():
+            cmd = ["node", str(ENGINE_SCRIPT), "--status", "--json"]
+            if CONFIG_FILE.exists():
+                cmd.extend(["--config-file", str(CONFIG_FILE)])
+            if install_dir:
+                cmd.extend(["--install-dir", install_dir])
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=10, cwd=str(RESOURCE_DIR))
+                if res.returncode == 0:
+                    data = json.loads(res.stdout.strip())
+                    status["installed"] = data.get("installed", False)
+                    status["install_dir"] = data.get("installDir", "")
+                    status["resources_dir"] = data.get("resourcesDir", "")
+                    status["is_v2"] = data.get("isV2", False)
+                    status["is_localized"] = data.get("isLocalized", False)
+                    status["lang"] = data.get("lang")
+                    status["has_backup"] = data.get("hasBackup", False)
+                    return status
+            except Exception:
+                pass
 
         return status
 

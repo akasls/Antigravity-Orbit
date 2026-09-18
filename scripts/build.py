@@ -60,6 +60,7 @@ def build():
         "--windowed",
         "--name", "Antigravity-Orbit",
         f"--add-data=localization{sep}localization",
+        f"--add-data=resources{sep}resources",
         f"--add-data=config.example.json{sep}.",
     ]
 

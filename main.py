@@ -39,13 +39,10 @@ from core.config import (
     save_config,
 )
 from core.utils import Logger
-from core.monitor import AntigravityMonitor
-from core.autostart import AutostartManager
-from core.localization import LocalizationManager
-from notifiers import get_active_notifiers, TelegramNotifier, FeishuNotifier, WeComNotifier
 
 def cmd_run(args):
     """前台运行监控服务"""
+    from core.monitor import AntigravityMonitor
     monitor = AntigravityMonitor()
     monitor.run_loop()
 
@@ -151,6 +148,10 @@ def cmd_stop(args):
 
 def cmd_status(args):
     """查看监控服务运行状态"""
+    from core.autostart import AutostartManager
+    from core.localization import LocalizationManager
+    from notifiers import get_active_notifiers
+
     cfg = load_config()
     port = cfg.get("lock_port", 49222)
     
@@ -202,6 +203,7 @@ def cmd_status(args):
 
 def cmd_test(args):
     """测试所有已启用的通知渠道"""
+    from notifiers import get_active_notifiers
     cfg = load_config()
     notifiers = get_active_notifiers(cfg)
     if not notifiers:
@@ -219,6 +221,10 @@ def cmd_test(args):
 
 def cmd_setup(args):
     """交互式综合配置向导 (汉化 + 通知)"""
+    from core.localization import LocalizationManager
+    from core.autostart import AutostartManager
+    from notifiers import get_active_notifiers, TelegramNotifier, FeishuNotifier, WeComNotifier
+
     print("=" * 60)
     print("✨ 欢迎使用 Antigravity 综合配置向导 ✨")
     print("=" * 60)
@@ -378,6 +384,7 @@ def cmd_setup(args):
     print("=" * 60)
 
 def cmd_autostart(args):
+    from core.autostart import AutostartManager
     action = args.action
     if action == "enable":
         ok, msg = AutostartManager.enable()
@@ -391,6 +398,7 @@ def cmd_autostart(args):
 
 def cmd_localize(args):
     """管理 Antigravity 客户端汉化"""
+    from core.localization import LocalizationManager
     action = getattr(args, "action", None)
     install_dir = getattr(args, "dir", None)
     no_kill = getattr(args, "no_kill", False)
@@ -521,6 +529,7 @@ def main():
     elif args.subcommand in ["localize", "hanhua"]:
         cmd_localize(args)
     elif args.subcommand == "optimize":
+        from core.localization import LocalizationManager
         print("🚀 正在应用 Antigravity 极限性能加速与去遥测优化...")
         ok, msg = LocalizationManager.install(tw=False, install_dir=args.dir, no_kill=args.no_kill)
         if ok:
