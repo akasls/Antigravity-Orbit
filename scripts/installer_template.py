@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Antigravity Orbit - 原生 Windows 安装程序 (Native Windows Setup Wizard)
 零第三方依赖、免管理员提权、自动创建桌面与开始菜单快捷方式、注册控制面板卸载项。
@@ -105,12 +105,14 @@ exit /b 0
 
 def perform_installation(target_dir: Path, create_desktop: bool, create_start_menu: bool, progress_callback=None) -> tuple[bool, str]:
     """核心安装解压与注册流程"""
-    payload_zip = get_resource_path("app_payload.zip")
+    payload_zip = get_resource_path("Antigravity-Orbit-Windows-x64.zip")
+    if not payload_zip.exists():
+        payload_zip = get_resource_path("app_payload.zip")
     if not payload_zip.exists():
         payload_zip = Path(__file__).resolve().parent.parent / "dist" / "Antigravity-Orbit-Windows-x64.zip"
 
     if not payload_zip.exists():
-        return False, "未找到安装资源包 (app_payload.zip)"
+        return False, "未找到安装资源包 (Antigravity-Orbit-Windows-x64.zip)"
 
     if progress_callback: progress_callback(10, "正在关闭可能运行中的旧实例...")
     subprocess.run(f"taskkill /F /IM {EXE_NAME} 2>nul", shell=True, capture_output=True)
