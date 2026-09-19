@@ -79,9 +79,9 @@ function switchToTab(tabName) {
     }
   });
 
-  // 3. 切换至账号池时静默刷新最新额度
+  // 3. 切换至账号池时静默刷新最新额度 (联网强制同步最新配额)
   if (tabName === 'accounts') {
-    silentRefreshPool();
+    silentRefreshPool(true);
   }
 
   // 4. 切换至系统维护时分析存储
@@ -106,6 +106,11 @@ async function loadInitialData() {
       appState.logs = data.logs || "";
 
       renderAll();
+
+      // 初次载入后在后台静默发起一次全量配额网络同步，保证界面数据即时准确
+      setTimeout(() => {
+        silentRefreshPool(true);
+      }, 1500);
     }
   } catch (err) {
     console.error("加载初始数据失败:", err);
@@ -118,19 +123,29 @@ async function loadInitialData() {
  */
 function startQuotaAutoRefresher() {
   if (autoRefreshTimer) clearInterval(autoRefreshTimer);
-  // 每 30 秒轮询一次后端状态，若后端后台线程已完成刷新则即时更新 UI
+  // 每 60 秒触发一次静默联网同步，保持多账号配额与 Google 官方完全一致
   autoRefreshTimer = setInterval(async () => {
-    await silentRefreshPool();
-  }, 30000);
+    await silentRefreshPool(true);
+  }, 60000);
 }
 
-async function silentRefreshPool() {
+async function silentRefreshPool(forceNetwork = false) {
   if (!window.pywebview || !window.pywebview.api) return;
   try {
+    // 1. 先快速读取本地缓存平滑更新
     const res = await window.pywebview.api.get_account_pool();
     if (res && res.success && res.data) {
       appState.account_pool = res.data;
       renderAccountPool();
+    }
+    // 2. 若指定 forceNetwork 或定时器触发，静默联网刷新并更新 UI
+    if (forceNetwork && window.pywebview.api.refresh_all_quotas) {
+      window.pywebview.api.refresh_all_quotas().then(freshRes => {
+        if (freshRes && freshRes.data) {
+          appState.account_pool = freshRes.data;
+          renderAccountPool();
+        }
+      }).catch(() => {});
     }
   } catch (e) {
     // 静默容错
@@ -677,9 +692,11 @@ function gatherCurrentConfig() {
   // 性能与代理
   cfg.customization.proxy_enabled = getCheckbox('custom-proxy-enabled');
   cfg.customization.proxy_type = getSelect('custom-proxy-type');
-  cfg.customization.proxy_host = getInput('custom-proxy-host');
+  cfg.customization.proxy_host = getInput('custom-proxy-host') || '127.0.0.1';
   cfg.customization.proxy_port = parseInt(getInput('custom-proxy-port')) || 7890;
   cfg.customization.proxy_bypass = getInput('custom-proxy-bypass');
+  const pType = (cfg.customization.proxy_type || 'http').toLowerCase();
+  cfg.customization.proxy_url = `${pType}://${cfg.customization.proxy_host}:${cfg.customization.proxy_port}`;
 
   cfg.customization.opt_gpu = getCheckbox('custom-opt-gpu');
   cfg.customization.opt_max_heap = getCheckbox('custom-opt-max-heap');
@@ -1135,9 +1152,20 @@ async function handleTestProxy() {
   const label = document.getElementById('proxy-test-result');
 
   if (label) {
-    label.textContent = "正在测试连接...";
+    label.textContent = "正在探测代理端口...";
     label.className = "test-result-label text-warning";
   }
+
+  try {
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.test_proxy) {
+      const res = await window.pywebview.api.test_proxy(type, host, port);
+      if (label) {
+        label.textContent = res.success ? `✓ ${res.message}` : `✗ ${res.message}`;
+        label.className = `test-result-label ${res.success ? 'text-success' : 'text-danger'}`;
+      }
+      return;
+    }
+  } catch (e) {}
 
   setTimeout(() => {
     if (label) {

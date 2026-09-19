@@ -120,7 +120,10 @@ def build():
         # 2. 构建 Windows 原生安装程序 (Setup.exe，推荐普通用户安装)
         print("\n>>> [2/3] 正在构建 Windows 原生安装包 (Setup.exe)...")
         try:
-            from scripts.build_installer import build_installer
+            try:
+                from scripts.build_installer import build_installer
+            except ModuleNotFoundError:
+                from build_installer import build_installer
             build_installer()
         except Exception as e:
             print(f"[警告] 安装包构建异常: {e}")

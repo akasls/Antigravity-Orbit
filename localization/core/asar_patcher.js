@@ -446,10 +446,15 @@ class AsarPatcher {
                 );
             }
 
-            if (cfg.proxy_enabled && cfg.proxy_url) {
-                const proxyUrl = cfg.proxy_url.trim();
+            let proxyUrl = (cfg.proxy_url || '').trim();
+            if (!proxyUrl && cfg.proxy_host && cfg.proxy_port) {
+                const pType = (cfg.proxy_type || 'http').toLowerCase();
+                proxyUrl = `${pType}://${cfg.proxy_host}:${cfg.proxy_port}`;
+            }
+
+            if (cfg.proxy_enabled && proxyUrl) {
                 switchLines.push(
-                    "// 6. Antigravity 专属网络代理 (彻底取代 Proxifier)",
+                    "// 6. Antigravity 专属网络代理 (彻底取代 Proxifier，直通本地与后台进程)",
                     `electron_1.app.commandLine.appendSwitch('proxy-server', ${JSON.stringify(proxyUrl)});`,
                     `electron_1.app.commandLine.appendSwitch('proxy-bypass-list', '<-loopback>;127.0.0.1;localhost');`,
                     `process.env['HTTP_PROXY'] = ${JSON.stringify(proxyUrl)};`,
@@ -458,8 +463,8 @@ class AsarPatcher {
                     `process.env['http_proxy'] = ${JSON.stringify(proxyUrl)};`,
                     `process.env['https_proxy'] = ${JSON.stringify(proxyUrl)};`,
                     `process.env['all_proxy'] = ${JSON.stringify(proxyUrl)};`,
-                    `process.env['NO_PROXY'] = 'localhost,127.0.0.1';`,
-                    `process.env['no_proxy'] = 'localhost,127.0.0.1';`
+                    `process.env['NO_PROXY'] = 'localhost,127.0.0.1,::1';`,
+                    `process.env['no_proxy'] = 'localhost,127.0.0.1,::1';`
                 );
             }
 
@@ -468,7 +473,12 @@ class AsarPatcher {
                     switchLines.join("\n") +
                     "\n/* === ANTIGRAVITY_OPTIMIZATION_END === */\n";
 
-                if (mContent.includes(targetLock) && !mContent.includes('/* === ANTIGRAVITY_OPTIMIZATION_START === */')) {
+                const optRegex = /\/\* === ANTIGRAVITY_OPTIMIZATION_START === \*\/[\s\S]*?\/\* === ANTIGRAVITY_OPTIMIZATION_END === \*\/\n?/;
+                if (optRegex.test(mContent)) {
+                    mContent = mContent.replace(optRegex, optSwitches + "\n");
+                    fs.writeFileSync(mainPath, mContent, 'utf-8');
+                    console.log('[优化] main.js 已更新注入硬件加速与专属代理参数。');
+                } else if (mContent.includes(targetLock)) {
                     mContent = mContent.replace(targetLock, optSwitches + "\n" + targetLock);
                     fs.writeFileSync(mainPath, mContent, 'utf-8');
                     console.log('[优化] main.js 已按需注入硬件渲染加速、平滑滚动、专属代理与全套防降频、去遥测参数。');
@@ -488,10 +498,21 @@ class AsarPatcher {
                 }
             }
 
-            if (cfg.proxy_enabled && cfg.proxy_url) {
-                const proxyUrl = cfg.proxy_url.trim();
-                const targetEnv = "const env = { ...process.env, ...(0, shell_env_1.shellEnvSync)() };";
-                if (lsContent.includes(targetEnv) && !lsContent.includes('/* === ANTIGRAVITY_PROXY_INJECT === */')) {
+            let proxyUrl = (cfg.proxy_url || '').trim();
+            if (!proxyUrl && cfg.proxy_host && cfg.proxy_port) {
+                const pType = (cfg.proxy_type || 'http').toLowerCase();
+                proxyUrl = `${pType}://${cfg.proxy_host}:${cfg.proxy_port}`;
+            }
+
+            const targetEnv = "const env = { ...process.env, ...(0, shell_env_1.shellEnvSync)() };";
+            const proxyInjectRegex = /\/\* === ANTIGRAVITY_PROXY_INJECT === \*\/[\s\S]*?\/\* === ANTIGRAVITY_PROXY_INJECT_END === \*\/\n?/;
+
+            if (proxyInjectRegex.test(lsContent)) {
+                lsContent = lsContent.replace(proxyInjectRegex, "");
+            }
+
+            if (cfg.proxy_enabled && proxyUrl) {
+                if (lsContent.includes(targetEnv)) {
                     const proxyEnvCode = `${targetEnv}\n        /* === ANTIGRAVITY_PROXY_INJECT === */\n` +
                         `        env['HTTP_PROXY'] = ${JSON.stringify(proxyUrl)};\n` +
                         `        env['HTTPS_PROXY'] = ${JSON.stringify(proxyUrl)};\n` +
@@ -499,8 +520,9 @@ class AsarPatcher {
                         `        env['http_proxy'] = ${JSON.stringify(proxyUrl)};\n` +
                         `        env['https_proxy'] = ${JSON.stringify(proxyUrl)};\n` +
                         `        env['all_proxy'] = ${JSON.stringify(proxyUrl)};\n` +
-                        `        env['NO_PROXY'] = 'localhost,127.0.0.1';\n` +
-                        `        env['no_proxy'] = 'localhost,127.0.0.1';\n`;
+                        `        env['NO_PROXY'] = 'localhost,127.0.0.1,::1';\n` +
+                        `        env['no_proxy'] = 'localhost,127.0.0.1,::1';\n` +
+                        `        /* === ANTIGRAVITY_PROXY_INJECT_END === */\n`;
                     lsContent = lsContent.replace(targetEnv, proxyEnvCode);
                     console.log(`[代理] languageServer.js 已为 Language Server 注入专属代理环境: ${proxyUrl}。`);
                 }

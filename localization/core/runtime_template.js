@@ -560,28 +560,25 @@
                     display: inline-flex;
                     align-items: center;
                     gap: 7px;
-                    padding: 2px 11px;
+                    padding: 2px 12px;
                     height: 24px;
                     border-radius: 12px;
-                    background: rgba(255, 255, 255, 0.16) !important;
-                    backdrop-filter: blur(14px) saturate(180%);
-                    -webkit-backdrop-filter: blur(14px) saturate(180%);
-                    border: 1px solid rgba(255, 255, 255, 0.28) !important;
+                    background: rgba(0, 0, 0, 0.05) !important;
+                    border: 1px solid rgba(0, 0, 0, 0.12) !important;
                     font-size: 11.5px;
                     font-weight: 600;
-                    color: #ffffff !important;
-                    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+                    color: #0f172a !important;
                     cursor: pointer;
                     box-sizing: border-box;
                     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-                    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8);
                     opacity: 1 !important;
                 }
                 .ag-quota-pill:hover {
-                    background: rgba(255, 255, 255, 0.26) !important;
-                    border-color: rgba(255, 255, 255, 0.45) !important;
-                    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.4);
-                    color: #ffffff !important;
+                    background: rgba(0, 0, 0, 0.09) !important;
+                    border-color: rgba(0, 0, 0, 0.22) !important;
+                    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+                    color: #0f172a !important;
                     transform: translateY(-0.5px);
                 }
                 .ag-quota-dot {
@@ -591,70 +588,70 @@
                     display: inline-block;
                     flex-shrink: 0;
                 }
-                .ag-dot-green { background: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, 0.7); }
-                .ag-dot-purple { background: #a78bfa; box-shadow: 0 0 6px rgba(167, 139, 250, 0.7); }
-                .ag-dot-yellow { background: #fbbf24; box-shadow: 0 0 6px rgba(251, 191, 36, 0.7); }
-                .ag-dot-red { background: #f87171; box-shadow: 0 0 6px rgba(248, 113, 113, 0.7); }
+                .ag-dot-green { background: #10b981; box-shadow: 0 0 5px rgba(16, 185, 129, 0.5); }
+                .ag-dot-purple { background: #8b5cf6; box-shadow: 0 0 5px rgba(139, 92, 246, 0.5); }
+                .ag-dot-yellow { background: #f59e0b; box-shadow: 0 0 5px rgba(245, 158, 11, 0.5); }
+                .ag-dot-red { background: #ef4444; box-shadow: 0 0 5px rgba(239, 68, 68, 0.5); }
                 .ag-quota-divider {
                     width: 1px;
-                    height: 11px;
-                    background: rgba(255, 255, 255, 0.35);
-                    margin: 0 2px;
+                    height: 12px;
+                    background: rgba(0, 0, 0, 0.15);
+                    margin: 0 3px;
                 }
                 .ag-quota-popover {
                     position: absolute;
                     top: calc(100% + 8px);
                     right: 0;
                     width: 320px;
-                    background: #1e222d;
-                    border: 1px solid rgba(255, 255, 255, 0.18);
-                    border-radius: 10px;
+                    background: #ffffff !important;
+                    border: 1px solid #e2e8f0 !important;
+                    border-radius: 12px;
                     padding: 14px 16px;
-                    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.2);
+                    box-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.15), 0 4px 12px -2px rgba(0, 0, 0, 0.08) !important;
                     z-index: 100000;
-                    color: #e4e4e7;
+                    color: #0f172a !important;
                     font-size: 12px;
                     display: none;
                     box-sizing: border-box;
-                    backdrop-filter: blur(16px);
-                    -webkit-backdrop-filter: blur(16px);
                 }
                 .ag-quota-popover.open {
                     display: block;
-                    animation: ag-popover-in 0.16s ease-out;
+                    animation: ag-popover-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
                 }
                 .ag-pop-head {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
                     padding-bottom: 10px;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                    border-bottom: 1px solid #f1f5f9;
                     margin-bottom: 12px;
                 }
                 .ag-pop-title {
                     font-weight: 600;
                     font-size: 13px;
-                    color: #fafafa;
+                    color: #0f172a;
                     display: flex;
                     align-items: center;
                     gap: 6px;
                 }
                 .ag-pop-refresh-btn {
-                    background: rgba(255, 255, 255, 0.08);
-                    border: 1px solid rgba(255, 255, 255, 0.14);
-                    color: #d4d4d8;
-                    border-radius: 5px;
-                    padding: 3px 8px;
+                    background: #f8fafc;
+                    border: 1px solid #e2e8f0;
+                    color: #475569;
+                    border-radius: 6px;
+                    padding: 3px 9px;
                     cursor: pointer;
                     font-size: 11px;
+                    font-weight: 500;
                     display: inline-flex;
                     align-items: center;
                     gap: 4px;
                     transition: all 0.2s;
                 }
                 .ag-pop-refresh-btn:hover {
-                    background: rgba(255, 255, 255, 0.18);
-                    color: #ffffff;
+                    background: #f1f5f9;
+                    color: #0f172a;
+                    border-color: #cbd5e1;
                 }
                 .ag-group {
                     margin-bottom: 14px;
@@ -665,7 +662,7 @@
                 .ag-group-name {
                     font-size: 12px;
                     font-weight: 600;
-                    color: #a1a1aa;
+                    color: #334155;
                     margin-bottom: 8px;
                     display: flex;
                     align-items: center;
@@ -684,14 +681,16 @@
                     margin-bottom: 4px;
                 }
                 .ag-meter-label {
-                    color: #d4d4d8;
+                    color: #475569;
+                    font-weight: 500;
                 }
                 .ag-meter-pct {
                     font-weight: 600;
                 }
                 .ag-track {
-                    height: 5px;
-                    background: rgba(255, 255, 255, 0.1);
+                    height: 6px;
+                    background: #f1f5f9;
+                    border: 1px solid #e2e8f0;
                     border-radius: 3px;
                     overflow: hidden;
                 }
@@ -701,9 +700,9 @@
                     transition: width 0.3s ease;
                 }
                 .ag-meter-desc {
-                    font-size: 10px;
-                    color: #71717a;
-                    margin-top: 2px;
+                    font-size: 10.5px;
+                    color: #64748b;
+                    margin-top: 3px;
                 }
                 .ag-pop-foot {
                     display: flex;
@@ -711,9 +710,9 @@
                     align-items: center;
                     margin-top: 10px;
                     padding-top: 8px;
-                    border-top: 1px solid rgba(255, 255, 255, 0.08);
-                    font-size: 10px;
-                    color: #71717a;
+                    border-top: 1px solid #f1f5f9;
+                    font-size: 10.5px;
+                    color: #94a3b8;
                 }
             `;
             doc.head.appendChild(style);
@@ -740,10 +739,10 @@
     }
 
     function getModelColor(pct, isGemini = true) {
-        if (pct < 20) return { dot: 'ag-dot-red', color: '#f87171' };
-        if (pct < 50) return { dot: 'ag-dot-yellow', color: '#fbbf24' };
-        if (isGemini) return { dot: 'ag-dot-green', color: '#34d399' };
-        return { dot: 'ag-dot-purple', color: '#a78bfa' };
+        if (pct < 20) return { dot: 'ag-dot-red', color: '#ef4444' };
+        if (pct < 50) return { dot: 'ag-dot-yellow', color: '#d97706' };
+        if (isGemini) return { dot: 'ag-dot-green', color: '#059669' };
+        return { dot: 'ag-dot-purple', color: '#7c3aed' };
     }
 
     /**
@@ -855,17 +854,20 @@
         if (!root) return;
 
         const info = parseQuotaBuckets(latestQuotaData);
-        const gColor = getModelColor(info.gemini.pct5h, true);
-        const cColor = getModelColor(info.claude.pct5h, false);
+        const gMin = Math.min(info.gemini.pct5h, info.gemini.pctWeekly);
+        const cMin = Math.min(info.claude.pct5h, info.claude.pctWeekly);
+        const gColor = getModelColor(gMin, true);
+        const cColor = getModelColor(cMin, false);
 
         const pill = root.querySelector('.ag-quota-pill');
         if (pill) {
+            pill.title = `Gemini: 5H ${info.gemini.pct5h}% | 周限 ${info.gemini.pctWeekly}%\nClaude: 5H ${info.claude.pct5h}% | 周限 ${info.claude.pctWeekly}%\n点击展开详情`;
             pill.innerHTML = `
                 <span class="ag-quota-dot ${gColor.dot}"></span>
-                <span>Gemini ${info.gemini.pct5h}%</span>
+                <span>Gemini ${gMin}%</span>
                 <span class="ag-quota-divider"></span>
                 <span class="ag-quota-dot ${cColor.dot}"></span>
-                <span>Claude ${info.claude.pct5h}%</span>
+                <span>Claude ${cMin}%</span>
             `;
         }
 

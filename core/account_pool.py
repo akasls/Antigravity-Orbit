@@ -378,34 +378,67 @@ class AccountPoolManager:
             pass
         return urllib.request.urlopen(req, timeout=timeout)
 
+    # 候选 Google OAuth 凭据表 (用于跨工具导入兼容与凭据刷新自动容错)
+    OAUTH_CLIENT_CANDIDATES = [
+        (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
+        ("32555940559.apps.googleusercontent.com", "zrMDQNmBhILKTBia-BuvACio"),
+        ("681255809395-oo8ft2oprdrnp9e5q1kpqneps41ug9lh.apps.googleusercontent.com", ""),
+    ]
+
     @classmethod
-    def refresh_google_token(cls, refresh_token: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
-        """使用 refresh_token 刷新 Google OAuth access_token"""
+    def refresh_google_token(
+        cls,
+        refresh_token: str,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None
+    ) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+        """使用 refresh_token 刷新 Google OAuth access_token，支持多 Client ID 容错轮询"""
         if not refresh_token:
             return False, None, "缺少 refresh_token"
 
-        data = urllib.parse.urlencode({
-            "client_id": GOOGLE_CLIENT_ID,
-            "client_secret": GOOGLE_CLIENT_SECRET,
-            "refresh_token": refresh_token,
-            "grant_type": "refresh_token",
-        }).encode("utf-8")
+        candidates = []
+        if client_id:
+            candidates.append((client_id, client_secret or ""))
+        for cand in cls.OAUTH_CLIENT_CANDIDATES:
+            if cand not in candidates:
+                candidates.append(cand)
 
-        req = urllib.request.Request(
-            GOOGLE_TOKEN_URL,
-            data=data,
-            headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT}
-        )
+        last_err = ""
+        for cid, csec in candidates:
+            post_fields = {
+                "client_id": cid,
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+            }
+            if csec:
+                post_fields["client_secret"] = csec
+            data = urllib.parse.urlencode(post_fields).encode("utf-8")
 
-        try:
-            with cls._http_urlopen(req, timeout=12) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                return True, result, "Token 刷新成功"
-        except urllib.error.HTTPError as e:
-            msg = e.read().decode("utf-8", errors="ignore")
-            return False, None, f"Token 刷新失败 HTTP {e.code}: {msg}"
-        except Exception as e:
-            return False, None, f"Token 刷新异常: {e}"
+            req = urllib.request.Request(
+                GOOGLE_TOKEN_URL,
+                data=data,
+                headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT}
+            )
+
+            try:
+                with cls._http_urlopen(req, timeout=12) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+                    result["_used_client_id"] = cid
+                    result["_used_client_secret"] = csec
+                    return True, result, "Token 刷新成功"
+            except urllib.error.HTTPError as e:
+                msg = e.read().decode("utf-8", errors="ignore")
+                last_err = f"HTTP {e.code}: {msg}"
+                # 如果是 invalid_grant 或 invalid_client 则继续尝试下一个候选凭据
+                if "invalid_grant" in msg or "invalid_client" in msg:
+                    continue
+                else:
+                    break
+            except Exception as e:
+                last_err = str(e)
+                break
+
+        return False, None, f"Token 刷新失败: {last_err}"
 
     @classmethod
     def fetch_user_info(cls, access_token: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
@@ -510,12 +543,20 @@ class AccountPoolManager:
             )
             with cls._http_urlopen(req, timeout=12) as resp:
                 summary_data = json.loads(resp.read().decode("utf-8"))
-                for group in summary_data.get("groups", []):
-                    g_name = (group.get("displayName") or "").lower()
+                groups = summary_data.get("groups") or []
+                if not groups and isinstance(summary_data.get("response"), dict):
+                    groups = summary_data["response"].get("groups", [])
+                if not groups and isinstance(summary_data.get("data"), dict):
+                    groups = summary_data["data"].get("groups", [])
+
+                for group in groups:
+                    g_name = (group.get("displayName") or group.get("name") or "").lower()
+                    is_gemini_group = "gemini" in g_name
+
                     for bucket in group.get("buckets", []):
                         b_id = (bucket.get("bucketId") or "").lower()
                         d_name = (bucket.get("displayName") or "").lower()
-                        window = (bucket.get("window") or "").lower()
+                        window = (bucket.get("window") or bucket.get("period") or "").lower()
                         frac = bucket.get("remainingFraction")
                         reset = bucket.get("resetTime") or ""
                         if frac is None:
@@ -527,21 +568,12 @@ class AccountPoolManager:
                                 continue
                         percent = max(0, min(100, int(round(float(frac) * 100))))
 
-                        is_5h = ("5h" in window or "5h" in b_id or "five hour" in d_name or "5 hour" in d_name)
-                        is_weekly = ("weekly" in window or "weekly" in b_id or "week" in d_name)
+                        is_5h = ("5h" in window or "5h" in b_id or "five" in d_name or "5 hour" in d_name or "5-hour" in window)
+                        is_weekly = ("week" in window or "week" in b_id or "week" in d_name)
 
-                        is_claude = ("claude" in g_name or "3p" in g_name or "gpt" in g_name or "claude" in b_id or "3p" in b_id)
-                        is_gemini = ("gemini" in g_name or "gemini" in b_id)
+                        is_gemini = is_gemini_group or ("gemini" in b_id)
 
-                        if is_claude:
-                            claude_found = True
-                            if is_5h:
-                                quota_result["claude_5h_percent"] = percent
-                                quota_result["claude_5h_reset"] = reset
-                            elif is_weekly:
-                                quota_result["claude_weekly_percent"] = percent
-                                quota_result["claude_weekly_reset"] = reset
-                        elif is_gemini:
+                        if is_gemini:
                             gemini_found = True
                             if is_5h:
                                 quota_result["gemini_5h_percent"] = percent
@@ -549,6 +581,14 @@ class AccountPoolManager:
                             elif is_weekly:
                                 quota_result["gemini_weekly_percent"] = percent
                                 quota_result["gemini_weekly_reset"] = reset
+                        else:
+                            claude_found = True
+                            if is_5h:
+                                quota_result["claude_5h_percent"] = percent
+                                quota_result["claude_5h_reset"] = reset
+                            elif is_weekly:
+                                quota_result["claude_weekly_percent"] = percent
+                                quota_result["claude_weekly_reset"] = reset
 
                         # 兜底通用限额
                         if is_5h:
@@ -599,7 +639,7 @@ class AccountPoolManager:
             quota_result["gemini_weekly_reset"] = quota_result["weekly_reset"]
 
 
-        # 3. 查询 fetchAvailableModels 获取各模型独立配额
+        # 3. 查询 fetchAvailableModels 获取各模型独立配额并相互校准
         try:
             req = urllib.request.Request(
                 f"{CLOUD_CODE_PROD_URL}/v1internal:fetchAvailableModels",
@@ -614,12 +654,29 @@ class AccountPoolManager:
                     if frac is None and (q_info.get("resetTime") or "claude" in m_id or "gemini" in m_id):
                         frac = 0.0
                     if frac is not None:
+                        pct = max(0, min(100, int(round(float(frac) * 100))))
                         quota_result["models"][m_id] = {
                             "displayName": m_info.get("displayName") or m_id,
                             "remainingFraction": float(frac),
-                            "percent": max(0, min(100, int(round(float(frac) * 100)))),
+                            "percent": pct,
                             "resetTime": q_info.get("resetTime") or ""
                         }
+
+                # 交叉校准：若具体核心模型出现更低限额，及时反映至分组中避免误显 100%
+                claude_model_pcts = [m["percent"] for mid, m in quota_result["models"].items() if "claude" in mid or "3p" in mid or "gpt" in mid]
+                gemini_model_pcts = [m["percent"] for mid, m in quota_result["models"].items() if "gemini" in mid]
+                if claude_model_pcts and min(claude_model_pcts) < quota_result["claude_5h_percent"]:
+                    quota_result["claude_5h_percent"] = min(claude_model_pcts)
+                if gemini_model_pcts and min(gemini_model_pcts) < quota_result["gemini_5h_percent"]:
+                    quota_result["gemini_5h_percent"] = min(gemini_model_pcts)
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                quota_result["status"] = "EXHAUSTED"
+                for m_id in quota_result.get("models", {}):
+                    quota_result["models"][m_id]["percent"] = 0
+                    quota_result["models"][m_id]["remainingFraction"] = 0.0
+        except Exception:
+            pass
         except urllib.error.HTTPError as e:
             if e.code == 429:
                 quota_result["status"] = "EXHAUSTED"
@@ -807,7 +864,7 @@ class AccountPoolManager:
         return True, {"id": account_id, "email": email, "name": name}, f"成功导入当前账号: {email}"
 
     def add_account_by_token(self, token_input: str, custom_name: Optional[str] = None) -> Tuple[bool, Optional[Dict[str, Any]], str]:
-        """通过 Refresh Token 或完整 OAuth JSON 载荷导入新账号"""
+        """通过 Refresh Token 或完整 OAuth JSON 载荷导入新账号 (高度兼容各类管理工具导出格式)"""
         token_input = token_input.strip()
         if not token_input:
             return False, None, "请输入有效 Token 或 JSON 凭据"
@@ -815,39 +872,108 @@ class AccountPoolManager:
         refresh_token = ""
         access_token = ""
         expiry = ""
+        extracted_client_id = None
+        extracted_client_secret = None
+        hint_email = ""
+        hint_name = ""
 
-        # 支持直接粘贴 JSON
-        if token_input.startswith("{"):
+        # 支持直接粘贴 JSON (单对象或数组包裹)
+        if token_input.startswith("{") or token_input.startswith("["):
             try:
                 parsed = json.loads(token_input)
+                if isinstance(parsed, list) and len(parsed) > 0:
+                    parsed = parsed[0]
+                elif isinstance(parsed, dict) and "accounts" in parsed and isinstance(parsed["accounts"], list) and len(parsed["accounts"]) > 0:
+                    parsed = parsed["accounts"][0]
+
+                # 提取潜在账号名与邮箱提示
+                hint_email = parsed.get("email") or parsed.get("account") or parsed.get("user_email") or ""
+                hint_name = parsed.get("name") or parsed.get("user_name") or ""
+
+                # 提取 client_id & client_secret
+                extracted_client_id = (
+                    parsed.get("client_id") or parsed.get("clientId") or
+                    parsed.get("oauth_client_id") or parsed.get("app_id")
+                )
+                extracted_client_secret = (
+                    parsed.get("client_secret") or parsed.get("clientSecret") or
+                    parsed.get("oauth_client_secret") or parsed.get("app_secret")
+                )
+
+                # 提取 tokens
+                target_token_obj = None
                 if "token" in parsed and isinstance(parsed["token"], dict):
-                    t = parsed["token"]
-                    refresh_token = t.get("refresh_token", "")
-                    access_token = t.get("access_token", "")
-                    expiry = t.get("expiry", "")
-                elif "refresh_token" in parsed:
-                    refresh_token = parsed.get("refresh_token", "")
-                    access_token = parsed.get("access_token", "")
+                    target_token_obj = parsed["token"]
+                elif "tokens" in parsed and isinstance(parsed["tokens"], dict):
+                    target_token_obj = parsed["tokens"]
+                elif "oauth" in parsed and isinstance(parsed["oauth"], dict):
+                    target_token_obj = parsed["oauth"]
+                else:
+                    target_token_obj = parsed
+
+                if not extracted_client_id and target_token_obj:
+                    extracted_client_id = target_token_obj.get("client_id") or target_token_obj.get("clientId")
+                if not extracted_client_secret and target_token_obj:
+                    extracted_client_secret = target_token_obj.get("client_secret") or target_token_obj.get("clientSecret")
+
+                refresh_token = (
+                    target_token_obj.get("refresh_token") or
+                    target_token_obj.get("refreshToken") or
+                    target_token_obj.get("refresh") or ""
+                )
+                access_token = (
+                    target_token_obj.get("access_token") or
+                    target_token_obj.get("accessToken") or
+                    target_token_obj.get("token") or ""
+                )
+                expiry = (
+                    target_token_obj.get("expiry") or
+                    target_token_obj.get("expires_at") or
+                    target_token_obj.get("expiresIn") or ""
+                )
             except Exception as e:
                 return False, None, f"解析 Token JSON 失败: {e}"
         else:
             refresh_token = token_input
 
-        if not refresh_token:
-            return False, None, "未在输入中找到有效 refresh_token"
+        if not refresh_token and not access_token:
+            return False, None, "未在输入中找到有效 refresh_token 或 access_token"
 
-        # 刷新获取最新 access_token
-        ref_ok, ref_data, ref_msg = self.refresh_google_token(refresh_token)
-        if not ref_ok or not ref_data:
-            return False, None, f"验证并刷新 Token 失败: {ref_msg}"
+        # 1. 尝试刷新获取最新 access_token
+        ref_ok = False
+        ref_data = None
+        ref_msg = ""
+        used_client_id = extracted_client_id
+        used_client_secret = extracted_client_secret
 
-        access_token = ref_data.get("access_token")
-        expiry = datetime.now(timezone.utc).isoformat()
+        if refresh_token:
+            ref_ok, ref_data, ref_msg = self.refresh_google_token(
+                refresh_token,
+                client_id=extracted_client_id,
+                client_secret=extracted_client_secret
+            )
+
+        if ref_ok and ref_data:
+            access_token = ref_data.get("access_token") or access_token
+            expiry = datetime.now(timezone.utc).isoformat()
+            used_client_id = ref_data.get("_used_client_id") or used_client_id
+            used_client_secret = ref_data.get("_used_client_secret") or used_client_secret
+        else:
+            # 刷新未成功 (例如跨 Client ID 报错 invalid_grant)
+            # 若输入包含已有的 access_token，尝试直接验证准入
+            if access_token:
+                test_ok, test_user, test_err = self.fetch_user_info(access_token)
+                if test_ok and test_user:
+                    ref_ok = True
+                else:
+                    return False, None, f"验证并刷新 Token 失败: {ref_msg or test_err}"
+            else:
+                return False, None, f"验证并刷新 Token 失败: {ref_msg}"
 
         # 获取用户信息
         user_ok, user_info, _ = self.fetch_user_info(access_token)
-        email = (user_info.get("email") if user_ok and user_info else "") or "external@gmail.com"
-        name = custom_name or (user_info.get("name") if user_ok and user_info else "") or email.split("@")[0]
+        email = (user_info.get("email") if user_ok and user_info else "") or hint_email or "external@gmail.com"
+        name = custom_name or (user_info.get("name") if user_ok and user_info else "") or hint_name or email.split("@")[0]
         avatar = user_info.get("picture", "") if user_ok and user_info else ""
 
         # 获取额度数据
@@ -856,7 +982,8 @@ class AccountPoolManager:
         # 查找或创建
         account_id = None
         for acc in self._pool_cache.get("accounts", []):
-            if acc.get("token", {}).get("refresh_token") == refresh_token or acc.get("email") == email:
+            acc_tok = acc.get("token", {})
+            if (refresh_token and acc_tok.get("refresh_token") == refresh_token) or acc.get("email") == email:
                 account_id = acc["id"]
                 acc["email"] = email
                 acc["name"] = name
@@ -866,6 +993,8 @@ class AccountPoolManager:
                     "refresh_token": refresh_token,
                     "token_type": "Bearer",
                     "expiry": expiry,
+                    "client_id": used_client_id,
+                    "client_secret": used_client_secret,
                 }
                 acc["quota"] = quota_data
                 break
@@ -883,13 +1012,15 @@ class AccountPoolManager:
                     "refresh_token": refresh_token,
                     "token_type": "Bearer",
                     "expiry": expiry,
+                    "client_id": used_client_id,
+                    "client_secret": used_client_secret,
                 },
                 "quota": quota_data
             }
             self._pool_cache.setdefault("accounts", []).append(new_acc)
 
         self.save_pool()
-        return True, {"id": account_id, "email": email, "name": name}, f"成功添加账号: {email}"
+        return True, {"id": account_id, "email": email, "name": name}, f"成功导入账号: {email}"
 
     def switch_account(self, account_id: str) -> Tuple[bool, str]:
         """一键极速切换到目标账号"""
@@ -905,21 +1036,21 @@ class AccountPoolManager:
 
         token_data = target_acc.get("token", {})
         refresh_token = token_data.get("refresh_token")
+        cid = token_data.get("client_id")
+        csec = token_data.get("client_secret")
 
-        if not refresh_token:
-            return False, "该账号缺少 refresh_token，无法执行切换"
+        # 校验并刷新 token 保证切换后处于可用状态
+        if refresh_token:
+            ref_ok, ref_data, ref_msg = self.refresh_google_token(refresh_token, client_id=cid, client_secret=csec)
+            if ref_ok and ref_data:
+                token_data["access_token"] = ref_data.get("access_token")
+                token_data["expiry"] = datetime.now(timezone.utc).isoformat()
+                if ref_data.get("_used_client_id"):
+                    token_data["client_id"] = ref_data["_used_client_id"]
+                    token_data["client_secret"] = ref_data.get("_used_client_secret", "")
 
-        # 无论旧 Token 是否过期，切换时刷新一次获取最新 access_token 确保即时可用
-        ref_ok, ref_data, ref_msg = self.refresh_google_token(refresh_token)
-        if ref_ok and ref_data:
-            access_token = ref_data.get("access_token")
-            expiry = datetime.now(timezone.utc).isoformat()
-            target_acc["token"]["access_token"] = access_token
-            target_acc["token"]["expiry"] = expiry
-        else:
-            # 刷新失败尝试用旧的
-            access_token = token_data.get("access_token")
-            expiry = token_data.get("expiry") or datetime.now(timezone.utc).isoformat()
+        access_token = token_data.get("access_token")
+        expiry = token_data.get("expiry")
 
         # 构建 Windows Credential Manager 目标载荷
         payload = {
@@ -955,18 +1086,24 @@ class AccountPoolManager:
         if not target_acc:
             return False, None, "账号不存在"
 
-        refresh_token = target_acc.get("token", {}).get("refresh_token")
-        if not refresh_token:
-            return False, None, "缺少 refresh_token"
+        tok = target_acc.get("token", {})
+        refresh_token = tok.get("refresh_token")
+        cid = tok.get("client_id")
+        csec = tok.get("client_secret")
+        access_token = tok.get("access_token")
 
-        # 刷新 access_token
-        ref_ok, ref_data, ref_msg = self.refresh_google_token(refresh_token)
-        if not ref_ok or not ref_data:
-            return False, None, f"刷新 Token 失败: {ref_msg}"
+        if refresh_token:
+            ref_ok, ref_data, ref_msg = self.refresh_google_token(refresh_token, client_id=cid, client_secret=csec)
+            if ref_ok and ref_data:
+                access_token = ref_data.get("access_token")
+                tok["access_token"] = access_token
+                tok["expiry"] = datetime.now(timezone.utc).isoformat()
+                if ref_data.get("_used_client_id"):
+                    tok["client_id"] = ref_data["_used_client_id"]
+                    tok["client_secret"] = ref_data.get("_used_client_secret", "")
 
-        access_token = ref_data.get("access_token")
-        target_acc["token"]["access_token"] = access_token
-        target_acc["token"]["expiry"] = datetime.now(timezone.utc).isoformat()
+        if not access_token:
+            return False, None, "缺少有效 Token"
 
         # 重新获取配额
         quota = self.fetch_account_quota_data(access_token)
@@ -985,15 +1122,24 @@ class AccountPoolManager:
         success_count = 0
         for acc in accounts:
             try:
-                refresh_token = acc.get("token", {}).get("refresh_token")
-                if not refresh_token:
+                tok = acc.get("token", {})
+                refresh_token = tok.get("refresh_token")
+                cid = tok.get("client_id")
+                csec = tok.get("client_secret")
+                access_token = tok.get("access_token")
+
+                if refresh_token:
+                    ref_ok, ref_data, _ = self.refresh_google_token(refresh_token, client_id=cid, client_secret=csec)
+                    if ref_ok and ref_data:
+                        access_token = ref_data.get("access_token")
+                        tok["access_token"] = access_token
+                        tok["expiry"] = datetime.now(timezone.utc).isoformat()
+                        if ref_data.get("_used_client_id"):
+                            tok["client_id"] = ref_data["_used_client_id"]
+                            tok["client_secret"] = ref_data.get("_used_client_secret", "")
+
+                if not access_token:
                     continue
-                ref_ok, ref_data, _ = self.refresh_google_token(refresh_token)
-                if not ref_ok or not ref_data:
-                    continue
-                access_token = ref_data.get("access_token")
-                acc["token"]["access_token"] = access_token
-                acc["token"]["expiry"] = datetime.now(timezone.utc).isoformat()
 
                 quota = self.fetch_account_quota_data(access_token)
                 acc["quota"] = quota

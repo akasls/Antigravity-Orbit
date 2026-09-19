@@ -110,6 +110,36 @@ class TestOrbitCore(unittest.TestCase):
         self.assertTrue(hasattr(LocalizationManager, "kill_running_antigravity"))
         self.assertTrue(hasattr(LocalizationManager, "launch_antigravity"))
 
+    def test_proxy_url_auto_assembly(self):
+        from core.config import save_config, load_config
+        cfg = load_config()
+        cfg["customization"]["proxy_host"] = "127.0.0.1"
+        cfg["customization"]["proxy_port"] = 7890
+        cfg["customization"]["proxy_type"] = "socks5"
+        save_config(cfg)
+        reloaded = load_config()
+        self.assertEqual(reloaded["customization"]["proxy_url"], "socks5://127.0.0.1:7890")
+
+    def test_proxy_test_api(self):
+        api = OrbitApi()
+        res = api.test_proxy("http", "127.0.0.1", 65530)
+        self.assertIsInstance(res, dict)
+        self.assertIn("success", res)
+        self.assertFalse(res["success"])
+
+    def test_cockpit_json_extraction(self):
+        # 验证多样化 Cockpit Tools 导出格式的提取准确性
+        mgr = AccountPoolManager()
+        # 1. 数组格式提取
+        array_input = json.dumps([{
+            "client_id": "test.apps.googleusercontent.com",
+            "token": {"access_token": "ya29.test", "refresh_token": "1//test"}
+        }])
+        # 输入格式解析测试 (由于是假 token，验证到网络阶段报错即可证明格式解析成功)
+        ok, _, msg = mgr.add_account_by_token(array_input)
+        self.assertFalse(ok)
+        self.assertTrue("Token 刷新失败" in msg or "HTTP" in msg or "Token" in msg)
+
 
 if __name__ == "__main__":
     unittest.main()

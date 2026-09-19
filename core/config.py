@@ -150,6 +150,14 @@ def load_config() -> dict:
 
 
 def save_config(cfg: dict):
+    # 自动保障 proxy_url 格式完整
+    custom = cfg.get("customization", {})
+    if custom.get("proxy_host") and custom.get("proxy_port"):
+        p_type = (custom.get("proxy_type") or "http").lower()
+        p_host = custom.get("proxy_host")
+        p_port = custom.get("proxy_port")
+        custom["proxy_url"] = f"{p_type}://{p_host}:{p_port}"
+
     active_file = find_active_config_file()
     active_file.parent.mkdir(parents=True, exist_ok=True)
     with open(active_file, "w", encoding="utf-8") as f:

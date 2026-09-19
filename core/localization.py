@@ -130,7 +130,7 @@ class LocalizationManager:
         tw: bool = False,
         en: bool = False,
         install_dir: Optional[str] = None,
-        no_kill: bool = False,
+        no_kill: bool = True,
         stream_output: bool = True
     ) -> Tuple[bool, str]:
         """安装或更新汉化包与优化配置 (强力抑制黑窗口)"""
@@ -164,7 +164,7 @@ class LocalizationManager:
     def restore(
         cls,
         install_dir: Optional[str] = None,
-        no_kill: bool = False,
+        no_kill: bool = True,
         stream_output: bool = True
     ) -> Tuple[bool, str]:
         """卸载汉化，恢复官方原版英文 (强力抑制黑窗口)"""

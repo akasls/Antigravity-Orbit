@@ -138,15 +138,36 @@ class OrbitApi:
         """异步刷新状态接口"""
         return self.get_initial_data()
 
+    def test_proxy(self, proxy_type: str = "http", host: str = "127.0.0.1", port: int = 7890) -> dict:
+        """测试专属代理网络连通性"""
+        import socket
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(3.0)
+            res = sock.connect_ex((host, int(port)))
+            sock.close()
+            if res == 0:
+                return {"success": True, "message": f"代理端口测试成功: {proxy_type.upper()}://{host}:{port}"}
+            else:
+                return {"success": False, "message": f"无法连接到代理目标端口 {host}:{port} (代码: {res})"}
+        except Exception as e:
+            return {"success": False, "message": f"代理探测异常: {e}"}
+
     def save_and_apply(self, new_cfg: dict) -> dict:
         """保存配置并实时生效 (绝对不干扰或强杀正在运行中的 Antigravity 客户端)"""
         try:
             cfg = load_config()
             cfg.update(new_cfg)
+
+            # 自动维护 proxy_url
+            custom = cfg.get("customization", {})
+            if custom.get("proxy_host") and custom.get("proxy_port"):
+                p_type = (custom.get("proxy_type") or "http").lower()
+                custom["proxy_url"] = f"{p_type}://{custom['proxy_host']}:{custom['proxy_port']}"
+
             save_config(cfg)
 
             # 更新 Skills 裁剪
-            custom = cfg.get("customization", {})
             try:
                 SkillsOptimizer.set_pruned(custom.get("prune_guide_skills", False))
             except Exception:
@@ -155,7 +176,7 @@ class OrbitApi:
             # 核心机制：
             # 1. 代理、自愈、推送、自启动等后台服务配置写入后即刻生效；
             # 2. 若 Antigravity 正在运行中：绝不强行杀掉客户端，避免弹黑窗或打断用户工作流。
-            #    若修改了外观/语言等需要重载的底层项，用户可随时在「系统维护」点击【重启客户端】一次性生效。
+            #    若修改了外观/语言/专属代理等需要底层重载的项，用户可随时在「系统维护」点击【重启客户端】一次性生效。
             # 3. 若 Antigravity 处于未运行状态：静默注入最新补丁。
             is_running = LocalizationManager.is_running()
             if not is_running:
@@ -166,7 +187,7 @@ class OrbitApi:
 
             return {
                 "success": True,
-                "message": "配置已实时自动保存生效！"
+                "message": "配置已保存生效！如修改了代理或加速，点击【重启客户端】即可让 Antigravity 彻底切入代理。"
             }
         except Exception as e:
             return {"success": False, "message": f"处理配置异常: {e}"}
