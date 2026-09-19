@@ -214,7 +214,11 @@
               <div class="row-info">
                 <span class="test-result-label" id="proxy-test-result"></span>
               </div>
-              <div class="row-ctrl">
+              <div class="row-ctrl" style="gap: 8px;">
+                <button class="btn btn-secondary btn-sm" id="btn-detect-proxy" title="自动扫描本机正在运行的 Clash/v2rayN/Xray 代理端口">
+                  <svg style="width: 13px; height: 13px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                  <span>自动探测本机代理</span>
+                </button>
                 <button class="btn btn-secondary btn-sm" id="btn-test-proxy">
                   <svg style="width: 13px; height: 13px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                   <span>测试代理连通性</span>

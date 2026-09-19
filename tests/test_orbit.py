@@ -127,6 +127,12 @@ class TestOrbitCore(unittest.TestCase):
         self.assertIn("success", res)
         self.assertFalse(res["success"])
 
+    def test_detect_local_proxy(self):
+        api = OrbitApi()
+        res = api.detect_local_proxy()
+        self.assertIsInstance(res, dict)
+        self.assertIn("detected", res)
+
     def test_cockpit_json_extraction(self):
         # 验证多样化 Cockpit Tools 导出格式的提取准确性
         mgr = AccountPoolManager()

@@ -837,7 +837,10 @@ function setupEvents() {
     btnSubmitModal.addEventListener('click', handleAddAccountSubmit);
   }
 
-  // 5. 测试按钮
+  // 5. 测试与探测按钮
+  const btnDetectProxy = document.getElementById('btn-detect-proxy');
+  if (btnDetectProxy) btnDetectProxy.addEventListener('click', handleDetectProxy);
+
   const btnTestProxy = document.getElementById('btn-test-proxy');
   if (btnTestProxy) btnTestProxy.addEventListener('click', handleTestProxy);
 
@@ -901,6 +904,101 @@ function setupEvents() {
       appState.logs = "日志已清空";
       renderLogs();
     });
+  }
+}
+
+// -------------------------------------------------------------
+// 网络代理探测与连通性测试
+// -------------------------------------------------------------
+
+async function handleDetectProxy() {
+  if (!window.pywebview || !window.pywebview.api) return;
+  const label = document.getElementById('proxy-test-result');
+  if (label) {
+    label.style.color = '#3b82f6';
+    label.innerText = '正在智能扫描本机代理端口 (10808/7890/7897/10809)...';
+  }
+  showToast('正在探测本机可用代理端口...', 'info');
+
+  try {
+    const res = await window.pywebview.api.detect_local_proxy();
+    if (res && res.detected) {
+      setInput('custom-proxy-host', res.host || '127.0.0.1');
+      setInput('custom-proxy-port', res.port || 10808);
+      setSelect('custom-proxy-type', res.type || 'socks5');
+      setCheckbox('custom-proxy-enabled', true);
+
+      if (label) {
+        label.style.color = '#10b981';
+        label.innerText = `✓ ${res.message}`;
+      }
+      showToast(res.message, 'success');
+      triggerAutoSave(0);
+    } else {
+      if (label) {
+        label.style.color = '#ef4444';
+        label.innerText = `✕ ${res.message || '未检测到正在运行的代理'}`;
+      }
+      showToast(res.message || '未扫描到可用代理', 'warning');
+    }
+  } catch (e) {
+    if (label) {
+      label.style.color = '#ef4444';
+      label.innerText = `✕ 探测失败: ${e}`;
+    }
+    showToast('探测失败: ' + e, 'error');
+  }
+}
+
+async function handleTestProxy() {
+  if (!window.pywebview || !window.pywebview.api) return;
+  const host = getInput('custom-proxy-host') || '127.0.0.1';
+  const port = parseInt(getInput('custom-proxy-port')) || 10808;
+  const type = getSelect('custom-proxy-type') || 'socks5';
+  const label = document.getElementById('proxy-test-result');
+
+  if (label) {
+    label.style.color = '#3b82f6';
+    label.innerText = `正在测试 ${type.toUpperCase()} ${host}:${port} 连通性并握手 Google...`;
+  }
+
+  try {
+    const res = await window.pywebview.api.test_proxy(host, port, type);
+    if (label) {
+      label.style.color = res.success ? '#10b981' : '#ef4444';
+      label.innerText = res.success ? `✓ ${res.message}` : `✕ ${res.message}`;
+    }
+    showToast(res.message, res.success ? 'success' : 'error');
+  } catch (e) {
+    if (label) {
+      label.style.color = '#ef4444';
+      label.innerText = `✕ 测试异常: ${e}`;
+    }
+    showToast('测试异常: ' + e, 'error');
+  }
+}
+
+async function handleTestPush(channel) {
+  if (!window.pywebview || !window.pywebview.api) return;
+  let params = {};
+  if (channel === 'telegram') {
+    params = {
+      bot_token: getInput('tg-bot-token'),
+      chat_id: getInput('tg-chat-id'),
+      proxy: getInput('tg-proxy')
+    };
+  } else if (channel === 'feishu') {
+    params = { webhook_url: getInput('feishu-webhook') };
+  } else if (channel === 'wecom') {
+    params = { webhook_url: getInput('wecom-webhook') };
+  }
+
+  showToast(`正在发送 ${channel} 测试通知...`, 'info');
+  try {
+    const res = await window.pywebview.api.test_notifier(channel, params);
+    showToast(res.message, res.success ? 'success' : 'error');
+  } catch (e) {
+    showToast(`测试异常: ${e}`, 'error');
   }
 }
 

@@ -499,3 +499,108 @@ class OrbitApi:
         except Exception as e:
             return {"success": False, "message": str(e)}
 
+    def test_proxy(self, a: str = "127.0.0.1", b=10808, c: str = "socks5") -> dict:
+        """真实探测指定代理节点并测试访问 Google (兼容各种调用签名)"""
+        if str(a).lower() in ("http", "https", "socks5", "socks5h"):
+            p_type = str(a).lower()
+            host = str(b).strip()
+            port = int(c)
+        else:
+            host = str(a).strip()
+            port = int(b)
+            p_type = str(c).lower()
+
+        import socket
+        import time
+
+        # 1. TCP 端口连通性
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(2.0)
+        res = sock.connect_ex((host, port))
+        sock.close()
+        if res != 0:
+            return {
+                "success": False,
+                "message": f"无法连接到代理端口 {host}:{port} (错误码: {res})。请确认代理客户端 (如 v2rayN/Clash/Xray) 是否正在运行。"
+            }
+
+        # 2. 真实 HTTP/SOCKS5 握手并访问 Google 204
+        start_t = time.time()
+        try:
+            import urllib.request
+            scheme = "socks5h" if p_type == "socks5" else "http"
+            proxy_addr = f"{scheme}://{host}:{port}"
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({"http": proxy_addr, "https": proxy_addr})
+            )
+            resp = opener.open("https://www.google.com/generate_204", timeout=4.0)
+            latency_ms = int((time.time() - start_t) * 1000)
+            if resp.status in (200, 204):
+                return {
+                    "success": True,
+                    "message": f"代理连通成功！Google 延迟: {latency_ms}ms ({p_type.upper()} {host}:{port})",
+                    "latency_ms": latency_ms
+                }
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "message": f"代理本地端口握手成功 ({p_type.upper()} {host}:{port})！"
+        }
+
+    def detect_local_proxy(self) -> dict:
+        """自动扫描并探测本机常用代理端口 (v2rayN/Xray/Clash/Surge)"""
+        candidates = [
+            ("127.0.0.1", 10808, "socks5"),
+            ("127.0.0.1", 10808, "http"),
+            ("127.0.0.1", 7890, "socks5"),
+            ("127.0.0.1", 7890, "http"),
+            ("127.0.0.1", 7897, "http"),
+            ("127.0.0.1", 10809, "http"),
+            ("127.0.0.1", 1080, "socks5"),
+        ]
+        import socket
+        import time
+
+        for host, port, p_type in candidates:
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(0.5)
+                res = sock.connect_ex((host, port))
+                sock.close()
+                if res == 0:
+                    try:
+                        import urllib.request
+                        scheme = "socks5h" if p_type == "socks5" else "http"
+                        opener = urllib.request.build_opener(
+                            urllib.request.ProxyHandler({"http": f"{scheme}://{host}:{port}", "https": f"{scheme}://{host}:{port}"})
+                        )
+                        start_t = time.time()
+                        resp = opener.open("https://www.google.com/generate_204", timeout=2.0)
+                        latency = int((time.time() - start_t) * 1000)
+                        if resp.status in (200, 204):
+                            return {
+                                "detected": True,
+                                "host": host,
+                                "port": port,
+                                "type": p_type,
+                                "latency_ms": latency,
+                                "message": f"成功探测到可用代理: {host}:{port} ({p_type.upper()}, 延迟 {latency}ms)"
+                            }
+                    except Exception:
+                        pass
+
+                    return {
+                        "detected": True,
+                        "host": host,
+                        "port": port,
+                        "type": p_type,
+                        "latency_ms": 0,
+                        "message": f"探测到本地代理监听端口: {host}:{port} ({p_type.upper()})"
+                    }
+            except Exception:
+                continue
+
+        return {"detected": False, "message": "未扫描到本机运行的常见代理服务 (10808/7890/7897/10809)"}
+

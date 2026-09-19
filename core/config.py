@@ -49,8 +49,12 @@ DEFAULT_CONFIG = {
         "expand_v8_memory": True,        # 扩充 V8 垃圾回收堆内存至 4GB
         "disable_telemetry": True,       # 全栈关闭遥测与数据回传
         "hide_ide_buttons": True,        # 彻底隐藏右上角多余推广按钮
-        "proxy_enabled": False,          # Antigravity 专属网络代理 (彻底取代 Proxifier)
-        "proxy_url": "http://127.0.0.1:10808", # 代理地址 (支持 http/socks5)
+        "proxy_enabled": True,          # Antigravity 专属网络代理 (彻底取代 Proxifier)
+        "proxy_host": "127.0.0.1",
+        "proxy_port": 10808,
+        "proxy_type": "socks5",
+        "proxy_url": "socks5://127.0.0.1:10808", # 代理地址 (支持 http/socks5)
+        "proxy_bypass": "<local>;localhost;127.0.0.1;::1;127.0.0.0/8;*.local",
         "disable_auto_update": True,     # 锁定稳定版本，禁止后台静默更新导致补丁被覆盖
         "enable_smooth_scrolling": True, # 硬件级长文本平滑滚动与 60FPS 渲染
         "compact_ui_mode": False,        # 紧凑代码视野模式 (有效代码显示面积提升 35%~50%)

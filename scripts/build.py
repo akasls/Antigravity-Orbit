@@ -111,6 +111,12 @@ def build():
 
         app_dir = DIST_DIR / "Antigravity-Orbit"
         if app_dir.exists():
+            cfg_in_app = app_dir / "config.json"
+            if not cfg_in_app.exists():
+                src_cfg = PROJECT_ROOT / "config.example.json"
+                if src_cfg.exists():
+                    shutil.copy(src_cfg, cfg_in_app)
+
             zip_name = DIST_DIR / "Antigravity-Orbit-Windows-x64"
             print(f"[ARCHIVE] 正在压缩 Onedir 秒开目录包: {zip_name}.zip ...")
             # 压缩包含 Antigravity-Orbit 根目录的结构
