@@ -28,14 +28,23 @@ window.addEventListener('pywebviewready', () => {
 
 // 脱机降级或浏览器直接预览兜底
 document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => {
+  const tryInitMock = () => {
     if (!window.pywebview) {
-      console.warn("运行于静态演示模式。");
       setupTabs();
       setupEvents();
       renderMockData();
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const targetTab = params.get('tab');
+        if (targetTab) {
+          switchToTab(targetTab);
+        }
+      } catch (e) {}
     }
-  }, 300);
+  };
+  // 浏览器直接打开时即刻就绪，WebView 环境保留容错延时
+  tryInitMock();
+  setTimeout(tryInitMock, 200);
 });
 
 async function initApp() {
@@ -2026,22 +2035,103 @@ function getSelect(id) {
 }
 
 function renderMockData() {
+  appState.status = {
+    installed: true,
+    install_dir: "C:\\Users\\User\\AppData\\Local\\Programs\\Antigravity",
+    is_localized: true,
+    lang: "zh-CN",
+    daemon_running: true,
+    daemon_pid: 14208,
+    daemon_port: 49222,
+    daemon_autostart: true,
+    app_autostart: true,
+    storage: { cleanable_total_str: "1.2 GB" }
+  };
+  appState.config = {
+    customization: {
+      language: "zh-CN",
+      show_quota_badge: true,
+      quota_refresh_interval: 60,
+      quota_refresh_active_interval: 60,
+      quota_refresh_idle_interval: 900,
+      enable_gpu_acceleration: true,
+      disable_background_throttling: true,
+      expand_v8_memory: true,
+      disable_telemetry: true,
+      hide_ide_buttons: true,
+      proxy_enabled: true,
+      proxy_host: "127.0.0.1",
+      proxy_port: 10808,
+      proxy_type: "socks5",
+      proxy_url: "socks5://127.0.0.1:10808",
+      disable_auto_update: true,
+      enable_smooth_scrolling: true,
+      compact_ui_mode: false,
+      prune_guide_skills: true,
+      auto_retry_on_error: true,
+      max_retry_count: 3,
+      notify_on_quota_exhausted: true,
+      notify_on_max_retry_failed: true,
+      start_maximized: true
+    },
+    channels: {
+      telegram: { enabled: true, bot_token: "••••••••••••", chat_id: "••••••••", proxy: "http://127.0.0.1:10808" },
+      feishu: { enabled: true, webhook_url: "https://open.feishu.cn/open-apis/bot/v2/hook/••••" },
+      wecom: { enabled: false, webhook_url: "" }
+    }
+  };
+  appState.prompt = {
+    content: "# 系统全局规则 (AGENTS.md)\n\n你是一位资深架构师与全栈技术专家。在回答问题或执行代码变更时，请严格遵守以下工程规范：\n1. 优先使用类型安全的现代语法；\n2. 保持代码精炼，杜绝废话；\n3. 每一个关键变更均需附带验证用例。",
+    templates: [
+      { id: "t1", title: "🛡️ 网络安全与底层系统工程", content: "专注于底层协议、API Hooking、免杀逆向分析与安全仿真。" },
+      { id: "t2", title: "💻 资深全栈工程师与架构专家", content: "注重设计模式、高可用架构、边界防护与类型安全。" },
+      { id: "t3", title: "⚡ 极简极速代码助手", content: "杜绝废话和长篇客套，直接输出高精度代码与改动。" }
+    ]
+  };
   appState.account_pool = {
-    total: 1,
-    healthy: 1,
+    total: 2,
+    healthy: 2,
     low_or_exhausted: 0,
     accounts: [{
-      id: 'demo-1',
-      email: 'demo@gmail.com',
-      name: 'Google AI 用户',
+      id: "demo-1",
+      email: "primary.workspace@gmail.com",
+      name: "主工作区 (Primary)",
       is_active: true,
-      last_refreshed_text: '刚刚',
+      last_refreshed_text: "刚刚",
       quota: {
-        tier_display: 'Google AI Pro',
+        subscription_tier: "PRO",
+        tier_display: "Google AI Pro",
         claude_5h_percent: 100,
-        claude_weekly_percent: 95,
+        claude_weekly_percent: 94,
         gemini_5h_percent: 100,
-        gemini_weekly_percent: 90
+        gemini_weekly_percent: 88,
+        claude_5h_reset: "4小时 35分钟",
+        claude_weekly_reset: "5天 18小时",
+        gemini_5h_reset: "3小时 12分钟",
+        gemini_weekly_reset: "6天 2小时",
+        models: {
+          "claude-3-5-sonnet": { displayName: "Claude 3.5 Sonnet", percent: 100, resetTime: "4h 35m" },
+          "gemini-2.5-pro": { displayName: "Gemini 2.5 Pro", percent: 100, resetTime: "3h 12m" },
+          "gemini-2.5-flash": { displayName: "Gemini 2.5 Flash", percent: 100, resetTime: "实时" }
+        }
+      }
+    }, {
+      id: "demo-2",
+      email: "orbit.backup@gmail.com",
+      name: "备用账号 (Backup Pool)",
+      is_active: false,
+      last_refreshed_text: "15分钟前",
+      quota: {
+        subscription_tier: "PRO",
+        tier_display: "Google AI Pro",
+        claude_5h_percent: 82,
+        claude_weekly_percent: 75,
+        gemini_5h_percent: 90,
+        gemini_weekly_percent: 80,
+        claude_5h_reset: "2小时 10分钟",
+        claude_weekly_reset: "4天 10小时",
+        gemini_5h_reset: "1小时 45分钟",
+        gemini_weekly_reset: "5天 6小时"
       }
     }]
   };
