@@ -382,13 +382,46 @@ context.switchToTab('settings');
             self.assertTrue(res.get("success"))
 
     def test_tg_config_migration(self):
+        import tempfile
+        from unittest.mock import patch
         from core.config import load_config
-        cfg = load_config()
-        tg = cfg.get("channels", {}).get("telegram", {})
-        self.assertIsInstance(tg, dict)
-        self.assertTrue(tg.get("bot_token"), "Telegram bot_token should be automatically migrated if present in fallback paths")
-        self.assertTrue(tg.get("chat_id"), "Telegram chat_id should be automatically migrated if present in fallback paths")
-        self.assertTrue(str(tg.get("proxy", "")).startswith("http"), "Telegram proxy should be normalized to http format")
+
+        with tempfile.TemporaryDirectory() as td:
+            cand_file = Path(td) / "old_config.json"
+            cand_data = {
+                "channels": {
+                    "telegram": {
+                        "enabled": True,
+                        "bot_token": "123456:ABC-DEF",
+                        "chat_id": "-100123456",
+                        "proxy": "10808"
+                    }
+                }
+            }
+            cand_file.write_text(json.dumps(cand_data), encoding="utf-8")
+
+            active_file = Path(td) / "active_config.json"
+            active_data = {
+                "channels": {
+                    "telegram": {
+                        "enabled": True,
+                        "bot_token": "",
+                        "chat_id": "",
+                        "proxy": ""
+                    }
+                }
+            }
+            active_file.write_text(json.dumps(active_data), encoding="utf-8")
+
+            with patch("core.config.find_active_config_file", return_value=active_file), \
+                 patch("core.config.get_config_search_paths", return_value=[active_file, cand_file]), \
+                 patch("core.config.save_config"):
+                cfg = load_config()
+                tg = cfg.get("channels", {}).get("telegram", {})
+                self.assertIsInstance(tg, dict)
+                self.assertEqual(tg.get("bot_token"), "123456:ABC-DEF")
+                self.assertEqual(tg.get("chat_id"), "-100123456")
+                self.assertEqual(tg.get("proxy"), "http://127.0.0.1:10808")
 
     def test_unique_active_account(self):
         mgr = AccountPoolManager()
@@ -414,6 +447,76 @@ context.switchToTab('settings');
         self.assertIn("quota_refresh_idle_interval", custom)
         self.assertEqual(custom["quota_refresh_active_interval"], 60)
         self.assertEqual(custom["quota_refresh_idle_interval"], 900)
+
+    def test_multiline_and_cockpit_import_parsing(self):
+        from unittest.mock import patch
+        mgr = AccountPoolManager()
+
+        # 1. 模拟多行纯文本 Token 导入
+        multiline_tokens = "1//token_sample_1\n1//token_sample_2\n1//token_sample_3"
+        with patch.object(AccountPoolManager, "refresh_google_token", return_value=(True, {"access_token": "ya29.test", "expires_in": 3600}, "OK")), \
+             patch.object(AccountPoolManager, "fetch_user_info", return_value=(True, {"email": "mock_user@gmail.com", "name": "Mock User"}, "")), \
+             patch.object(AccountPoolManager, "fetch_account_quota_data", return_value={"status": "HEALTHY", "five_hour_percent": 100}), \
+             patch.object(AccountPoolManager, "save_pool"):
+            ok, _, msg = mgr.add_account_by_token(multiline_tokens)
+            self.assertTrue(ok)
+            self.assertIn("成功批量导入", msg)
+
+        # 2. 模拟 Cockpit Tools 导出数组格式批量导入
+        cockpit_export = json.dumps([
+            {"email": "cockpit1@gmail.com", "token": {"refresh_token": "1//cockpit_1"}},
+            {"email": "cockpit2@gmail.com", "token": {"refresh_token": "1//cockpit_2"}}
+        ])
+        with patch.object(AccountPoolManager, "refresh_google_token", return_value=(True, {"access_token": "ya29.test", "expires_in": 3600}, "OK")), \
+             patch.object(AccountPoolManager, "fetch_user_info", return_value=(True, {"email": "cockpit_user@gmail.com", "name": "Cockpit User"}, "")), \
+             patch.object(AccountPoolManager, "fetch_account_quota_data", return_value={"status": "HEALTHY", "five_hour_percent": 100}), \
+             patch.object(AccountPoolManager, "save_pool"):
+            ok, _, msg = mgr.add_account_by_token(cockpit_export)
+            self.assertTrue(ok)
+            self.assertIn("成功批量导入 2/2", msg)
+
+    def test_storage_manager_clean_mock(self):
+        import tempfile
+        from unittest.mock import patch
+        from core.storage import StorageManager
+
+        with tempfile.TemporaryDirectory() as td:
+            dummy_cache = Path(td) / "Cache"
+            dummy_cache.mkdir()
+            (dummy_cache / "data_0.tmp").write_bytes(b"A" * 1024)
+
+            with patch.object(StorageManager, "get_electron_user_data_dirs", return_value=[Path(td)]), \
+                 patch("core.storage.BRAIN_DIR", Path(td) / "brain"), \
+                 patch("core.storage.DB_PATH", Path(td) / "test.db"):
+                freed, details = StorageManager.clean_storage(clean_cache=True, clean_temp_logs=False, vacuum_db=False)
+                self.assertGreaterEqual(freed, 1024)
+                self.assertFalse((dummy_cache / "data_0.tmp").exists())
+
+    def test_startup_latency_benchmark(self):
+        import time
+        t0 = time.time()
+        # 测试全栈关键模块引用与初始对象创建耗时
+        import core.config
+        import core.storage
+        import core.account_pool
+        import core.prompt_manager
+        import core.localization
+        import core.autostart
+        import core.api_bridge
+        api = core.api_bridge.OrbitApi()
+        init_data = api.get_initial_data()
+        elapsed = time.time() - t0
+        self.assertLess(elapsed, 1.5, f"Startup elapsed time {elapsed:.3f}s exceeds benchmark of 1.5s")
+        self.assertIn("config", init_data)
+
+    def test_autostart_manager_integrity(self):
+        from core.autostart import AutostartManager
+        self.assertTrue(hasattr(AutostartManager, "is_enabled"))
+        self.assertTrue(hasattr(AutostartManager, "enable"))
+        self.assertTrue(hasattr(AutostartManager, "disable"))
+        self.assertTrue(hasattr(AutostartManager, "is_app_autostart_enabled"))
+        self.assertTrue(hasattr(AutostartManager, "enable_app_autostart"))
+        self.assertTrue(hasattr(AutostartManager, "disable_app_autostart"))
 
 if __name__ == "__main__":
     unittest.main()

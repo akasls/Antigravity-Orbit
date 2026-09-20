@@ -7,370 +7,295 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.8+" />
-  <img src="https://img.shields.io/badge/node.js-18+-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js" />
-  <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License MIT" />
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=flat-square" alt="Platform" />
+  <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20x64-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11 x64" />
+  <img src="https://img.shields.io/badge/Release-v3.3.4-10B981?style=flat-square&logo=github&logoColor=white" alt="Release v3.3.4" />
+  <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+" />
+  <img src="https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js 18+" />
+  <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License MIT" />
   <img src="https://img.shields.io/badge/Antigravity-2.0+-FF6F00?style=flat-square" alt="Antigravity 2.0+" />
 </p>
 
-> 🚀 **Antigravity Orbit** 是专为 **Google Antigravity** 打造的一体化独立桌面管理与生产力伴侣套件。  
-> 拥有 **【📊 仪表盘总览 (当前账号/双周期额度/服务状态)】**、**【👥 账号池与一键极速切号 (多账号矩阵/自动批量刷新额度)】**、**【⚡ 性能加速与专属网络代理 (彻底取代 Proxifier)】**、**【🎨 全界面深度汉化与外观净化】**、**【🛡️ 任务异常自愈与跨平台推送（Telegram / 飞书 / 企微）】**、**【📝 全局系统提示词/角色规则可视化管理】** 与 **【系统托盘后台静默驻留】**，让您的 AI 编程与智能体协同如在轨道运行般顺畅。
+> 🚀 **Antigravity Orbit** 是专为 **Google Antigravity** 官方客户端打造的 Windows 原生独立桌面伴侣与生产力中枢。  
+> 集成 **【👥 智能多账号池与毫秒级热切号】**、**【📊 实时双周期模型配额看板 (Claude & Gemini)】**、**【⚡ 极限渲染加速与专属网络代理】**、**【🌐 深度汉化与界面外观纯净化】**、**【📝 专家提示词库与 Skills 冗余裁剪 (省 10,000+ Token)】**、**【🛡️ 任务长跑自愈与多渠道即时推送】** 与 **【🧹 磁盘深度垃圾清理与彻底初始化】**，助您在轨道上释放反重力智能体的极致潜能。
 
 ---
 
-## 🌟 核心功能特性
+## 📑 目录
 
-### 👥 1. 账号池与多账号极速切号 (Account Pool & Fast Switch v3.1.0 ⭐全新)
-- **原生对接 Windows 凭据管理器**：底层通过 Windows 原生 API 读写系统登录凭据（`gemini:antigravity`），与官方客户端完全无缝咬合。
-- **一键读取当前登录账号**：无需手动输入任何密钥，点击即可一键将客户端正在登录的账号导入账号池。
-- **多账号导入与统一管理**：支持粘贴 Google OAuth `refresh_token` 或完整 JSON 载荷，快速建立账号矩阵。
-- **全自动批量配额检测**：全量集成 Google Cloud Code Pa 原生接口，一键并发检测所有账号的计划等级（Google AI Pro / Ultra / 免费版）、5小时滚动配额 (`Five Hour Limit`)、周度配额 (`Weekly Limit`) 与预计重置倒计时。
-- **一键极速无感切号**：在账号卡片上点击“一键切号”，毫秒级更新系统凭据，重启客户端后直接以新账号无感运行，无需任何手动登入登出。
-
----
-
-### 🖥️ 2. 独立桌面可视化管理客户端 (Native Edge WebView2 GUI v3.2.0)
-- **全新微前端现代架构**：基于 Windows 原生 **Edge WebView2** 渲染引擎与现代 Fluent / Tailwind 本地设计系统，实现 0.15s 秒级冷启动与 60~120 FPS 显卡硬件直推！
-- **重塑为 5 大逻辑严密、层次清晰的现代化工作区**：彻底告别散乱与错位，极致高效：
-  - 👥 **账号与配额池**：首屏高光当前账号（双配额进度条/Pro计划徽章/重置倒计时）、全局健康度指标、多账号卡片矩阵、一键无感秒切与添加导入。
-  - ⚡ **性能与专属代理**：反重力专属网络代理（接管全进程流量，彻底替代 Proxifier）、GPU 硬件直推、8GB V8 堆内存扩展、防后台休眠降频。
-  - 🛡️ **自愈与消息推送**：长跑任务报错自动重试自愈（恢复工作自动复位计数器）、额度耗尽熔断保护、Telegram/飞书/企微推送通道与实时测试。
-  - 📝 **全局系统提示词**：语法高亮直接编辑/备份/回滚 `AGENTS.md`，内置精选专家角色模板一键套用。
-  - ⚙️ **系统管理与维护**：多语言切换（8 种语言）、顶栏模型额度微标、托盘常驻守护、开机静默自启双轨管理、磁盘垃圾深度瘦身与运行日志终端。
-- **现代化视觉组件系统**：iOS/Fluent 风格丝滑滑动开关、纯本地 SVG 矢量图标、优雅悬浮非阻塞 Toast 提示、代码级等宽系统提示词编辑器，任何缩放比例下**绝对零截断、零错位**。
-- **系统托盘后台静默常驻 (System Tray Integration)**：
-  - 点击窗口关闭按钮默认平滑缩入托盘图标，右键支持“打开管理中心”、“重启客户端”与“彻底退出”。
-  - 支持随 Windows 开机静默启动直接驻留托盘（`--tray`），无需手动开启。
-- **一键热应用与一键无损还原**：一键保存并注入生效，也可一键随时无痕撤销所有补丁恢复官方原版。
-
----
-
-### 📝 2. 全局系统提示词与规则可视化管理器 (System Prompt Manager)
-- **底层精准映射**：直接读写 Antigravity 核心注入的全局规则文件 `~/.gemini/config/AGENTS.md`（对应智能体底层 `<RULE[user_global]>`）。
-- **即时生效无需重启**：修改保存后无需重启 Antigravity，下一个新会话或新任务直接生效！
-- **内置 5 大精选角色模板**：
-  1. 🛡️ **网络安全与底层系统工程**：专注于底层协议、API Hooking、免杀逆向分析与安全仿真；
-  2. 💻 **资深全栈工程师与架构专家**：注重设计模式、高可用架构、边界防护与类型安全；
-  3. ⚡ **极简极速代码助手**：杜绝废话和长篇客套，直接输出高精度代码与改动；
-  4. 🧪 **代码审计与自动化测试专家**：深挖边界用例、OWASP 漏洞与内存泄漏；
-  5. 🔄 **官方纯净空白规则**：恢复原版空提示词状态。
-- **安全自动备份**：每次保存均自动在同目录生成 `AGENTS.md.bak`，支持一键恢复上一次历史备份。
+- [一、项目介绍 (Project Overview)](#一项目介绍-project-overview)
+  - [1. 智能账号池与极速无感切号](#1-智能账号池与极速无感切号)
+  - [2. 顶部标题栏实时模型额度胶囊](#2-顶部标题栏实时模型额度胶囊)
+  - [3. 极致性能调优与专属网络代理](#3-极致性能调优与专属网络代理)
+  - [4. 全局提示词库与 Skills 冗余裁剪](#4-全局提示词库与-skills-冗余裁剪)
+  - [5. 深度界面汉化与外观净化](#5-深度界面汉化与外观净化)
+  - [6. 长跑任务自愈与多通道即时推送](#6-长跑任务自愈与多通道即时推送)
+  - [7. 磁盘深度瘦身与安全初始化](#7-磁盘深度瘦身与安全初始化)
+- [二、项目安装 (Installation Guide)](#二项目安装-installation-guide)
+  - [版本选择与下载](#版本选择与下载)
+  - [方式一：Windows 原生安装包 (强烈推荐)](#方式一windows-原生安装包-强烈推荐)
+  - [方式二：Windows 单文件便携版 (即点即用)](#方式二windows-单文件便携版-即点即用)
+  - [方式三：Windows 免解压极速版 (目录解压)](#方式三windows-免解压极速版-目录解压)
+  - [方式四：开发者源码部署](#方式四开发者源码部署)
+- [三、项目使用 (Usage Guide)](#三项目使用-usage-guide)
+  - [1. 账号池管理与批量导入导出](#1-账号池管理与批量导入导出)
+  - [2. 客户端汉化与性能优化热部署](#2-客户端汉化与性能优化热部署)
+  - [3. 规则管理与自定义提示词应用](#3-规则管理与自定义提示词应用)
+  - [4. 专属网络代理配置](#4-专属网络代理配置)
+  - [5. 任务自愈与通知配置 (Telegram / 飞书 / 企微)](#5-任务自愈与通知配置-telegram--飞书--企微)
+  - [6. 系统维护、托盘守护与彻底初始化](#6-系统维护托盘守护与彻底初始化)
+  - [7. CLI 常用管理命令速查](#7-cli-常用管理命令速查)
+- [四、隐私与安全性声明](#四隐私与安全性声明)
+- [五、开源协议](#五开源协议)
 
 ---
 
-### 📊 3. 顶部标题栏实时模型额度显示 (Top-Right Quota Badge)
-- **免鉴权内部直连**：逆向重构 ConnectRPC 内部端点 `/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary`，直接获取各模型限额。
+## 一、项目介绍 (Project Overview)
+
+### 1. 智能账号池与极速无感切号
+- **原生对接 Windows Credential Manager**：通过 Windows 底层原生 API 读写系统登录凭据（`gemini:antigravity`），与官方客户端完全无缝咬合。
+- **一键读取当前登录账号**：无需手动输入任何 Key 或 Token，点击即可一键将客户端正在登录的账号同步至本地账号池。
+- **多途径账号导入**：
+  - **Google 网页一键授权登录**：自动唤起系统默认浏览器完成 Google OAuth 2.0 授权，全自动拉取。
+  - **Cockpit Tools 批量格式兼容导入**：原生兼容 `[{"email": "...", "refresh_token": "..."}]` 数组格式批量导入。
+  - **单行 / 多行 Refresh Token 批量导入**：支持一行一条粘贴导入，自动并发刷新换取有效凭据并探测账户信息。
+- **多格式导出备份**：支持一键导出为 **Cockpit Tools 兼容格式** 或 **Orbit 完整备份格式**，支持下载 JSON 或复制剪贴板。
+- **双周期额度自动并发轮询**：全量集成 Google Cloud Code 原生配额端点，定时刷新所有账号的计划等级（Pro / Ultra / Free）、5小时滚动配额 (`5h Limit`)、周度配额 (`Weekly Limit`) 与刷新倒计时。
+- **毫秒级无感热切号**：在账号卡片点击“一键切号”，毫秒级替换系统凭据，重启客户端后直接以新身份工作，彻底告别频繁登出登录。
+
+### 2. 顶部标题栏实时模型额度胶囊
+- **免鉴权内部直连**：逆向重构 ConnectRPC 端点 `/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary`，直接获取实时额度。
 - **原生融入顶部标题栏**：无缝挂载于右上角安全区，微磨砂圆角半透明胶囊，不影响窗口拖拽与系统控制按钮。
 - **双模型状态指示灯**：
   - `🟢 Gemini XX% · 🟣 Claude XX%`（正常时采用官方模型主色，低于 50% 自动变橙黄，低于 20% 自动变红告警）。
 - **交互式浮动详情面板**：
-  - 点击胶囊展开半透明详情卡片，显示 Gemini 与 Claude & GPT 的 **5 小时限额进度条** 与 **周限额进度条**。
+  - 点击胶囊展开半透明详情卡片，显示 Gemini 与 Claude 的 **5 小时限额进度条** 与 **周限额进度条**。
   - 倒计时精确计算（`距离刷新还有 X 天 X 小时` / `距离刷新还有 X 小时 X 分钟`）。
-  - 内置“🔄 立即刷新”按钮，支持自定义定时轮询及窗口聚焦自动极速刷新。
+  - 内置“🔄 立即刷新”按钮，支持活跃使用中（默认 1 分钟）与闲置（默认 15 分钟）双轨自动轮询。
 
----
-
-### 🌐 4. 现代化客户端全界面深度汉化
-- **深度适配 Antigravity 2.0+ 架构**：针对 Electron ASAR 架构与 DOM 渲染特性定制，原子级安全注入。
-- **全方位模块化词库**：
-  - **通用设置与浏览器子代理**：完整覆盖浏览器代理、常规设置、偏好选项与链接。
-  - **驱动模型与配额用量**：精确翻译模型设置、方案详情、每周与 5 小时限额、动态剩余倒计时长句。
-  - **个性化定制 / 技能 / MCP**：支持插件市场、官方推荐目录、技能库与自定义 MCP 服务器配置。
-  - **AI 对话页面与工件卡片**：交付件（Walkthrough、实施计划、任务清单）、代码修改统计（`X files changed`）、深度思考时长（`已深度思考 X 秒` / `已思考 X 秒`）动态计算。
-  - **右键菜单与工作区侧边栏**：会话列表操作、分栏、重命名、终端列表、上传列表、暂存区与未提交代码变更面板。
-- **简繁双模一键切换**：内置严格镜像对齐的简体中文 (`zh-CN`) 与繁体中文 (`zh-TW`) 词库。
-- **纯净品牌与界面净化**：
-  - **100% 保持官方原生品牌**：坚决不篡改品牌名，严格保留官方英文 `Antigravity`。
-  - **彻底移除多余推广按钮**：无论处于 `Open IDE` 还是 `Install IDE` 状态，均全方位阻断并自动消除其外层容器，右上角彻底整洁无残留。
-- **代码沙箱隔离保护**：内置 Monaco 编辑器、代码块、用户消息正文的高优先级隔离沙箱，**坚决不误译任何实际代码**。
-- **一键无损还原**：注入前自动生成官方原始备份 (`app.asar.bak`)，随时可一键秒级还原官方原版英文。
-
----
-
-### ⚡ 5. 极致性能加速与专属网络代理 (Performance Boost & Dedicated Proxy)
+### 3. 极致性能调优与专属网络代理
 - **Antigravity 专属网络代理 (彻底取代 Proxifier)**：
-  - 原生支持 HTTP / SOCKS5 代理。直接在 Chromium 与 Go 核心 Language Server 层面注入代理与环境变量，全面接管 Google API、git.exe、ssh.exe 与模型推理网络请求，无需运行 Proxifier。
+  - 原生支持 HTTP / SOCKS5 代理。直接在 Chromium 渲染层与 Go 核心 Language Server 层面注入代理与环境变量，全面接管 Google API、git.exe、ssh.exe 与模型推理网络请求。
+  - 内置**本地代理一键智能探测**（自动检测 7890、10808 等本地代理端口并测速）。
 - **GPU 硬件加速与零拷贝渲染**：强制开启 2D 页面与 Canvas 的 GPU 栅格化加速（`enable-gpu-rasterization` / `enable-zero-copy`），显卡硬件直推，流式打字与超长文档滚动丝滑流畅，CPU 占用骤降。
 - **解除后台防降频与防冻结**：
-  - 默认情况下，Electron 会在窗口置于后台或被其他窗口遮挡时将定时器降频至 1Hz。
-  - 本套件注入 `disable-background-timer-throttling` 与 `disable-backgrounding-occluded-windows`，彻底解决**切到其他 IDE 窗口编码时 Antigravity 生成变慢、后台任务被挂起**的痛点。
+  - 解决 Electron 在窗口置于后台或被其他窗口遮挡时将定时器降频至 1Hz 的通病。
+  - 注入 `disable-background-timer-throttling` 与 `disable-backgrounding-occluded-windows`，彻底解决**切到其他 IDE 窗口编码时 Antigravity 生成变慢、后台任务被挂起**的痛点。
 - **V8 引擎 4GB 堆内存扩容**：注入 `--js-flags="--max-old-space-size=4096"`，大幅扩充 JavaScript 垃圾回收堆内存空间，彻底告别超大项目索引与几十轮超长会话下的频繁 GC 卡顿。
+- **紧凑代码视野模式**：压缩编辑器与对话界面多余空白边距，有效代码显示面积提升 35%~50%。
+
+### 4. 全局提示词库与 Skills 冗余裁剪
+- **全局系统提示词库管理**：
+  - 直接读写 Antigravity 核心注入的全局规则文件 `~/.gemini/config/AGENTS.md`（对应智能体底层 `<RULE[user_global]>`）。
+  - 支持新增、编辑、删除自定义提示词规则，内置语法高亮编辑器。
+  - 内置 5 大精选角色模板：底层系统与逆向安全专家、资深全栈工程师与架构专家、极简极速代码助手、代码审计与自动化测试专家、官方纯净空白规则。
+- **Skills 冗余说明裁剪 (节约 10,000+ Token)**：
+  - 安全裁剪官方重复冗余内置操作手册（`antigravity_guide`, `migrate-workflows`, `agy-customizations`）。
+  - 每次与智能体对话立省 10,000+ 前置 Prompt Token 预算，大幅降低上下文消耗并提升首字响应速度。
+
+### 5. 深度界面汉化与外观净化
+- **深度适配 Antigravity 2.0+ 架构**：针对 Electron ASAR 架构与 DOM 渲染特性定制，原子级安全注入。
+- **全方位模块化词库**：完整覆盖通用设置、模型用量、插件市场、对话页面、工件卡片、右键菜单与终端面板。
+- **简繁双模一键切换**：内置严格镜像对齐的简体中文 (`zh-CN`) 与繁体中文 (`zh-TW`) 词库。
+- **界面外观净化**：
+  - 100% 保持官方原生品牌，不篡改英文品牌名。
+  - 彻底移除右上角多余推广按钮（`Open IDE` / `Install IDE`）。
+  - 内置代码沙箱隔离保护，坚决不误译任何实际代码。
+
+### 6. 长跑任务自愈与多通道即时推送
+- **异常自动重试 (Auto-Retry on Error)**：任务执行过程中若遭遇网络抖动或偶发服务异常，客户端自动点击重试（可配置 1~10 次，默认 3 次）。
+- **智能工作态复位**：重试后智能体一旦恢复正常工作（流式输出/深度思考），**自动将重试计数清零重置为 0**。
+- **额度用尽熔断保护**：检测到 429、Rate Limit 或额度归零立即阻断重试，发送【⚠️ 任务中断：额度已耗尽】告警。
+- **多通道即时推送**：支持 Telegram Bot（含国内代理自适应）、飞书群 Webhook 机器人、企业微信群 Webhook 机器人。
+
+### 7. 磁盘深度瘦身与安全初始化
+- **深度垃圾瘦身**：一键安全清理 Chromium 渲染死缓存目录与历史临时任务流日志，并对 SQLite 会话数据库执行 `VACUUM` 碎片整理，通常可释放 1GB+ 磁盘空间。
+- **彻底初始化 (危险操作强确认)**：提供强警告确认模态弹窗，一键强制安全终止进程、撤销所有补丁完整还原官方原生英文原版、深度清理死缓存并重置所有设置。
 
 ---
 
-### 🛡️ 6. 全栈关闭遥测与数据隐私保护 (Anti-Telemetry)
-- **Go 核心服务级阻断**：利用官方 Language Server 原生未公开参数 `--disable_telemetry=true`，从后端进程根源掐断遥测采集。
-- **Chromium / Electron 客户端级屏蔽**：注入 `--disable-metrics`、`--disable-telemetry`、`--disable-breakpad`、`--no-report-upload` 与 `--disable-domain-reliability`，阻断匿名行为打点、系统诊断与崩溃转储上报。
-- **DevTools MCP 收集器中和**：全面中和内置 `chrome-devtools-mcp` 插件中的 Google Clearcut 遥测回传与 Watchdog 进程网络外发。
+## 二、项目安装 (Installation Guide)
+
+### 版本选择与下载
+
+前往 [GitHub Releases 发布页](https://github.com/akasls/Antigravity-Orbit/releases) 下载最新版本：
+
+| 版本形态 | 文件名 | 适用场景 | 启动速度 | 安装体验 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Windows 原生安装包** (推荐) | `Antigravity-Orbit-Setup.exe` | 个人主力机、日常首选 | ⚡ **0.017 秒** | 向导式安装，自动创建桌面与开始菜单快捷方式，支持系统控制面板标准卸载 |
+| **Windows 单文件便携版** | `Antigravity-Orbit-Portable-x64.exe` | U 盘随身携带、无安装权限电脑 | 🚀 **1.2 秒** | 单个独立 exe 文件，无需安装解压，即点即用 |
+| **Windows 免解压极速版** | `Antigravity-Orbit-Windows-x64.zip` | 喜欢解压即用、追求秒开的极客 | ⚡ **0.15 秒** | 解压至任意目录，双击 `Antigravity-Orbit.exe` 或 `gui.bat` 运行 |
 
 ---
 
-### 🛡️ 7. 任务异常自动重试与额度耗尽熔断告警
-- **异常自动重试 (Auto-Retry on Error)**：智能体任务执行过程中若遭遇网络抖动或偶发服务异常，客户端自动点击重试（可配置 1~10 次，默认 3 次）。
-- **智能工作态复位**：重试后智能体一旦恢复正常工作（流式输出/深度思考），**自动将重试计数清零重置为 0**，满足长时间持续任务的自愈需求。
-- **额度用尽熔断保护**：一旦检测到 429、Rate Limit 或模型额度降至 0%，立即阻断重试，向各通知渠道发送【⚠️ 任务中断：额度已耗尽】告警。
-- **重试超限告警通知**：连续重试达到最大次数仍无法恢复工作时，向各通知渠道发送【❌ 任务执行失败】告警。
+### 方式一：Windows 原生安装包 (强烈推荐)
+
+1. 从 Release 页面下载 **`Antigravity-Orbit-Setup.exe`**。
+2. 双击运行安装向导，可自定义安装目录（默认安装至 `%LOCALAPPDATA%\Programs\Antigravity-Orbit`，无需管理员 UAC 弹窗干扰）。
+3. 安装完成后自动在桌面和开始菜单生成快捷方式，勾选“运行 Antigravity Orbit”即可秒开体验！
 
 ---
 
-### 🔔 8. 任务完工智能感知与即时通知
-- **零骚扰·精准状态感知**：深入底层状态引擎，严格识别任务完整结束点，彻底过滤中间工具调用过程，仅在长跑任务彻底完成时触发提醒。
-- **真实工程名称解析**：自动解析对话主题与工作区真实项目名称（如 `📁 工程: Antigravity-Orbit`），告别临时文件名乱码。
-- **多通道即时推送**：
-  - **Telegram Bot**（支持直连及 Clash/v2ray 本地代理网络自适应）
-  - **飞书群自定义机器人 (Webhook)**
-  - **企业微信群机器人 (Webhook)**
-- **电脑开机全自动静默自启**：支持 Windows 注册表无窗口后台驻留 (`pythonw`)，电脑开机自启，后台守护零干扰。
+### 方式二：Windows 单文件便携版 (即点即用)
+
+1. 下载 **`Antigravity-Orbit-Portable-x64.exe`**。
+2. 放置在任意个人目录（如桌面、D盘工具箱或 U 盘）。
+3. 双击直接启动，配置数据自动保存在本地目录中。
 
 ---
 
-## 📱 通知消息预览
+### 方式三：Windows 免解压极速版 (目录解压)
 
-```text
-🔔【反重力任务已完成】
-📁 工程: Antigravity-Orbit
-⚡ 状态: 正常完成
-🕒 时间: 2026-09-18 16:30:00
-
-📝 回复摘要 / 详情:
-已成功完成全量代码重构与功能验证！
-```
-
-```text
-⚠️【反重力任务中断：额度已耗尽】
-📁 工程: Antigravity-Orbit
-⚡ 状态: 任务中断：额度已耗尽
-🕒 时间: 2026-09-18 16:35:00
-
-📝 回复摘要 / 详情:
-Gemini 额度耗尽 (5h限制剩余: 0%, 周限制剩余: 12%)，任务已自动暂停保护，请等待限额刷新或切换模型。
-```
-
-```text
-❌【反重力任务执行失败】
-📁 工程: Antigravity-Orbit
-⚡ 状态: 任务失败：重试次数超限
-🕒 时间: 2026-09-18 16:40:00
-
-📝 回复摘要 / 详情:
-任务在执行过程中发生异常，已连续自动重试 3 次仍未恢复。
-```
+1. 下载 **`Antigravity-Orbit-Windows-x64.zip`**。
+2. 解压至自定义目录（例如 `D:\Tools\Antigravity-Orbit`）。
+3. 双击运行目录下的 **`Antigravity-Orbit.exe`** 或 **`gui.bat`**。
 
 ---
 
-## ⚡ 快速开始 (1 分钟上手)
+### 方式四：开发者源码部署
 
-### 方式零：直接下载安装包或绿色免安装版（最推荐，零门槛，无需 Python / Git）
+适合需要二次开发或自定义词库的开发者：
 
-前往 [GitHub Releases 发布页](https://github.com/akasls/Antigravity-Orbit/releases) 下载官方自动打包好的开箱即用版本：
-- **Windows 原生安装包（强烈推荐，0.017s 极速秒开）**：下载并运行 **`Antigravity-Orbit-Setup.exe`**，一键安装至系统，自动创建桌面与开始菜单快捷方式，享受闪电级启动！
-- **Windows 绿色免安装版**：下载 `Antigravity-Orbit-Windows-x64.zip`，解压后直接双击 **`Antigravity-Orbit.exe`** 即可极速启动！
-- **Windows 单文件便携版**：下载 `Antigravity-Orbit-Portable-x64.exe`，单文件即点即用，便于 U 盘随身携带。
-- **macOS 用户**：下载 `Antigravity-Orbit-macOS.zip`，解压后运行 **`Antigravity-Orbit.app`** 即可！
-
----
-
-### 方式一：克隆源码并运行独立桌面客户端
-
-1. 下载或克隆本项目到本地：
-   ```bash
+1. 克隆代码仓库：
+   ```powershell
    git clone https://github.com/akasls/Antigravity-Orbit.git
    cd Antigravity-Orbit
    ```
-2. 双击运行根目录下的 **`gui.bat`**（或命令行运行 `python main.py gui`）。
-3. 在极简桌面控制中心中：
-   - 切换界面语言（简体中文 / 繁体中文 / 官方英文）。
-   - 自由开关【顶栏实时模型额度胶囊】与自定义刷新频率。
-   - 一键启用【GPU 硬件加速】、【后台防降频】与【全栈遥测阻断】。
-   - 配置 Telegram / 飞书 / 企业微信机器人并在线测试。
-4. 点击右下角 **【保存并应用配置】**，即刻完成一键热部署！
-5. 点击 **【重启客户端】** 实时查看崭新效果！
+2. 安装 Python 依赖：
+   ```powershell
+   python -m pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+3. 确保系统安装有 **Node.js 18+**（若需执行 ASAR 打包与汉化编译）。
+4. 运行桌面客户端：
+   ```powershell
+   python main.py gui
+   # 或直接执行根目录下的
+   .\gui.bat
+   ```
 
 ---
 
-### 方式二：命令行交互式向导
+## 三、项目使用 (Usage Guide)
 
-1. 双击运行根目录下的 **`install.bat`**，选择 `[2]` 运行控制台向导。
-2. 按照交互向导逐步完成汉化与通知设置。
+### 1. 账号池管理与批量导入导出
+
+1. **导入当前已登录账号**：打开【👥 账号池】工作区，点击左上角【📥 导入当前客户端账号】，自动将当前正在使用的 Antigravity 登录身份收录到池中。
+2. **通过 Google 浏览器授权新增账号**：点击【🌐 Google 登录】，客户端自动在本地监听临时回调并唤起浏览器，登录完成后自动保存新账号并拉取配额。
+3. **批量导入 (Cockpit Tools / 多行 Token)**：
+   - 点击【➕ 手动添加】，在文本框中粘贴：
+     - 单条 `refresh_token`
+     - 多行 `refresh_token`（一行一条）
+     - 或直接粘贴 Cockpit Tools 导出的凭据 JSON 数组：
+       ```json
+       [
+         {"email": "user1@gmail.com", "refresh_token": "1//06V..."},
+         {"email": "user2@gmail.com", "refresh_token": "1//06B..."}
+       ]
+       ```
+   - 点击【开始导入】，进度条实时反馈每个账号的校验进度与结果。
+4. **一键导出备份**：点击【📤 导出】，可自由切换【Cockpit 兼容格式】与【完整备份格式】，一键复制或下载为 JSON 文件。
+5. **秒级切号**：在目标账号卡片上点击【⚡ 一键切号】，弹窗确认后系统凭据即刻切换，重启 Antigravity 后即生效。
 
 ---
 
-### 方式三：macOS / Linux 源码运行
+### 2. 客户端汉化与性能优化热部署
 
-```bash
-git clone https://github.com/akasls/Antigravity-Orbit.git
-cd Antigravity-Orbit
-bash install.sh
+1. 进入【🌐 汉化与性能】工作区：
+   - **界面语言选择**：简体中文 (`zh-CN`) / 繁体中文 (`zh-TW`) / 官方原生英文 (`en`)。
+   - **标题栏实时额度胶囊**：开启/关闭顶栏胶囊，配置刷新频率。
+   - **极速性能与网络**：勾选开启【GPU 硬件栅格化加速】、【解除后台防降频与防冻结】、【扩充 V8 堆内存至 4GB】、【全栈关闭遥测】与【紧凑代码视野模式】。
+2. 点击右上角 **【💾 保存并应用配置】**，系统将自动热更新配置并为 Antigravity 客户端重新注入补丁。
+3. 点击 **【🚀 重启 Antigravity】** 即可体验极速响应与全中文界面！
+
+---
+
+### 3. 规则管理与自定义提示词应用
+
+1. 进入【📝 规则与提示词】工作区：
+2. **切换内置专家角色**：点击模板列表中的角色（如“网络安全与底层系统工程”、“资深架构专家”等），右侧编辑器即时加载规则，点击【💾 应用到系统提示词】即刻生效。
+3. **新增 / 编辑自定义提示词**：
+   - 点击【➕ 新增提示词】，输入标题与规则内容，保存至专属提示词库。
+   - 对自定义提示词随时进行二次编辑或删除。
+4. **裁剪说明型 Skills**：在上方开启【裁剪说明型 Skills 节省 Token】，自动裁剪官方冗余操作手册，大幅降低前置 Token 开销。
+
+---
+
+### 4. 专属网络代理配置
+
+1. 进入【🌐 专属代理】工作区：
+2. 开启【启用 Antigravity 专属代理】。
+3. 可点击【🔍 自动探测本地代理】自动查找正在运行的 Clash (7890) 或 v2rayN (10808) 等本地代理。
+4. 也可手动填写代理类型（HTTP / SOCKS5）、主机地址与端口，点击【测试连通性】验证。
+5. 保存后，Antigravity 进程全部网络流量均走该代理出口，免去启动 Proxifier 规则配置。
+
+---
+
+### 5. 任务自愈与通知配置 (Telegram / 飞书 / 企微)
+
+1. 进入【🛡️ 自愈与告警】工作区：
+2. **异常自愈**：开启【任务异常自动重试】，配置最大重试次数（1~10 次），开启【额度耗尽熔断保护】与【重试超限告警通知】。
+3. **通知通道配置**：
+   - **Telegram**：填写 `Bot Token`、`Chat ID` 与代理地址（大陆地区可配置 `http://127.0.0.1:10808`），点击【测试】接收测试推送。
+   - **飞书 / 企业微信**：粘贴机器人的 `Webhook URL`，点击【测试】确认即时送达。
+4. 保存后，长跑任务结束或遇到异常时将即刻向各通道推送富文本卡片通知。
+
+---
+
+### 6. 系统维护、托盘守护与彻底初始化
+
+1. 进入【⚙️ 设置与维护】工作区：
+2. **后台托盘常驻**：勾选【关闭窗口时最小化到系统托盘】，点击关闭按钮即隐入系统托盘右下角小图标，右键托盘图标可快速唤起或重启客户端。
+3. **开机自启动**：一键开启【Orbit 客户端开机静默启动】。
+4. **深度磁盘瘦身**：点击【🧹 一键深度瘦身】，清理死缓存与数据库碎片。
+5. **彻底初始化**：若遇到客户端损坏或想彻底恢复原生状态，点击【⚠️ 彻底初始化】，弹出强安全确认弹窗，确认后将彻底杀掉所有残留进程、还原原生纯净英文、清理死缓存并重置所有优化项。
+
+---
+
+### 7. CLI 常用管理命令速查
+
+`main.py` 提供全功能命令行管理接口：
+
+```powershell
+# 1. 桌面可视化管理中心
+python main.py gui                  # 启动可视化客户端
+python main.py gui --tray           # 启动并直接静默最小化至托盘
+
+# 2. 客户端汉化与性能加速
+python main.py localize status      # 查看客户端安装路径及当前汉化状态
+python main.py localize install     # 安装/更新简体中文汉化及性能加速补丁
+python main.py localize install --tw# 安装繁体中文汉化
+python main.py localize restore     # 一键卸载汉化，恢复官方原版英文
+python main.py optimize             # 仅应用性能加速与全栈去遥测补丁
+
+# 3. 任务监控与通知服务
+python main.py start                # 启动后台守护进程
+python main.py status               # 查看当前后台守护运行状态与日志
+python main.py stop                 # 停止后台守护进程
+python main.py test                 # 向所有已激活通道发送测试通知
+
+# 4. 深度磁盘瘦身
+python main.py clean --dry-run      # 预检分析可清理的磁盘空间
+python main.py clean                # 执行深度瘦身清理
+
+# 5. 开机自启动管理
+python main.py autostart status     # 查看开机自启状态
+python main.py autostart enable     # 开启开机自启动
+python main.py autostart disable    # 关闭开机自启动
 ```
 
 ---
 
-## 🛠️ CLI 常用管理命令
+## 四、隐私与安全性声明
 
-本项目提供全功能命令行工具 `main.py`：
-
-### 🖥️ 1. 桌面可视化管理客户端
-
-```bash
-# 启动独立桌面可视化管理客户端
-python main.py gui
-# 或者直接双击运行 gui.bat
-```
-
-### 🌐 2. 客户端汉化管理
-
-```bash
-# 查看 Antigravity 安装路径及当前汉化状态
-python main.py localize status
-
-# 一键安装 / 更新简体中文汉化 (推荐)
-python main.py localize install
-
-# 一键安装 / 更新繁体中文汉化
-python main.py localize install --tw
-
-# 卸载汉化，恢复官方原版英文界面
-python main.py localize restore
-
-# 呼出交互式汉化管理向导
-python main.py localize
-```
-
-### ⚡ 3. 性能加速与去遥测独立部署
-
-```bash
-# 一键部署 GPU 硬件加速、后台防降频与全栈去遥测补丁
-python main.py optimize
-```
-
-### 🔔 4. 监控服务与通知管理
-
-```bash
-# 查看当前监控状态、实时日志与运行健康度
-python main.py status
-
-# 手动发送一条测试通知以验证通道是否正常
-python main.py test
-
-# 重新运行交互式配置向导 (汉化 + 通知)
-python main.py setup
-
-# 启动后台常驻监控进程
-python main.py start
-
-# 停止后台常驻监控进程
-python main.py stop
-
-# 管理开机自启动
-python main.py autostart status    # 查看自启状态
-python main.py autostart enable    # 启用开机自启
-python main.py autostart disable   # 禁用开机自启
-```
-
-### 📦 5. 跨平台独立打包构建
-
-```bash
-# 自动编译生成 Windows 单文件 (.exe) 或 macOS 应用包 (.app / .zip)
-python scripts/build.py
-```
+1. **100% 本地运算**：本工具绝无任何中央数据收集服务器，所有账号凭据、配置数据与日志均仅保存在用户本地电脑。
+2. **严格脱敏与零上传**：
+   - 项目仓库通过严格的 `.gitignore` 过滤机制，彻底排除 `config.json`、`*.log`、`watch_state.json`、`*.db` 与打包临时文件夹。
+   - 所有凭据均存储在 Windows 操作系统原生凭据管理器或本地可控配置文件中，绝不上传任何用户代码或私人密钥。
 
 ---
 
-## 🤖 如何获取 Telegram 机器人凭据？
+## 五、开源协议
 
-1. **获取 Bot Token**：
-   - 在 Telegram 中搜索官方机器人 [@BotFather](https://t.me/botfather)。
-   - 发送 `/newbot`，根据提示给机器人命名，获取 API Token（如 `7488372875:AAH...`）。
-2. **获取 Chat ID**：
-   - 搜索并联系 [@userinfobot](https://t.me/userinfobot)，发送任意消息，即可看到回复的 `Id`（用户 ID 或群组 ID，群组通常以 `-100` 开头）。
-3. **关键提示**：
-   - 在首次接收消息前，**请务必先私聊机器人点击一次 `Start`**，或者将机器人加入接收通知的群组并给予发言权限！
-   - 若在中国大陆网络环境下，可配置代理端口（如 Clash 的 `7890` 或 v2rayN 的 `10808`），本程序原生支持代理转发。
-
----
-
-## ⚙️ 配置文件说明 (`config.json`)
-
-在桌面客户端或命令行配置后会自动生成，也可参考 `config.example.json` 手动修改：
-
-```json
-{
-  "enabled": true,
-  "scan_interval": 3.0,
-  "lock_port": 49222,
-  "customization": {
-    "language": "zh-CN",
-    "show_quota_badge": true,
-    "quota_refresh_interval": 60,
-    "enable_gpu_acceleration": true,
-    "disable_background_throttling": true,
-    "expand_v8_memory": true,
-    "disable_telemetry": true,
-    "hide_ide_buttons": true
-  },
-  "channels": {
-    "telegram": {
-      "enabled": true,
-      "bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
-      "chat_id": "-100xxxxxxxxxx",
-      "proxy": "http://127.0.0.1:10808"
-    },
-    "feishu": {
-      "enabled": false,
-      "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxx"
-    },
-    "wecom": {
-      "enabled": false,
-      "webhook_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxx"
-    }
-  }
-}
-```
-
----
-
-## 📂 项目文件结构
-
-```text
-Antigravity-Orbit/
-├── core/                              # 核心业务逻辑
-│   ├── autostart.py                   # 跨平台开机自启管理器 (Windows 注册表/macOS plist)
-│   ├── config.py                      # 配置加载、合并与持久化
-│   ├── gui.py                         # 独立桌面可视化管理客户端 (Native Tkinter/ttk)
-│   ├── localization.py                # 客户端汉化管理器桥接模块
-│   ├── monitor.py                     # Antigravity 任务状态嗅探与通知调度
-│   └── utils.py                       # 进程单例锁、日志与格式化工具
-├── localization/                      # 现代化客户端汉化引擎
-│   ├── core/
-│   │   ├── asar_patcher.js            # Electron ASAR 安全原子解包、打补丁与重新封装
-│   │   ├── engine.js                  # 汉化主调度控制器
-│   │   └── runtime_template.js        # 前端 DOM 注入、顶栏额度胶囊与动态沙箱
-│   ├── dictionaries/                  # 简体中文模块化专业词典 (8 大维度)
-│   └── dictionaries_tw/               # 繁体中文镜像词典 (结构完全对齐)
-├── notifiers/                         # 推送通知模块
-│   ├── base.py                        # 通知基类
-│   ├── telegram.py                    # Telegram 通道 (含代理自适应)
-│   ├── feishu.py                      # 飞书 Webhook 通道
-│   └── wecom.py                       # 企业微信 Webhook 通道
-├── gui.bat                            # Windows 一键拉起桌面可视化客户端
-├── install.bat                        # Windows 综合配置入口 (GUI / CLI)
-├── install.sh                         # macOS / Linux 交互配置向导脚本
-├── main.py                            # 统一 CLI / GUI 命令行入口
-├── config.example.json                # 配置文件示例模板
-└── README.md                          # 项目说明文档
-```
-
----
-
-## 🔒 隐私与安全性
-
-1. **100% 本地运算**：本工具仅在本地读取 Antigravity 客户端日志与本地会话状态，绝不上传任何用户代码、对话正文或敏感信息到第三方服务器。
-2. **防凭据泄露设计**：项目仓库已配置严格的 `.gitignore`，您的 `config.json`（包含 Telegram Token、Webhook URL 等）、运行日志与备份文件绝不会被意外提交到版本库中。
-
----
-
-## 📄 开源协议
-
-本项目遵循 [MIT 许可证](LICENSE)。
+本项目遵循 [MIT 许可证](LICENSE)。  
 欢迎提交 Issue 与 Pull Request 共同改进！
+

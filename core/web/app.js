@@ -1,5 +1,5 @@
 /**
- * Antigravity Orbit - 现代桌面核心控制器 (v3.3.0)
+ * Antigravity Orbit - 现代桌面核心控制器 (v3.3.4)
  * 实时自动保存、Google OAuth 网页授权、Claude 与 Gemini 双列配额看板、
  * 后台自动定时刷新与无感切号。
  */

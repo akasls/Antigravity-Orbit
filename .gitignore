@@ -1,8 +1,12 @@
 # 敏感凭据与本地配置文件 (切勿上传至 GitHub)
 config.json
+**/config.json
 telegram.json
 .env
 *.local.json
+*.db
+*.sqlite
+*.sqlite3
 
 # 状态记录与运行日志
 watch_state.json

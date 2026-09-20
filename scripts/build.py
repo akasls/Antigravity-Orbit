@@ -96,11 +96,10 @@ def build():
 
     # 图标适配
     icon_win = PROJECT_ROOT / "resources" / "icon.ico"
-    icon_mac = PROJECT_ROOT / "resources" / "icon.icns"
 
     if system == "windows":
         # 1. 优先构建 Onedir 极速目录版 (解压后 0.15s 秒开，彻底摆脱临时目录解压和杀软拦截)
-        print("\n>>> [1/2] 正在构建 Windows 秒开免解压极速版 (Onedir)...")
+        print("\n>>> [1/3] 正在构建 Windows 秒开免解压极速版 (Onedir)...")
         cmd_dir = base_cmd + [
             "--onedir",
             "--name", "Antigravity-Orbit",
@@ -154,29 +153,8 @@ def build():
         portable_exe = DIST_DIR / "Antigravity-Orbit-Portable-x64.exe"
         print(f"[OK] 单文件便携版就绪: {portable_exe}")
 
-    elif system == "darwin":
-        # macOS: 打包为 .app 应用包
-        cmd_mac = base_cmd + [
-            "--onedir",
-            "--name", "Antigravity-Orbit",
-            "--osx-bundle-identifier", "com.antigravity.orbit",
-        ]
-        if icon_mac.exists():
-            cmd_mac.extend(["--icon", str(icon_mac)])
-        cmd_mac.append("main.py")
-
-        ret = subprocess.run(cmd_mac, cwd=str(PROJECT_ROOT))
-        if ret.returncode != 0:
-            print(f"[错误] macOS 打包失败 (退出码: {ret.returncode})")
-            sys.exit(ret.returncode)
-
-        app_path = DIST_DIR / "Antigravity-Orbit.app"
-        if app_path.exists():
-            zip_name = DIST_DIR / "Antigravity-Orbit-macOS"
-            print(f"[ARCHIVE] 正在打包为 Zip: {zip_name}.zip ...")
-            subprocess.run(["zip", "-r", "-y", f"{zip_name}.zip", "Antigravity-Orbit.app"], cwd=str(DIST_DIR))
-            print(f"[OK] macOS .app 应用包就绪: {app_path}")
-            print(f"[OK] 压缩包就绪: {zip_name}.zip")
+    else:
+        print(f"[警告] 当前操作系统 ({platform.system()}) 非 Windows。本项目已专注于 Windows 版本构建。")
 
     print("\n==================================================")
     print("[SUCCESS] Antigravity Orbit 全部打包构建完成！产物位于 dist/ 目录。")
