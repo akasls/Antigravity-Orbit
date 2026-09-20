@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20x64-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11 x64" />
-  <img src="https://img.shields.io/badge/Release-v3.3.4-10B981?style=for-the-badge&logo=github&logoColor=white" alt="Release v3.3.4" />
+  <img src="https://img.shields.io/badge/Release-v3.3.5-10B981?style=for-the-badge&logo=github&logoColor=white" alt="Release v3.3.5" />
   <img src="https://img.shields.io/badge/Antigravity-2.0+-FF6F00?style=for-the-badge" alt="Antigravity 2.0+" />
   <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License MIT" />
 </p>

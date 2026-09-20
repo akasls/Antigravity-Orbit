@@ -1,5 +1,5 @@
 /**
- * Antigravity Orbit - 现代桌面核心控制器 (v3.3.4)
+ * Antigravity Orbit - 现代桌面核心控制器 (v3.3.5)
  * 实时自动保存、Google OAuth 网页授权、Claude 与 Gemini 双列配额看板、
  * 后台自动定时刷新与无感切号。
  */
@@ -523,7 +523,7 @@ function renderAccountPool() {
               <div class="account-card-name">${acc.name || 'Antigravity 用户'}</div>
             </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 6px;">
+          <div class="account-card-badges">
             <span class="badge badge-plan ${badgeClass}">${formatTierShort(tier)}</span>
             ${statusBadge}
           </div>

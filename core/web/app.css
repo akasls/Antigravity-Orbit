@@ -382,6 +382,8 @@ body {
   border-radius: var(--radius-full);
   font-size: 11px;
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .badge-plan {
@@ -593,7 +595,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
 }
 
 .account-card-user {
@@ -601,6 +603,16 @@ body {
   align-items: center;
   gap: 8px;
   overflow: hidden;
+  min-width: 0;
+  flex: 1;
+}
+
+.account-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .account-card-avatar {
@@ -1101,11 +1113,16 @@ input:checked + .slider:before {
 
 /* 状态标签 */
 .status-tag {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   font-size: 10.5px;
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.4;
 }
 .status-online { background: #ecfdf5; color: #059669; }
 .status-offline { background: var(--bg-subtle); color: var(--text-dim); }
