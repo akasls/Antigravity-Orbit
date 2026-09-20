@@ -469,6 +469,13 @@ class AsarPatcher {
                 );
             }
 
+            if (cfg.start_maximized !== false) {
+                switchLines.push(
+                    "// 7. 最大化启动反重力客户端",
+                    "electron_1.app.commandLine.appendSwitch('start-maximized');"
+                );
+            }
+
             if (switchLines.length > 0) {
                 const optSwitches = "\n/* === ANTIGRAVITY_OPTIMIZATION_START === */\n" +
                     switchLines.join("\n") +
@@ -501,6 +508,26 @@ class AsarPatcher {
                         `    /* === ANTIGRAVITY_SESSION_PROXY_END === */\n`;
                     if (mContent.includes(sessionHook)) {
                         mContent = mContent.replace(sessionHook, sessionProxyCode);
+                    }
+                }
+
+                // 最大化启动窗口钩子 (启动时自动全屏最大化打开)
+                const maximizeHookRegex = /\/\* === ANTIGRAVITY_START_MAXIMIZED === \*\/[\s\S]*?\/\* === ANTIGRAVITY_START_MAXIMIZED_END === \*\/\n?/;
+                if (maximizeHookRegex.test(mContent)) {
+                    mContent = mContent.replace(maximizeHookRegex, "");
+                }
+
+                if (cfg.start_maximized !== false) {
+                    const whenReadyTarget = "electron_1.app\n    .whenReady()\n    .then(async () => {";
+                    const maximizeCode = `${whenReadyTarget}\n    /* === ANTIGRAVITY_START_MAXIMIZED === */\n` +
+                        `    try {\n` +
+                        `        electron_1.app.on('browser-window-created', (_, win) => {\n` +
+                        `            try { win.maximize(); } catch (e) {}\n` +
+                        `        });\n` +
+                        `    } catch (e) {}\n` +
+                        `    /* === ANTIGRAVITY_START_MAXIMIZED_END === */\n`;
+                    if (mContent.includes(whenReadyTarget)) {
+                        mContent = mContent.replace(whenReadyTarget, maximizeCode);
                     }
                 }
 

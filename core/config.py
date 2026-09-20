@@ -15,10 +15,34 @@ def get_app_dir() -> Path:
     if getattr(sys, "frozen", False):
         if platform.system().lower() == "darwin":
             user_dir = Path.home() / ".antigravity-orbit"
-            user_dir.mkdir(parents=True, exist_ok=True)
-            return user_dir
+        elif platform.system().lower() == "windows":
+            appdata = os.environ.get("APPDATA")
+            if appdata:
+                user_dir = Path(appdata) / "Antigravity-Orbit"
+            else:
+                user_dir = Path.home() / ".antigravity-orbit"
         else:
-            return Path(sys.executable).resolve().parent
+            user_dir = Path.home() / ".antigravity-orbit"
+
+        user_dir.mkdir(parents=True, exist_ok=True)
+
+        # 首次从旧版安装目录或当前目录自动平滑迁移已有配置文件与状态
+        target_cfg = user_dir / "config.json"
+        if not target_cfg.exists():
+            legacy_candidates = [
+                Path(sys.executable).resolve().parent / "config.json",
+                Path.cwd() / "config.json",
+                Path.home() / ".antigravity-orbit" / "config.json",
+            ]
+            for cand in legacy_candidates:
+                if cand.exists() and cand != target_cfg:
+                    try:
+                        import shutil
+                        shutil.copy2(cand, target_cfg)
+                        break
+                    except Exception:
+                        pass
+        return user_dir
     return Path(__file__).resolve().parent.parent
 
 def get_resource_dir() -> Path:
@@ -43,7 +67,9 @@ DEFAULT_CONFIG = {
     "customization": {
         "language": "zh-CN",            # "zh-CN" (简体), "zh-TW" (繁体), "en" (原版英文)
         "show_quota_badge": True,        # 是否在顶栏显示模型额度胶囊徽章
-        "quota_refresh_interval": 60,    # 顶栏模型额度自动刷新间隔 (秒)
+        "quota_refresh_interval": 60,    # 顶栏模型额度自动刷新间隔 (秒，保持兼容)
+        "quota_refresh_active_interval": 60,    # 使用中活跃账号额度刷新间隔 (秒，默认 1 分钟)
+        "quota_refresh_idle_interval": 900,     # 未使用闲置账号刷新间隔 (秒，默认 15 分钟)
         "enable_gpu_acceleration": True, # GPU 硬件栅格化加速与零拷贝
         "disable_background_throttling": True, # 解除后台定时器降频与窗口遮挡冻结
         "expand_v8_memory": True,        # 扩充 V8 垃圾回收堆内存至 4GB
@@ -60,9 +86,9 @@ DEFAULT_CONFIG = {
         "compact_ui_mode": False,        # 紧凑代码视野模式 (有效代码显示面积提升 35%~50%)
         "prune_guide_skills": False,     # 裁剪内置说明型 Skills，节省前置 Token 预算
         "auto_retry_on_error": True,          # 任务异常自动重试 (意外出错时自动点击重试继续工作)
-        "max_retry_count": 3,                 # 最大自动重试次数 (1~10次，恢复工作后重置计数)
         "notify_on_quota_exhausted": True,    # 额度用尽告警 (发送"任务中断：额度已耗尽")
-        "notify_on_max_retry_failed": True    # 重试超限告警 (达到最大重试次数发送"任务失败")
+        "notify_on_max_retry_failed": True,   # 重试超限告警 (达到最大重试次数发送"任务失败")
+        "start_maximized": True               # 启动时自动最大化反重力客户端窗口
     },
     "channels": {
         "telegram": {
@@ -85,17 +111,25 @@ DEFAULT_CONFIG = {
 def get_config_search_paths() -> list:
     """返回配置文件的候选探测路径列表，按优先级排序"""
     paths = []
-    # 1. 应用程序自身目录
-    paths.append(get_app_dir() / "config.json")
+    # 1. 应用程序自身目录及 dist 目录
+    app_dir = get_app_dir()
+    paths.append(app_dir / "config.json")
+    paths.append(app_dir / "dist" / "config.json")
+
     # 2. 当前工作目录
     paths.append(Path.cwd() / "config.json")
+    paths.append(Path.cwd() / "dist" / "config.json")
+
     # 3. 源码工程或打包上一级工程目录
     if getattr(sys, "frozen", False):
         exe_parent = Path(sys.executable).resolve().parent
         paths.append(exe_parent / "config.json")
         paths.append(exe_parent.parent / "config.json")
     else:
-        paths.append(Path(__file__).resolve().parent.parent / "config.json")
+        root_dir = Path(__file__).resolve().parent.parent
+        paths.append(root_dir / "config.json")
+        paths.append(root_dir / "dist" / "config.json")
+
     # 4. 用户家目录 ~/.antigravity-orbit/config.json
     paths.append(Path.home() / ".antigravity-orbit" / "config.json")
 
@@ -128,29 +162,87 @@ def find_active_config_file() -> Path:
     return get_app_dir() / "config.json"
 
 
+def is_placeholder(val: any) -> bool:
+    if not val:
+        return True
+    s = str(val).strip()
+    return s in ("", "YOUR_TELEGRAM_BOT_TOKEN", "YOUR_CHAT_ID", "xxxxxxxx")
+
+
 def load_config() -> dict:
     active_file = find_active_config_file()
-    if not active_file.exists():
-        return DEFAULT_CONFIG.copy()
-    try:
-        with open(active_file, "r", encoding="utf-8") as f:
-            user_config = json.load(f)
+    merged = DEFAULT_CONFIG.copy()
+    user_config = {}
+
+    if active_file.exists():
+        try:
+            with open(active_file, "r", encoding="utf-8") as f:
+                user_config = json.load(f)
+                merged.update(user_config)
+                # 合并 channels
+                if "channels" in user_config:
+                    for k, v in user_config["channels"].items():
+                        if k in merged["channels"]:
+                            merged["channels"][k].update(v)
+                        else:
+                            merged["channels"][k] = v
+                # 合并 customization
+                if "customization" in user_config:
+                    merged["customization"] = DEFAULT_CONFIG["customization"].copy()
+                    merged["customization"].update(user_config["customization"])
+                    if "quota_refresh_active_interval" not in user_config["customization"]:
+                        merged["customization"]["quota_refresh_active_interval"] = user_config["customization"].get("quota_refresh_interval", 60)
+                    if "quota_refresh_idle_interval" not in user_config["customization"]:
+                        merged["customization"]["quota_refresh_idle_interval"] = 900
+        except Exception:
             merged = DEFAULT_CONFIG.copy()
-            merged.update(user_config)
-            # 合并 channels
-            if "channels" in user_config:
-                for k, v in user_config["channels"].items():
-                    if k in merged["channels"]:
-                        merged["channels"][k].update(v)
-                    else:
-                        merged["channels"][k] = v
-            # 合并 customization
-            if "customization" in user_config:
-                merged["customization"] = DEFAULT_CONFIG["customization"].copy()
-                merged["customization"].update(user_config["customization"])
-            return merged
-    except Exception:
-        return DEFAULT_CONFIG.copy()
+
+    # 自动探测与迁移：如果当前生效配置中缺少有效的 Telegram 或其它推送凭据，自动从历史候选路径中合并提取
+    migrated = False
+    current_tg = merged.get("channels", {}).get("telegram", {})
+    tg_bot = current_tg.get("bot_token", "")
+    tg_chat = current_tg.get("chat_id", "")
+    if is_placeholder(tg_bot) or is_placeholder(tg_chat):
+        for cand_path in get_config_search_paths():
+            if cand_path != active_file and cand_path.exists() and cand_path.is_file():
+                try:
+                    c_data = json.loads(cand_path.read_text(encoding="utf-8"))
+                    c_channels = c_data.get("channels", {})
+                    c_tg = c_channels.get("telegram", {})
+                    c_bot = str(c_tg.get("bot_token", "")).strip()
+                    c_chat = str(c_tg.get("chat_id", "")).strip()
+                    if not is_placeholder(c_bot) and not is_placeholder(c_chat):
+                        if "channels" not in merged:
+                            merged["channels"] = {}
+                        if "telegram" not in merged["channels"]:
+                            merged["channels"]["telegram"] = DEFAULT_CONFIG["channels"]["telegram"].copy()
+                        merged["channels"]["telegram"].update(c_tg)
+                        migrated = True
+                        break
+                except Exception:
+                    pass
+
+    # 清除任何残留的占位符文本，避免在界面上显示 YOUR_TELEGRAM_BOT_TOKEN 等
+    tg_conf = merged.get("channels", {}).get("telegram", {})
+    if is_placeholder(tg_conf.get("bot_token")):
+        tg_conf["bot_token"] = ""
+    if is_placeholder(tg_conf.get("chat_id")):
+        tg_conf["chat_id"] = ""
+
+    # 规范化 Telegram 代理：若仅填写了端口如 "10808"，自动转为 "http://127.0.0.1:10808"
+    tg_proxy = str(tg_conf.get("proxy", "")).strip()
+    if tg_proxy and tg_proxy.isdigit():
+        tg_conf["proxy"] = f"http://127.0.0.1:{tg_proxy}"
+        migrated = True
+
+    # 若发生了自动继承或规范化，写回生效文件以长久保持
+    if migrated:
+        try:
+            save_config(merged)
+        except Exception:
+            pass
+
+    return merged
 
 
 def save_config(cfg: dict):

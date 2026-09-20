@@ -53,20 +53,23 @@ class OrbitApi:
         daemon_auto = AutostartManager.is_enabled()
         app_auto = AutostartManager.is_app_autostart_enabled()
 
+        # 确保 skills 裁剪状态与物理磁盘状态完全同步
+        skills_opt = SkillsOptimizer.get_status()
+        is_pruned = skills_opt.get("is_pruned", False)
+        if custom.get("prune_guide_skills") != is_pruned:
+            custom["prune_guide_skills"] = is_pruned
+            cfg["customization"]["prune_guide_skills"] = is_pruned
+            try:
+                save_config(cfg)
+            except Exception:
+                pass
+
         # 存储分析 (启动时免全盘递归扫描，由前端异步按需懒加载)
         storage_info = None
 
-        # 提示词与模板
+        # 提示词与模板 (用户自定义提示词库)
         prompt_content = PromptManager.read_system_prompt()
-        templates = [
-            {
-                "key": k,
-                "name": v["name"],
-                "desc": v["desc"],
-                "content": v["content"]
-            }
-            for k, v in PromptManager.TEMPLATES.items()
-        ]
+        templates = PromptManager.get_custom_templates()
 
         # 运行日志最新 30 行
         logs = self._get_recent_logs()
@@ -227,6 +230,87 @@ class OrbitApi:
         except Exception as e:
             return {"success": False, "message": f"重启异常: {e}"}
 
+    def save_and_restart(self, new_cfg: dict) -> dict:
+        """保存「性能汉化」各项设定，并重启 Antigravity 客户端以注入生效"""
+        try:
+            cfg = load_config()
+            cfg.update(new_cfg)
+
+            custom = cfg.get("customization", {})
+            if custom.get("proxy_host") and custom.get("proxy_port"):
+                p_type = (custom.get("proxy_type") or "http").lower()
+                custom["proxy_url"] = f"{p_type}://{custom['proxy_host']}:{custom['proxy_port']}"
+
+            save_config(cfg)
+
+            # 更新 Skills 裁剪
+            try:
+                SkillsOptimizer.set_pruned(custom.get("prune_guide_skills", False))
+            except Exception:
+                pass
+
+            lang = custom.get("language", "zh-CN")
+            is_tw = (lang == "zh-TW")
+            is_en = (lang == "en")
+
+            LocalizationManager.kill_running_antigravity()
+            time.sleep(0.8)
+
+            LocalizationManager.install(tw=is_tw, en=is_en, no_kill=True, stream_output=False)
+            time.sleep(0.3)
+
+            ok, msg = LocalizationManager.launch_antigravity()
+            return {
+                "success": ok,
+                "message": "性能与汉化配置已保存，Antigravity 客户端已重新拉起生效！" if ok else f"配置已保存，未能自动启动客户端: {msg}"
+            }
+        except Exception as e:
+            return {"success": False, "message": f"保存并重启异常: {e}"}
+
+    def reset_antigravity_full(self) -> dict:
+        """彻底初始化 Antigravity 客户端：终止进程、恢复官方原版英文、清空冗余死缓存、重置所有个性化补丁为默认"""
+        try:
+            # 1. 终止运行中客户端
+            LocalizationManager.kill_running_antigravity()
+            time.sleep(0.8)
+
+            # 2. 还原官方原生英文备份
+            LocalizationManager.restore(stream_output=False)
+
+            # 3. 深度清理磁盘死缓存
+            StorageManager.clean_storage(clean_cache=True, clean_temp_logs=True, vacuum_db=True)
+
+            # 4. 重置个性化配置为官方默认
+            cfg = load_config()
+            cfg["customization"] = {
+                "language": "zh-CN",
+                "show_quota_badge": True,
+                "clean_ui": False,
+                "opt_gpu": True,
+                "opt_max_heap": True,
+                "opt_nosleep": True,
+                "opt_telemetry": True,
+                "prune_guide_skills": False,
+                "proxy_enabled": False,
+                "proxy_type": "socks5",
+                "proxy_host": "127.0.0.1",
+                "proxy_port": 10808,
+                "proxy_bypass": "localhost, 127.0.0.1, *.local",
+                "proxy_url": ""
+            }
+            save_config(cfg)
+            try:
+                SkillsOptimizer.set_pruned(False)
+            except Exception:
+                pass
+
+            return {
+                "success": True,
+                "message": "已完成 Antigravity 彻底初始化！官方原版英文已恢复，死缓存已清空，设置已复位。"
+            }
+        except Exception as e:
+            return {"success": False, "message": f"彻底初始化失败: {e}"}
+
     def control_daemon(self, action: str, port: int = 49222) -> dict:
         """启停后台常驻守护监听"""
         try:
@@ -335,6 +419,26 @@ class OrbitApi:
         content = PromptManager.read_system_prompt() if ok else ""
         return {"success": ok, "message": msg, "content": content}
 
+    def get_custom_prompts(self) -> dict:
+        """获取所有自定义提示词"""
+        templates = PromptManager.get_custom_templates()
+        return {"success": True, "templates": templates}
+
+    def save_custom_prompt(self, title: str, content: str, prompt_id: str = None) -> dict:
+        """保存自定义提示词"""
+        ok, msg, tpl = PromptManager.save_custom_template(title, content, prompt_id)
+        return {"success": ok, "message": msg, "template": tpl}
+
+    def delete_custom_prompt(self, prompt_id: str) -> dict:
+        """删除自定义提示词"""
+        ok, msg = PromptManager.delete_custom_template(prompt_id)
+        return {"success": ok, "message": msg}
+
+    def apply_custom_prompt(self, prompt_id: str) -> dict:
+        """一键应用自定义提示词到全局系统提示词 (AGENTS.md)"""
+        ok, msg, content = PromptManager.apply_custom_template(prompt_id)
+        return {"success": ok, "message": msg, "content": content}
+
     def test_notifier(self, channel: str, params: dict) -> dict:
         """测试通知渠道"""
         try:
@@ -380,13 +484,6 @@ class OrbitApi:
         except Exception as e:
             return {"success": False, "message": f"清空日志失败: {e}"}
 
-    def open_external(self, url: str):
-        """打开外部浏览器链接"""
-        try:
-            webbrowser.open(url)
-        except Exception:
-            pass
-
     # ------------------------------------------------------------------
     # 账号池与多账号极速切号 API
     # ------------------------------------------------------------------
@@ -415,8 +512,8 @@ class OrbitApi:
         except Exception as e:
             return {"success": False, "message": f"添加账号异常: {e}"}
 
-    def switch_account(self, account_id: str, restart_app: bool = False) -> dict:
-        """一键切换当前反重力账号"""
+    def switch_account(self, account_id: str, restart_app: bool = True) -> dict:
+        """一键切换当前反重力账号并自动重启反重力客户端生效"""
         try:
             ok, msg = self._account_mgr.switch_account(account_id)
             if not ok:
@@ -427,7 +524,7 @@ class OrbitApi:
                 LocalizationManager.kill_running_antigravity()
                 time.sleep(0.8)
                 r_ok, r_msg = LocalizationManager.launch_antigravity()
-                restart_msg = "，客户端已重启生效" if r_ok else f"，重启客户端提示: {r_msg}"
+                restart_msg = "，已自动重启反重力客户端生效！" if r_ok else f"，重启客户端提示: {r_msg}"
 
             pool = self._account_mgr.get_accounts_summary()
             return {"success": True, "message": f"{msg}{restart_msg}", "data": pool}
@@ -443,10 +540,10 @@ class OrbitApi:
         except Exception as e:
             return {"success": False, "message": f"刷新额度失败: {e}"}
 
-    def refresh_all_quotas(self) -> dict:
-        """全量批量自动刷新所有账号额度"""
+    def refresh_all_quotas(self, interval_sec: float = 1.0) -> dict:
+        """全量批量自动刷新所有账号额度 (支持分段间隔刷新，防止并发风控)"""
         try:
-            ok, count, msg = self._account_mgr.refresh_all_quotas()
+            ok, count, msg = self._account_mgr.refresh_all_quotas(interval_sec=interval_sec)
             pool = self._account_mgr.get_accounts_summary()
             return {"success": ok, "message": msg, "count": count, "data": pool}
         except Exception as e:
@@ -603,4 +700,42 @@ class OrbitApi:
                 continue
 
         return {"detected": False, "message": "未扫描到本机运行的常见代理服务 (10808/7890/7897/10809)"}
+
+    def export_accounts_data(self, format_type: str = "cockpit") -> dict:
+        """导出账号池所有凭据为 JSON 格式 (支持 cockpit 或 full)"""
+        try:
+            data = self._account_mgr.export_accounts(format_type=format_type)
+            json_str = json.dumps(data, ensure_ascii=False, indent=2)
+            count = len(data) if isinstance(data, list) else len(data.get("accounts", []))
+            fmt_desc = "Cockpit 兼容格式" if format_type == "cockpit" else "完整备份格式"
+            return {
+                "success": True,
+                "json_str": json_str,
+                "count": count,
+                "format": format_type,
+                "message": f"成功导出 {count} 个账号数据 ({fmt_desc})"
+            }
+        except Exception as e:
+            return {"success": False, "message": f"导出账号失败: {e}", "json_str": ""}
+
+    def open_config_dir(self) -> dict:
+        """在系统文件资源管理器中打开 Orbit 配置与数据目录"""
+        try:
+            cfg_dir = Path.home() / ".gemini" / "antigravity"
+            cfg_dir.mkdir(parents=True, exist_ok=True)
+            if platform.system().lower() == "windows":
+                os.startfile(str(cfg_dir))
+            else:
+                subprocess.Popen(["xdg-open", str(cfg_dir)])
+            return {"success": True, "message": f"已打开目录: {cfg_dir}"}
+        except Exception as e:
+            return {"success": False, "message": f"打开配置目录失败: {e}"}
+
+    def open_external(self, url: str) -> dict:
+        """在系统默认浏览器中打开外部链接"""
+        try:
+            webbrowser.open(url)
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
 

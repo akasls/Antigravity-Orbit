@@ -854,20 +854,20 @@
         if (!root) return;
 
         const info = parseQuotaBuckets(latestQuotaData);
-        const gMin = Math.min(info.gemini.pct5h, info.gemini.pctWeekly);
-        const cMin = Math.min(info.claude.pct5h, info.claude.pctWeekly);
-        const gColor = getModelColor(gMin, true);
-        const cColor = getModelColor(cMin, false);
+        const g5h = info.gemini.pct5h;
+        const c5h = info.claude.pct5h;
+        const gColor = getModelColor(g5h, true);
+        const cColor = getModelColor(c5h, false);
 
         const pill = root.querySelector('.ag-quota-pill');
         if (pill) {
             pill.title = `Gemini: 5H ${info.gemini.pct5h}% | 周限 ${info.gemini.pctWeekly}%\nClaude: 5H ${info.claude.pct5h}% | 周限 ${info.claude.pctWeekly}%\n点击展开详情`;
             pill.innerHTML = `
                 <span class="ag-quota-dot ${gColor.dot}"></span>
-                <span>Gemini ${gMin}%</span>
+                <span>Gemini 5H ${g5h}%</span>
                 <span class="ag-quota-divider"></span>
                 <span class="ag-quota-dot ${cColor.dot}"></span>
-                <span>Claude ${cMin}%</span>
+                <span>Claude 5H ${c5h}%</span>
             `;
         }
 

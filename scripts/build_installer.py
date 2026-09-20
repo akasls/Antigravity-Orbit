@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Antigravity Orbit 安装程序自动打包器 (Windows Setup Builder)
 支持优先检测 Inno Setup，若无则自动使用原生内置模板生成独立 Setup.exe 安装包。
@@ -85,19 +85,20 @@ def build_with_native_template() -> bool:
     return False
 
 
-def build_installer():
+def build_installer(prefer_native: bool = False):
     print("==================================================")
     print("[BUILD] 开始构建 Antigravity Orbit Windows 安装包")
     print("==================================================")
 
-    inno_path = find_inno_compiler()
-    if inno_path:
-        ok = build_with_inno(inno_path)
-        if ok:
-            print("[SUCCESS] Inno Setup 安装包已成功输出至 dist/Antigravity-Orbit-Setup.exe")
-            return True
+    if not prefer_native:
+        inno_path = find_inno_compiler()
+        if inno_path:
+            ok = build_with_inno(inno_path)
+            if ok:
+                print("[SUCCESS] Inno Setup 安装包已成功输出至 dist/Antigravity-Orbit-Setup.exe")
+                return True
 
-    # 若未安装 Inno 或编译失败，回退为内置原生安装程序
+    # 若未安装 Inno Setup 或指定原生模板，构建内置原生安装程序模板 (Tkinter Native Setup Wizard)
     ok = build_with_native_template()
     if ok:
         print("[SUCCESS] 原生安装包已成功输出至 dist/Antigravity-Orbit-Setup.exe")
@@ -108,5 +109,7 @@ def build_installer():
 
 
 if __name__ == "__main__":
-    success = build_installer()
+    prefer_native_arg = "--native" in sys.argv
+    success = build_installer(prefer_native=prefer_native_arg)
     sys.exit(0 if success else 1)
+

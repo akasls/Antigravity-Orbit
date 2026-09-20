@@ -137,15 +137,23 @@ WantedBy=default.target
 
     @staticmethod
     def is_app_autostart_enabled() -> bool:
-        """检查 Orbit 管理中心客户端是否配置了开机自启"""
+        """检查 Orbit 管理中心客户端是否配置了开机自启 (同时校验目标程序是否真实存在)"""
         system = AutostartManager.get_os()
         if system == "windows":
             try:
                 import winreg
                 key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_READ)
-                winreg.QueryValueEx(key, "AntigravityOrbitApp")
+                val, _ = winreg.QueryValueEx(key, "AntigravityOrbitApp")
                 winreg.CloseKey(key)
-                return True
+                if val:
+                    val_str = str(val).strip()
+                    if val_str.startswith('"'):
+                        clean_path = val_str[1:].split('"')[0]
+                    else:
+                        clean_path = val_str.split()[0]
+                    if Path(clean_path).exists():
+                        return True
+                return False
             except Exception:
                 return False
         elif system == "darwin":
@@ -167,10 +175,14 @@ WantedBy=default.target
             if is_frozen:
                 cmd = f'"{python_exe}" --tray'
             else:
-                pythonw_exe = Path(python_exe).parent / "pythonw.exe"
-                runner_exe = str(pythonw_exe) if pythonw_exe.exists() else python_exe
-                main_py = Path(__file__).resolve().parent.parent / "main.py"
-                cmd = f'"{runner_exe}" "{main_py}" gui --tray'
+                installed_exe = Path("D:/Antigravity-Orbit/Antigravity-Orbit.exe")
+                if installed_exe.exists():
+                    cmd = f'"{installed_exe}" --tray'
+                else:
+                    pythonw_exe = Path(python_exe).parent / "pythonw.exe"
+                    runner_exe = str(pythonw_exe) if pythonw_exe.exists() else python_exe
+                    main_py = Path(__file__).resolve().parent.parent / "main.py"
+                    cmd = f'"{runner_exe}" "{main_py}" gui --tray'
             try:
                 import winreg
                 key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE)

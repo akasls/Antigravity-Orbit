@@ -204,19 +204,28 @@ class LocalizationManager:
 
     @classmethod
     def kill_running_antigravity(cls) -> bool:
-        """安全终止运行中的 Antigravity 客户端"""
+        """安全彻底终止运行中的 Antigravity 客户端及其所有渲染/GPU子进程"""
         try:
             if sys.platform == "win32":
-                cls._run_subp(["taskkill", "/F", "/IM", "Antigravity.exe"], capture_output=True)
+                cls._run_subp(["taskkill", "/F", "/T", "/IM", "Antigravity.exe"], capture_output=True)
+                # 轮询等待所有进程完全退出，彻底释放文件锁与端口
+                for _ in range(20):
+                    if not cls.is_running():
+                        break
+                    time.sleep(0.15)
             elif sys.platform == "darwin":
                 cls._run_subp(["pkill", "-f", "Antigravity"], capture_output=True)
+                for _ in range(20):
+                    if not cls.is_running():
+                        break
+                    time.sleep(0.15)
             return True
         except Exception:
             return False
 
     @classmethod
     def launch_antigravity(cls, install_dir: Optional[str] = None) -> Tuple[bool, str]:
-        """拉起启动 Antigravity 客户端"""
+        """拉起启动 Antigravity 客户端 (杜绝 CREATE_NO_WINDOW 导致的 Chromium 白屏与卡死)"""
         target_dir = cls._fallback_detect_dir(install_dir)
         if not target_dir:
             return False, "未能探测到 Antigravity 安装目录"
@@ -225,9 +234,20 @@ class LocalizationManager:
             if sys.platform == "win32":
                 exe_path = Path(target_dir) / "Antigravity.exe"
                 if exe_path.exists():
+                    cmd = [str(exe_path)]
+                    try:
+                        from core.config import load_config
+                        cfg = load_config()
+                        if cfg.get("customization", {}).get("start_maximized", True):
+                            cmd.append("--start-maximized")
+                    except Exception:
+                        pass
+                    # GUI 进程绝对不能加 CREATE_NO_WINDOW，否则破坏 Chromium 渲染器上下文与 GPU 初始化导致白屏
+                    # 必须指定 cwd 为应用安装目录，保证 Electron 资源模块正确定位与加载
                     subprocess.Popen(
-                        [str(exe_path)],
-                        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+                        cmd,
+                        cwd=str(target_dir),
+                        creationflags=subprocess.DETACHED_PROCESS,
                         close_fds=True
                     )
                     return True, "已启动 Antigravity 客户端"

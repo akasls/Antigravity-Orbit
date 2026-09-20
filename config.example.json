@@ -26,22 +26,23 @@
     "auto_retry_on_error": true,
     "max_retry_count": 3,
     "notify_on_quota_exhausted": true,
-    "notify_on_max_retry_failed": true
+    "notify_on_max_retry_failed": true,
+    "start_maximized": true
   },
   "channels": {
     "telegram": {
-      "enabled": true,
-      "bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
-      "chat_id": "YOUR_CHAT_ID",
-      "proxy": "http://127.0.0.1:7890"
+      "enabled": false,
+      "bot_token": "",
+      "chat_id": "",
+      "proxy": ""
     },
     "feishu": {
       "enabled": false,
-      "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx"
+      "webhook_url": ""
     },
     "wecom": {
       "enabled": false,
-      "webhook_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx"
+      "webhook_url": ""
     }
   }
 }

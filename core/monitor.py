@@ -22,6 +22,9 @@ class AntigravityMonitor:
         self.config = load_config()
         self.state = load_state()
         self.last_quota_alerts: dict[str, float] = {}
+        self._running = True
+        self._lock = None
+
 
     def get_conversation_info(self, conv_id: str) -> dict | None:
         if not DB_PATH.exists():
@@ -94,10 +97,19 @@ class AntigravityMonitor:
             except Exception as err:
                 Logger.log(f"[{notifier.name}] 推送发生异常: {err}")
 
+    def stop(self):
+        """优雅停止监控引擎"""
+        self._running = False
+        if self._lock:
+            try:
+                self._lock.release()
+            except Exception:
+                pass
+
     def run_loop(self):
         lock_port = self.config.get("lock_port", 49222)
-        lock = SingleInstanceLock(lock_port, notify_callback=self.dispatch_notification)
-        if not lock.acquire():
+        self._lock = SingleInstanceLock(lock_port, notify_callback=self.dispatch_notification)
+        if not self._lock.acquire():
             Logger.log(f"服务已在运行中 (端口 {lock_port} 被占用)，当前进程退出。")
             return
 
@@ -113,12 +125,13 @@ class AntigravityMonitor:
         self.initialize_state_if_needed(pattern)
 
         try:
-            while True:
+            while self._running:
                 # 重新载入最新配置（支持热更新）
                 self.config = load_config()
                 if not self.config.get("enabled", True):
                     time.sleep(self.config.get("scan_interval", 3.0))
                     continue
+
 
                 active_notifiers = get_active_notifiers(self.config)
                 if not active_notifiers:

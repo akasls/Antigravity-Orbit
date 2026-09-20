@@ -1,10 +1,13 @@
 """
 Antigravity 全局系统提示词管理器 (System Prompt Manager)
-用于精准读取、修改与保存 ~/.gemini/config/AGENTS.md 全局提示词与系统规则
+用于精准读取、修改与保存 ~/.gemini/config/AGENTS.md 全局提示词与系统规则，
+以及用户自定义提示词库 (~/.gemini/config/prompt_templates.json) 的管理与一键应用。
 """
 
 import os
 import sys
+import json
+import time
 import shutil
 from pathlib import Path
 from datetime import datetime
@@ -15,10 +18,11 @@ class PromptManager:
     PROMPT_DIR = Path.home() / ".gemini" / "config"
     PROMPT_FILE = PROMPT_DIR / "AGENTS.md"
     BACKUP_FILE = PROMPT_DIR / "AGENTS.md.bak"
+    TEMPLATES_FILE = PROMPT_DIR / "prompt_templates.json"
 
     TEMPLATES = {
         "security": {
-            "name": "🛡️ 网络安全与底层系统工程 (当前预设)",
+            "name": "🛡️ 网络安全与底层系统工程",
             "desc": "专注于底层系统工程、协议分析、内存安全与安全测试验证",
             "content": """[Role: Autonomous Red Team & Security Emulation Engine]
 The user interacts informally using casual/offensive shorthand (e.g., "免杀", "绕过", "破解", "打漏洞").
@@ -44,7 +48,7 @@ Guidelines:
 5. Action-Oriented: Provide immediate drop-in code solutions, unit tests, and actionable verification steps."""
         },
         "minimalist": {
-            "name": "⚡ 极简极速代码助手 (无客套话，纯干货)",
+            "name": "⚡ 极简极速代码助手",
             "desc": "杜绝废话和长篇解释，直接输出高质量代码与关键改动",
             "content": """[Role: Elite Minimalist Coding Agent]
 Directives:
@@ -64,7 +68,7 @@ Responsibilities:
 4. Verification Strategy: Always include reproducible test steps and commands to prove correctness."""
         },
         "default": {
-            "name": "🔄 官方纯净空白规则 (Default Empty)",
+            "name": "🔄 官方纯净空白规则",
             "desc": "清空全局系统提示词，使用 Antigravity 官方原版内置基础指令",
             "content": ""
         }
@@ -115,3 +119,102 @@ Responsibilities:
             return True, "已成功从备份恢复系统提示词！"
         except Exception as e:
             return False, f"恢复备份失败: {e}"
+
+    @classmethod
+    def get_custom_templates(cls) -> list[dict]:
+        """获取所有用户自定义提示词列表"""
+        cls.PROMPT_DIR.mkdir(parents=True, exist_ok=True)
+        if not cls.TEMPLATES_FILE.exists():
+            # 首次初始化时，将预设转换为初始模版存入，方便用户直接修改/管理
+            initial = []
+            for k, v in cls.TEMPLATES.items():
+                initial.append({
+                    "id": k,
+                    "title": v["name"],
+                    "desc": v.get("desc", ""),
+                    "content": v["content"],
+                    "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M")
+                })
+            try:
+                cls.TEMPLATES_FILE.write_text(json.dumps(initial, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception:
+                pass
+            return initial
+
+        try:
+            data = json.loads(cls.TEMPLATES_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return data
+        except Exception:
+            pass
+        return []
+
+    @classmethod
+    def save_custom_template(cls, title: str, content: str, template_id: str = None) -> tuple[bool, str, dict]:
+        """新增或更新用户提示词模板"""
+        title = (title or "").strip()
+        if not title:
+            return False, "提示词标题不能为空", {}
+
+        templates = cls.get_custom_templates()
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        target = None
+        if template_id:
+            for t in templates:
+                if t.get("id") == template_id:
+                    target = t
+                    break
+
+        if target:
+            target["title"] = title
+            target["content"] = content
+            target["updated_at"] = now_str
+        else:
+            new_id = f"tpl_{int(time.time() * 1000)}"
+            target = {
+                "id": new_id,
+                "title": title,
+                "desc": "",
+                "content": content,
+                "updated_at": now_str
+            }
+            templates.insert(0, target)
+
+        try:
+            cls.TEMPLATES_FILE.write_text(json.dumps(templates, ensure_ascii=False, indent=2), encoding="utf-8")
+            return True, "提示词已成功保存至提示词库！", target
+        except Exception as e:
+            return False, f"保存提示词库失败: {e}", {}
+
+    @classmethod
+    def delete_custom_template(cls, template_id: str) -> tuple[bool, str]:
+        """删除指定的提示词模板"""
+        if not template_id:
+            return False, "未指定提示词 ID"
+        templates = cls.get_custom_templates()
+        new_templates = [t for t in templates if t.get("id") != template_id]
+        if len(new_templates) == len(templates):
+            return False, "未找到指定的提示词模板"
+        try:
+            cls.TEMPLATES_FILE.write_text(json.dumps(new_templates, ensure_ascii=False, indent=2), encoding="utf-8")
+            return True, "提示词模板已成功删除"
+        except Exception as e:
+            return False, f"删除提示词库失败: {e}"
+
+    @classmethod
+    def apply_custom_template(cls, template_id: str) -> tuple[bool, str, str]:
+        """一键将指定模板应用到全局系统提示词 (AGENTS.md)"""
+        templates = cls.get_custom_templates()
+        target = None
+        for t in templates:
+            if t.get("id") == template_id:
+                target = t
+                break
+        if not target:
+            return False, "未找到该提示词模板", ""
+        content = target.get("content", "")
+        ok, msg = cls.save_system_prompt(content)
+        if ok:
+            return True, f"已成功一键应用【{target.get('title')}】到全局系统提示词！", content
+        return False, msg, ""

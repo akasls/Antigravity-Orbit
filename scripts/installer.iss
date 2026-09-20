@@ -17,6 +17,7 @@ AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={localappdata}\Programs\Antigravity-Orbit
+UsePreviousAppDir=yes
 DisableDirPage=no
 DisableProgramGroupPage=no
 DefaultGroupName={#MyAppName}
@@ -41,8 +42,15 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "..\dist\Antigravity-Orbit\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\config.example.json"; DestDir: "{app}"; DestName: "config.json"; Flags: onlyifdestfiledoesntexist
+Source: "..\dist\Antigravity-Orbit\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "config.json,*.log,*.json"
+Source: "..\resources\*"; DestDir: "{app}\resources"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\config.example.json"; DestDir: "{app}"; DestName: "config.json"; Flags: onlyifdoesntexist
+
+[Registry]
+Root: HKCU; Subkey: "Software\AntigravityOrbit"; ValueType: string; ValueName: "InstallLocation"; ValueData: "{app}"; Flags: uninsdeletekeyifempty
+Root: HKCU; Subkey: "Software\AntigravityOrbit"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekeyifempty
+Root: HKCU; Subkey: "Software\AntigravityOrbit"; ValueType: string; ValueName: "Version"; ValueData: "{#MyAppVersion}"; Flags: uninsdeletekeyifempty
+
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\resources\icon.ico"

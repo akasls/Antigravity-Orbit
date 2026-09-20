@@ -14,10 +14,15 @@ import uuid
 import base64
 import re
 import ctypes
+import socket
 import threading
 import urllib.request
 import urllib.parse
 import urllib.error
+try:
+    import requests
+except ImportError:
+    requests = None
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone
 from pathlib import Path
@@ -75,8 +80,9 @@ GOOGLE_OAUTH_SCOPES = [
     "https://www.googleapis.com/auth/cloud-platform"
 ]
 
-# Cloud Code Quota API 端点
-CLOUD_CODE_PROD_URL = "https://cloudcode-pa.googleapis.com"
+# Cloud Code Quota API 端点 (Antigravity 官方客户端统一使用 daily-cloudcode-pa.googleapis.com 获取实时真实扣减额度)
+CLOUD_CODE_PROD_URL = "https://daily-cloudcode-pa.googleapis.com"
+CLOUD_CODE_FALLBACK_URL = "https://cloudcode-pa.googleapis.com"
 USER_AGENT = "antigravity/1.20.5 windows/amd64"
 
 OAUTH_SUCCESS_HTML = """<!DOCTYPE html>
@@ -356,27 +362,126 @@ class AccountPoolManager:
         return True, "成功写入系统凭据管理器"
 
     # ------------------------------------------------------------------
-    # Google API 网络交互
+    # Google API 网络交互与专属代理适配器
     # ------------------------------------------------------------------
     @staticmethod
-    def _http_urlopen(req: urllib.request.Request, timeout: int = 12):
-        """支持从本地配置自动装配 HTTP / HTTPS 代理的请求包装器"""
+    def _get_proxy_url() -> Optional[str]:
+        """动态探测并获取当前系统最适合的代理地址 (支持 SOCKS5 / HTTP 自动回退)"""
         try:
             from core.config import load_config
             cfg = load_config()
             custom = cfg.get("customization", {})
             if custom.get("proxy_enabled"):
-                p_type = custom.get("proxy_type", "http").lower()
-                p_host = custom.get("proxy_host", "127.0.0.1")
-                p_port = custom.get("proxy_port", 7890)
-                proxy_url = f"{p_type}://{p_host}:{p_port}"
-                opener = urllib.request.build_opener(
-                    urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url})
-                )
-                return opener.open(req, timeout=timeout)
+                p_type = (custom.get("proxy_type") or "http").lower()
+                p_host = custom.get("proxy_host") or "127.0.0.1"
+                p_port = int(custom.get("proxy_port") or 10808)
+
+                # 优先测试配置端口，若未开放则检测备用常用端口 (10808, 7890, 7897, 10809)
+                candidate_ports = [p_port]
+                for alt in [10808, 7890, 7897, 10809]:
+                    if alt not in candidate_ports:
+                        candidate_ports.append(alt)
+
+                scheme = "socks5h" if p_type == "socks5" else p_type
+                for port in candidate_ports:
+                    try:
+                        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        s.settimeout(0.2)
+                        res = s.connect_ex((p_host, port))
+                        s.close()
+                        if res == 0:
+                            return f"{scheme}://{p_host}:{port}"
+                    except Exception:
+                        pass
+                return f"{scheme}://{p_host}:{p_port}"
         except Exception:
             pass
-        return urllib.request.urlopen(req, timeout=timeout)
+        return None
+
+    @classmethod
+    def _make_request(
+        cls,
+        method: str,
+        url: str,
+        headers: Optional[Dict[str, str]] = None,
+        json_data: Optional[Dict[str, Any]] = None,
+        form_data: Optional[Dict[str, Any]] = None,
+        timeout: int = 12
+    ) -> Tuple[int, Optional[Dict[str, Any]], str]:
+        """统一原生请求封装器，完美原生支持 SOCKS5 与 HTTP 代理"""
+        hdrs = {"User-Agent": USER_AGENT}
+        if headers:
+            hdrs.update(headers)
+
+        proxy_url = cls._get_proxy_url()
+
+        # 优先使用 requests (支持原生 socks5 与 http)
+        if requests is not None:
+            proxies = None
+            if proxy_url:
+                proxies = {"http": proxy_url, "https": proxy_url}
+            try:
+                if method.upper() == "GET":
+                    resp = requests.get(url, headers=hdrs, proxies=proxies, timeout=timeout)
+                elif form_data is not None:
+                    resp = requests.post(url, data=form_data, headers=hdrs, proxies=proxies, timeout=timeout)
+                else:
+                    resp = requests.post(url, json=json_data if json_data is not None else {}, headers=hdrs, proxies=proxies, timeout=timeout)
+
+                data = None
+                try:
+                    data = resp.json()
+                except Exception:
+                    data = None
+
+                return resp.status_code, data, resp.text
+            except requests.exceptions.RequestException as e:
+                # 若代理连接失败，且存在备用直连可能，重试直连
+                if proxies:
+                    try:
+                        if method.upper() == "GET":
+                            resp = requests.get(url, headers=hdrs, timeout=timeout)
+                        elif form_data is not None:
+                            resp = requests.post(url, data=form_data, headers=hdrs, timeout=timeout)
+                        else:
+                            resp = requests.post(url, json=json_data if json_data is not None else {}, headers=hdrs, timeout=timeout)
+                        try:
+                            return resp.status_code, resp.json(), resp.text
+                        except Exception:
+                            return resp.status_code, None, resp.text
+                    except Exception:
+                        pass
+                return 0, None, f"请求失败: {e}"
+
+        # 回退为 urllib (当未安装 requests 时)
+        try:
+            req_data = None
+            if form_data is not None:
+                req_data = urllib.parse.urlencode(form_data).encode("utf-8")
+                hdrs["Content-Type"] = "application/x-www-form-urlencoded"
+            elif json_data is not None or method.upper() == "POST":
+                req_data = json.dumps(json_data or {}).encode("utf-8")
+                hdrs["Content-Type"] = "application/json"
+
+            req = urllib.request.Request(url, data=req_data, headers=hdrs, method=method.upper())
+            opener = urllib.request.build_opener()
+            if proxy_url and proxy_url.startswith("http"):
+                opener = urllib.request.build_opener(urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url}))
+
+            with opener.open(req, timeout=timeout) as resp:
+                body = resp.read().decode("utf-8", errors="replace")
+                try:
+                    return resp.status, json.loads(body), body
+                except Exception:
+                    return resp.status, None, body
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="replace")
+            try:
+                return e.code, json.loads(err_body), err_body
+            except Exception:
+                return e.code, None, err_body
+        except Exception as e:
+            return 0, None, str(e)
 
     # 候选 Google OAuth 凭据表 (用于跨工具导入兼容与凭据刷新自动容错)
     OAUTH_CLIENT_CANDIDATES = [
@@ -412,55 +517,36 @@ class AccountPoolManager:
             }
             if csec:
                 post_fields["client_secret"] = csec
-            data = urllib.parse.urlencode(post_fields).encode("utf-8")
 
-            req = urllib.request.Request(
-                GOOGLE_TOKEN_URL,
-                data=data,
-                headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT}
-            )
-
-            try:
-                with cls._http_urlopen(req, timeout=12) as resp:
-                    result = json.loads(resp.read().decode("utf-8"))
-                    result["_used_client_id"] = cid
-                    result["_used_client_secret"] = csec
-                    return True, result, "Token 刷新成功"
-            except urllib.error.HTTPError as e:
-                msg = e.read().decode("utf-8", errors="ignore")
-                last_err = f"HTTP {e.code}: {msg}"
-                # 如果是 invalid_grant 或 invalid_client 则继续尝试下一个候选凭据
-                if "invalid_grant" in msg or "invalid_client" in msg:
+            code, data, text = cls._make_request("POST", GOOGLE_TOKEN_URL, form_data=post_fields, timeout=12)
+            if code == 200 and isinstance(data, dict) and data.get("access_token"):
+                data["_used_client_id"] = cid
+                data["_used_client_secret"] = csec
+                return True, data, "Token 刷新成功"
+            else:
+                last_err = f"HTTP {code}: {text}"
+                if "invalid_grant" in text or "invalid_client" in text:
                     continue
                 else:
                     break
-            except Exception as e:
-                last_err = str(e)
-                break
 
         return False, None, f"Token 刷新失败: {last_err}"
 
     @classmethod
     def fetch_user_info(cls, access_token: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
         """获取 Google 账号用户信息（邮箱、姓名、头像）"""
-        req = urllib.request.Request(
-            GOOGLE_USERINFO_URL,
-            headers={"Authorization": f"Bearer {access_token}", "User-Agent": USER_AGENT}
-        )
-        try:
-            with cls._http_urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                return True, data, "成功获取用户信息"
-        except Exception as e:
-            return False, None, f"获取用户信息失败: {e}"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        code, data, text = cls._make_request("GET", GOOGLE_USERINFO_URL, headers=headers, timeout=10)
+        if code == 200 and isinstance(data, dict):
+            return True, data, "成功获取用户信息"
+        return False, None, f"获取用户信息失败 (HTTP {code}): {text}"
 
     @classmethod
     def fetch_account_quota_data(cls, access_token: str, project_id: Optional[str] = None) -> Dict[str, Any]:
-        """深度查询账号额度（订阅计划、5h额度、周度额度、各模型额度）"""
+        """深度查询账号额度（订阅计划、5h额度、周度额度、各模型额度），杜绝假 100%"""
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
-            "User-Agent": USER_AGENT,
         }
 
         quota_result = {
@@ -484,12 +570,12 @@ class AccountPoolManager:
             "models": {},
             "raw_credits": [],
             "last_refreshed": int(time.time()),
-            "status": "HEALTHY",  # HEALTHY / LOW / EXHAUSTED / FORBIDDEN
+            "status": "HEALTHY",  # HEALTHY / LOW / EXHAUSTED / FORBIDDEN / EXPIRED / ERROR
         }
 
         # 1. 查询 loadCodeAssist 识别订阅计划
         try:
-            assist_payload = json.dumps({
+            assist_payload = {
                 "metadata": {
                     "ideName": "antigravity",
                     "ideType": "ANTIGRAVITY",
@@ -498,16 +584,18 @@ class AccountPoolManager:
                     "pluginType": "GEMINI"
                 },
                 "mode": "FULL_ELIGIBILITY_CHECK",
-                **({"cloudaicompanionProject": project_id} if project_id else {})
-            }).encode("utf-8")
+            }
+            if project_id:
+                assist_payload["cloudaicompanionProject"] = project_id
 
-            req = urllib.request.Request(
+            code, assist_data, _ = cls._make_request(
+                "POST",
                 f"{CLOUD_CODE_PROD_URL}/v1internal:loadCodeAssist",
-                data=assist_payload,
-                headers=headers
+                headers=headers,
+                json_data=assist_payload,
+                timeout=12
             )
-            with cls._http_urlopen(req, timeout=12) as resp:
-                assist_data = json.loads(resp.read().decode("utf-8"))
+            if code == 200 and isinstance(assist_data, dict):
                 paid_tier = assist_data.get("paidTier") or {}
                 current_tier = assist_data.get("currentTier") or {}
                 tier_id = paid_tier.get("id") or current_tier.get("id") or ""
@@ -529,177 +617,220 @@ class AccountPoolManager:
                         quota_result["project_id"] = proj
                     elif isinstance(proj, dict) and proj.get("id"):
                         quota_result["project_id"] = proj.get("id")
+            elif code == 401:
+                quota_result["status"] = "EXPIRED"
+                quota_result["error"] = "登录凭据已过期，请重新登录"
+                quota_result["five_hour_percent"] = 0
+                quota_result["claude_5h_percent"] = 0
+                quota_result["gemini_5h_percent"] = 0
+                quota_result["weekly_percent"] = 0
+                return quota_result
         except Exception:
             pass
 
         # 2. 查询 retrieveUserQuotaSummary 获取 Claude 与 Gemini 的 5h 和 周度额度
         claude_found = False
         gemini_found = False
-        try:
-            req = urllib.request.Request(
-                f"{CLOUD_CODE_PROD_URL}/v1internal:retrieveUserQuotaSummary",
-                data=b"{}",
-                headers=headers
+        code, summary_data, err_text = cls._make_request(
+            "POST",
+            f"{CLOUD_CODE_PROD_URL}/v1internal:retrieveUserQuotaSummary",
+            headers=headers,
+            json_data={},
+            timeout=12
+        )
+        if code != 200 and code != 401 and code != 403 and code != 429:
+            # 自动降级尝试 fallback 生产端点
+            fb_code, fb_data, fb_err = cls._make_request(
+                "POST",
+                f"{CLOUD_CODE_FALLBACK_URL}/v1internal:retrieveUserQuotaSummary",
+                headers=headers,
+                json_data={},
+                timeout=12
             )
-            with cls._http_urlopen(req, timeout=12) as resp:
-                summary_data = json.loads(resp.read().decode("utf-8"))
-                groups = summary_data.get("groups") or []
-                if not groups and isinstance(summary_data.get("response"), dict):
-                    groups = summary_data["response"].get("groups", [])
-                if not groups and isinstance(summary_data.get("data"), dict):
-                    groups = summary_data["data"].get("groups", [])
+            if fb_code == 200:
+                code, summary_data, err_text = fb_code, fb_data, fb_err
 
-                for group in groups:
-                    g_name = (group.get("displayName") or group.get("name") or "").lower()
-                    is_gemini_group = "gemini" in g_name
+        if code == 401:
+            quota_result["status"] = "EXPIRED"
+            quota_result["error"] = "登录授权已失效，请重新登录或更新 Token"
+            quota_result["five_hour_percent"] = 0
+            quota_result["claude_5h_percent"] = 0
+            quota_result["gemini_5h_percent"] = 0
+            quota_result["weekly_percent"] = 0
+            return quota_result
+        elif code == 429 or "RESOURCE_EXHAUSTED" in err_text:
+            quota_result["five_hour_fraction"] = 0.0
+            quota_result["five_hour_percent"] = 0
+            quota_result["claude_5h_percent"] = 0
+            quota_result["gemini_5h_percent"] = 0
+            quota_result["status"] = "EXHAUSTED"
+            claude_found = True
+            gemini_found = True
+        elif code == 403:
+            quota_result["status"] = "FORBIDDEN"
+            quota_result["error"] = "无访问权限或账号受限"
+            quota_result["five_hour_percent"] = 0
+            quota_result["claude_5h_percent"] = 0
+            quota_result["gemini_5h_percent"] = 0
+            claude_found = True
+            gemini_found = True
+        elif code == 200 and isinstance(summary_data, dict):
+            groups = summary_data.get("groups") or []
+            if not groups and isinstance(summary_data.get("response"), dict):
+                groups = summary_data["response"].get("groups", [])
+            if not groups and isinstance(summary_data.get("data"), dict):
+                groups = summary_data["data"].get("groups", [])
 
-                    for bucket in group.get("buckets", []):
-                        b_id = (bucket.get("bucketId") or "").lower()
-                        d_name = (bucket.get("displayName") or "").lower()
-                        window = (bucket.get("window") or bucket.get("period") or "").lower()
-                        frac = bucket.get("remainingFraction")
-                        reset = bucket.get("resetTime") or ""
-                        if frac is None:
-                            # Proto3 规范中 0.0 为默认值在 JSON 序列化时被省略。
-                            # 若包含有效重置时间或 bucketId 则判定额度已耗尽 (0%)
-                            if reset or b_id:
-                                frac = 0.0
-                            else:
-                                continue
-                        percent = max(0, min(100, int(round(float(frac) * 100))))
+            for group in groups:
+                g_name = (group.get("displayName") or group.get("name") or "").lower()
+                is_gemini_group = "gemini" in g_name
+                is_claude_group = ("claude" in g_name) or ("3p" in g_name) or ("gpt" in g_name)
 
-                        is_5h = ("5h" in window or "5h" in b_id or "five" in d_name or "5 hour" in d_name or "5-hour" in window)
-                        is_weekly = ("week" in window or "week" in b_id or "week" in d_name)
-
-                        is_gemini = is_gemini_group or ("gemini" in b_id)
-
-                        if is_gemini:
-                            gemini_found = True
-                            if is_5h:
-                                quota_result["gemini_5h_percent"] = percent
-                                quota_result["gemini_5h_reset"] = reset
-                            elif is_weekly:
-                                quota_result["gemini_weekly_percent"] = percent
-                                quota_result["gemini_weekly_reset"] = reset
+                for bucket in group.get("buckets", []):
+                    b_id = (bucket.get("bucketId") or "").lower()
+                    d_name = (bucket.get("displayName") or "").lower()
+                    window = (bucket.get("window") or bucket.get("period") or "").lower()
+                    frac = bucket.get("remainingFraction")
+                    reset = bucket.get("resetTime") or ""
+                    if frac is None:
+                        # Proto3 中 0.0 为默认值在 JSON 序列化时被省略
+                        if reset or b_id:
+                            frac = 0.0
                         else:
-                            claude_found = True
-                            if is_5h:
-                                quota_result["claude_5h_percent"] = percent
-                                quota_result["claude_5h_reset"] = reset
-                            elif is_weekly:
-                                quota_result["claude_weekly_percent"] = percent
-                                quota_result["claude_weekly_reset"] = reset
+                            frac = 1.0
 
-                        # 兜底通用限额
+                    percent = max(0, min(100, int(round(float(frac) * 100))))
+                    is_5h = ("5h" in window or "5h" in b_id or "five" in d_name or "5 hour" in d_name or "5-hour" in window)
+                    is_weekly = ("week" in window or "week" in b_id or "week" in d_name or "7d" in window)
+
+                    is_gemini = is_gemini_group or ("gemini" in b_id)
+                    is_claude = is_claude_group or ("claude" in b_id) or ("3p" in b_id) or ("gpt" in b_id)
+
+                    if is_gemini:
+                        gemini_found = True
                         if is_5h:
-                            quota_result["five_hour_fraction"] = min(quota_result["five_hour_fraction"], float(frac))
-                            quota_result["five_hour_percent"] = min(quota_result["five_hour_percent"], percent)
-                            if not quota_result["five_hour_reset"]:
-                                quota_result["five_hour_reset"] = reset
+                            quota_result["gemini_5h_percent"] = percent
+                            quota_result["gemini_5h_reset"] = reset
                         elif is_weekly:
-                            quota_result["weekly_fraction"] = min(quota_result["weekly_fraction"], float(frac))
-                            quota_result["weekly_percent"] = min(quota_result["weekly_percent"], percent)
-                            if not quota_result["weekly_reset"]:
-                                quota_result["weekly_reset"] = reset
-        except urllib.error.HTTPError as e:
-            err_body = ""
-            try:
-                err_body = e.read().decode("utf-8", errors="ignore")
-            except Exception:
-                pass
-            if e.code == 429 or "RESOURCE_EXHAUSTED" in err_body:
-                # 明确识别 Google 额度熔断/已耗尽 (HTTP 429 RESOURCE_EXHAUSTED)
-                quota_result["five_hour_fraction"] = 0.0
-                quota_result["five_hour_percent"] = 0
-                quota_result["claude_5h_percent"] = 0
-                quota_result["gemini_5h_percent"] = 0
-                quota_result["status"] = "EXHAUSTED"
-                claude_found = True
-                gemini_found = True
-            elif e.code == 403:
-                quota_result["status"] = "FORBIDDEN"
-                quota_result["five_hour_percent"] = 0
-                quota_result["claude_5h_percent"] = 0
-                quota_result["gemini_5h_percent"] = 0
-                claude_found = True
-                gemini_found = True
-        except Exception:
-            pass
+                            quota_result["gemini_weekly_percent"] = percent
+                            quota_result["gemini_weekly_reset"] = reset
+
+                    if is_claude or not is_gemini:
+                        claude_found = True
+                        if is_5h:
+                            quota_result["claude_5h_percent"] = percent
+                            quota_result["claude_5h_reset"] = reset
+                        elif is_weekly:
+                            quota_result["claude_weekly_percent"] = percent
+                            quota_result["claude_weekly_reset"] = reset
+
+                    # 通用限额取低值
+                    if is_5h:
+                        quota_result["five_hour_fraction"] = min(quota_result["five_hour_fraction"], float(frac))
+                        quota_result["five_hour_percent"] = min(quota_result["five_hour_percent"], percent)
+                        if not quota_result["five_hour_reset"] and reset:
+                            quota_result["five_hour_reset"] = reset
+                    elif is_weekly:
+                        quota_result["weekly_fraction"] = min(quota_result["weekly_fraction"], float(frac))
+                        quota_result["weekly_percent"] = min(quota_result["weekly_percent"], percent)
+                        if not quota_result["weekly_reset"] and reset:
+                            quota_result["weekly_reset"] = reset
+        elif code == 0:
+            quota_result["status"] = "ERROR"
+            quota_result["error"] = err_text
 
         # 若未独立返回，默认继承通用额度
-        if not claude_found:
+        if not claude_found and quota_result["status"] == "HEALTHY":
             quota_result["claude_5h_percent"] = quota_result["five_hour_percent"]
             quota_result["claude_5h_reset"] = quota_result["five_hour_reset"]
             quota_result["claude_weekly_percent"] = quota_result["weekly_percent"]
             quota_result["claude_weekly_reset"] = quota_result["weekly_reset"]
-        if not gemini_found:
+        if not gemini_found and quota_result["status"] == "HEALTHY":
             quota_result["gemini_5h_percent"] = quota_result["five_hour_percent"]
             quota_result["gemini_5h_reset"] = quota_result["five_hour_reset"]
             quota_result["gemini_weekly_percent"] = quota_result["weekly_percent"]
             quota_result["gemini_weekly_reset"] = quota_result["weekly_reset"]
 
-
         # 3. 查询 fetchAvailableModels 获取各模型独立配额并相互校准
-        try:
-            req = urllib.request.Request(
-                f"{CLOUD_CODE_PROD_URL}/v1internal:fetchAvailableModels",
-                data=b"{}",
-                headers=headers
+        m_code, models_data, m_err = cls._make_request(
+            "POST",
+            f"{CLOUD_CODE_PROD_URL}/v1internal:fetchAvailableModels",
+            headers=headers,
+            json_data={},
+            timeout=12
+        )
+        if m_code != 200 and m_code != 401 and m_code != 403:
+            fb_m_code, fb_m_data, fb_m_err = cls._make_request(
+                "POST",
+                f"{CLOUD_CODE_FALLBACK_URL}/v1internal:fetchAvailableModels",
+                headers=headers,
+                json_data={},
+                timeout=12
             )
-            with cls._http_urlopen(req, timeout=12) as resp:
-                models_data = json.loads(resp.read().decode("utf-8"))
-                for m_id, m_info in models_data.get("models", {}).items():
-                    q_info = m_info.get("quotaInfo") or {}
+            if fb_m_code == 200:
+                m_code, models_data, m_err = fb_m_code, fb_m_data, fb_m_err
+        if m_code == 200 and isinstance(models_data, dict):
+            for m_id, m_info in models_data.get("models", {}).items():
+                q_info = m_info.get("quotaInfo") or {}
+                frac = None
+                if isinstance(q_info, dict) and "remainingFraction" in q_info:
                     frac = q_info.get("remainingFraction")
-                    if frac is None and (q_info.get("resetTime") or "claude" in m_id or "gemini" in m_id):
-                        frac = 0.0
-                    if frac is not None:
-                        pct = max(0, min(100, int(round(float(frac) * 100))))
-                        quota_result["models"][m_id] = {
-                            "displayName": m_info.get("displayName") or m_id,
-                            "remainingFraction": float(frac),
-                            "percent": pct,
-                            "resetTime": q_info.get("resetTime") or ""
-                        }
+                elif "remainingFraction" in m_info:
+                    frac = m_info.get("remainingFraction")
 
-                # 交叉校准：若具体核心模型出现更低限额，及时反映至分组中避免误显 100%
-                claude_model_pcts = [m["percent"] for mid, m in quota_result["models"].items() if "claude" in mid or "3p" in mid or "gpt" in mid]
-                gemini_model_pcts = [m["percent"] for mid, m in quota_result["models"].items() if "gemini" in mid]
-                if claude_model_pcts and min(claude_model_pcts) < quota_result["claude_5h_percent"]:
-                    quota_result["claude_5h_percent"] = min(claude_model_pcts)
-                if gemini_model_pcts and min(gemini_model_pcts) < quota_result["gemini_5h_percent"]:
-                    quota_result["gemini_5h_percent"] = min(gemini_model_pcts)
-        except urllib.error.HTTPError as e:
-            if e.code == 429:
-                quota_result["status"] = "EXHAUSTED"
-                for m_id in quota_result.get("models", {}):
-                    quota_result["models"][m_id]["percent"] = 0
-                    quota_result["models"][m_id]["remainingFraction"] = 0.0
-        except Exception:
-            pass
-        except urllib.error.HTTPError as e:
-            if e.code == 429:
-                quota_result["status"] = "EXHAUSTED"
-                for m_id in quota_result.get("models", {}):
-                    quota_result["models"][m_id]["percent"] = 0
-                    quota_result["models"][m_id]["remainingFraction"] = 0.0
-        except Exception:
-            pass
+                reset = (q_info.get("resetTime") if isinstance(q_info, dict) else "") or m_info.get("resetTime") or ""
+                if frac is None and (reset or "claude" in m_id or "gemini" in m_id):
+                    frac = 0.0
+                if frac is not None:
+                    pct = max(0, min(100, int(round(float(frac) * 100))))
+                    quota_result["models"][m_id] = {
+                        "displayName": m_info.get("displayName") or m_id,
+                        "remainingFraction": float(frac),
+                        "percent": pct,
+                        "resetTime": reset
+                    }
+
+            # 交叉校准：若具体核心模型出现更低限额或明确的重置时间，及时反映至分组中避免误显
+            claude_models = [m for mid, m in quota_result["models"].items() if "claude" in mid or "3p" in mid or "gpt" in mid]
+            gemini_models = [m for mid, m in quota_result["models"].items() if "gemini" in mid]
+            if claude_models:
+                min_c = min(m["percent"] for m in claude_models)
+                if min_c < quota_result["claude_5h_percent"]:
+                    quota_result["claude_5h_percent"] = min_c
+                    for m in claude_models:
+                        if m["percent"] == min_c and m.get("resetTime"):
+                            quota_result["claude_5h_reset"] = m["resetTime"]
+                            break
+            if gemini_models:
+                min_g = min(m["percent"] for m in gemini_models)
+                if min_g < quota_result["gemini_5h_percent"]:
+                    quota_result["gemini_5h_percent"] = min_g
+                    for m in gemini_models:
+                        if m["percent"] == min_g and m.get("resetTime"):
+                            quota_result["gemini_5h_reset"] = m["resetTime"]
+                            break
+        elif m_code == 429:
+            quota_result["status"] = "EXHAUSTED"
+            for m_id in quota_result.get("models", {}):
+                quota_result["models"][m_id]["percent"] = 0
+                quota_result["models"][m_id]["remainingFraction"] = 0.0
 
         # 综合评定健康度
-        min_percent = min(quota_result["five_hour_percent"], quota_result["weekly_percent"], quota_result["claude_5h_percent"], quota_result["gemini_5h_percent"])
-        if min_percent <= 0 or quota_result["status"] == "EXHAUSTED":
-            quota_result["status"] = "EXHAUSTED"
-        elif min_percent <= 20 or quota_result["status"] == "LOW":
-            quota_result["status"] = "LOW"
-        else:
-            quota_result["status"] = "HEALTHY"
+        if quota_result["status"] not in ["EXPIRED", "ERROR", "FORBIDDEN"]:
+            min_percent = min(quota_result["five_hour_percent"], quota_result["weekly_percent"], quota_result["claude_5h_percent"], quota_result["gemini_5h_percent"])
+            if min_percent <= 0 or quota_result["status"] == "EXHAUSTED":
+                quota_result["status"] = "EXHAUSTED"
+            elif min_percent <= 20 or quota_result["status"] == "LOW":
+                quota_result["status"] = "LOW"
+            else:
+                quota_result["status"] = "HEALTHY"
 
         quota_result["five_hour_pct"] = quota_result["five_hour_percent"]
         quota_result["weekly_pct"] = quota_result["weekly_percent"]
         quota_result["tier"] = quota_result["tier_display"]
 
         return quota_result
+
 
     # ------------------------------------------------------------------
     # 业务层：账号池操作
@@ -712,27 +843,50 @@ class AccountPoolManager:
         # 检查当前系统实际生效的凭据与账号池比对
         has_active, current_cred, _ = self.read_system_credential()
         current_refresh_token = None
-        current_email = None
         if has_active and current_cred:
             current_refresh_token = current_cred.get("token", {}).get("refresh_token")
 
+        # 严格确定唯一活跃账号 ID：以系统凭据管理器正在生效的 Token 为最高准则
+        primary_active_id = None
+        if current_refresh_token:
+            for acc in self._pool_cache.get("accounts", []):
+                if acc.get("token", {}).get("refresh_token") == current_refresh_token:
+                    primary_active_id = acc.get("id")
+                    break
+        if not primary_active_id:
+            primary_active_id = active_id
+
+        # 若活跃 ID 与缓存不一致，同步更新
+        if primary_active_id and self._pool_cache.get("active_account_id") != primary_active_id:
+            self._pool_cache["active_account_id"] = primary_active_id
+            try:
+                self.save_pool()
+            except Exception:
+                pass
+
         accounts_list = []
-        matched_active_id = None
         for acc in self._pool_cache.get("accounts", []):
             acc_copy = dict(acc)
-            # 动态判断是否为当前系统凭据正在生效中的账号
-            token_data = acc.get("token", {})
-            acc_refresh_token = token_data.get("refresh_token")
-            is_currently_active = (
-                acc.get("id") == active_id or
-                (current_refresh_token and acc_refresh_token == current_refresh_token)
-            )
-            if is_currently_active:
-                matched_active_id = acc.get("id")
-            acc_copy["is_active"] = bool(is_currently_active)
+            # 严格保证仅且只有一个账号被标记为活跃（使用中）
+            acc_copy["is_active"] = bool(acc.get("id") == primary_active_id)
 
-            # 格式化上次刷新时间
-            quota = acc_copy.get("quota", {})
+            # 格式化上次刷新时间与保持真实状态
+            quota = dict(acc_copy.get("quota", {}))
+            if quota.get("status") == "SYNCING":
+                # 启动读取缓存时若残留临时 SYNCING 标记，自动平滑恢复为真实状态
+                min_pct = min(
+                    quota.get("claude_5h_percent", 100),
+                    quota.get("claude_weekly_percent", 100),
+                    quota.get("gemini_5h_percent", 100),
+                    quota.get("gemini_weekly_percent", 100)
+                )
+                if min_pct <= 0:
+                    quota["status"] = "EXHAUSTED"
+                elif min_pct <= 20:
+                    quota["status"] = "LOW"
+                else:
+                    quota["status"] = "HEALTHY"
+            acc_copy["quota"] = quota
             last_ts = quota.get("last_refreshed", 0)
             acc_copy["last_refreshed_text"] = _format_time_ago(last_ts)
             accounts_list.append(acc_copy)
@@ -749,7 +903,7 @@ class AccountPoolManager:
             "total": total,
             "healthy": healthy,
             "low_or_exhausted": low_or_exhausted,
-            "active_account_id": matched_active_id or active_id,
+            "active_account_id": primary_active_id,
             "accounts": accounts_list
         }
 
@@ -877,14 +1031,35 @@ class AccountPoolManager:
         hint_email = ""
         hint_name = ""
 
-        # 支持直接粘贴 JSON (单对象或数组包裹)
+        # 支持直接粘贴 JSON (单对象或数组包裹，支持全量账号备份还原/批量导入)
         if token_input.startswith("{") or token_input.startswith("["):
             try:
                 parsed = json.loads(token_input)
-                if isinstance(parsed, list) and len(parsed) > 0:
-                    parsed = parsed[0]
-                elif isinstance(parsed, dict) and "accounts" in parsed and isinstance(parsed["accounts"], list) and len(parsed["accounts"]) > 0:
-                    parsed = parsed["accounts"][0]
+                raw_list = None
+                if isinstance(parsed, list):
+                    raw_list = parsed
+                elif isinstance(parsed, dict) and "accounts" in parsed and isinstance(parsed["accounts"], list):
+                    raw_list = parsed["accounts"]
+
+                if raw_list is not None:
+                    if len(raw_list) == 0:
+                        return False, None, "提供的账号列表为空"
+                    elif len(raw_list) > 1:
+                        imported_count = 0
+                        for item in raw_list:
+                            if isinstance(item, str):
+                                sub_str = item.strip()
+                            else:
+                                sub_str = json.dumps(item, ensure_ascii=False)
+                            ok, _, _ = self.add_account_by_token(sub_str)
+                            if ok:
+                                imported_count += 1
+                        if imported_count > 0:
+                            return True, None, f"成功批量导入 {imported_count}/{len(raw_list)} 个账号！"
+                        else:
+                            return False, None, "批量导入失败，未成功导入任何有效账号"
+                    elif len(raw_list) == 1:
+                        parsed = raw_list[0]
 
                 # 提取潜在账号名与邮箱提示
                 hint_email = parsed.get("email") or parsed.get("account") or parsed.get("user_email") or ""
@@ -934,7 +1109,22 @@ class AccountPoolManager:
             except Exception as e:
                 return False, None, f"解析 Token JSON 失败: {e}"
         else:
-            refresh_token = token_input
+            # 检查是否是多行纯文本 Token
+            lines = [l.strip() for l in token_input.splitlines() if l.strip()]
+            if len(lines) > 1:
+                imported_count = 0
+                for single_tok in lines:
+                    ok, _, _ = self.add_account_by_token(single_tok)
+                    if ok:
+                        imported_count += 1
+                if imported_count > 0:
+                    return True, None, f"成功批量导入 {imported_count}/{len(lines)} 个账号！"
+                else:
+                    return False, None, "批量导入失败，未成功导入任何有效 Token"
+            elif len(lines) == 1:
+                refresh_token = lines[0]
+            else:
+                return False, None, "请输入有效 Token 或 JSON 凭据"
 
         if not refresh_token and not access_token:
             return False, None, "未在输入中找到有效 refresh_token 或 access_token"
@@ -1022,6 +1212,31 @@ class AccountPoolManager:
         self.save_pool()
         return True, {"id": account_id, "email": email, "name": name}, f"成功导入账号: {email}"
 
+    def export_accounts(self, format_type: str = "cockpit") -> Any:
+        """导出账号池所有账号凭据数据（支持 Cockpit Tools 兼容格式与完整备份格式）"""
+        self.load_pool()
+        accounts = self._pool_cache.get("accounts", [])
+        if format_type == "full":
+            return {
+                "version": "1.0",
+                "exported_at": int(time.time()),
+                "accounts": accounts,
+                "active_account_id": self._pool_cache.get("active_account_id")
+            }
+
+        # 默认 Cockpit Tools 兼容格式: [{"email": "...", "refresh_token": "..."}]
+        cockpit_list = []
+        for acc in accounts:
+            tok = acc.get("token", {})
+            rf = tok.get("refresh_token") or ""
+            email = acc.get("email") or ""
+            if rf:
+                cockpit_list.append({
+                    "email": email,
+                    "refresh_token": rf
+                })
+        return cockpit_list
+
     def switch_account(self, account_id: str) -> Tuple[bool, str]:
         """一键极速切换到目标账号"""
         self.load_pool()
@@ -1092,6 +1307,7 @@ class AccountPoolManager:
         csec = tok.get("client_secret")
         access_token = tok.get("access_token")
 
+        ref_msg = ""
         if refresh_token:
             ref_ok, ref_data, ref_msg = self.refresh_google_token(refresh_token, client_id=cid, client_secret=csec)
             if ref_ok and ref_data:
@@ -1101,6 +1317,23 @@ class AccountPoolManager:
                 if ref_data.get("_used_client_id"):
                     tok["client_id"] = ref_data["_used_client_id"]
                     tok["client_secret"] = ref_data.get("_used_client_secret", "")
+            else:
+                target_acc["quota"] = {
+                    "subscription_tier": target_acc.get("quota", {}).get("subscription_tier", "FREE"),
+                    "tier_display": target_acc.get("quota", {}).get("tier_display", "免费版"),
+                    "five_hour_percent": 0,
+                    "weekly_percent": 0,
+                    "claude_5h_percent": 0,
+                    "claude_weekly_percent": 0,
+                    "gemini_5h_percent": 0,
+                    "gemini_weekly_percent": 0,
+                    "models": {},
+                    "status": "EXPIRED",
+                    "error": f"授权凭据已失效 ({ref_msg})",
+                    "last_refreshed": int(time.time()),
+                }
+                self.save_pool()
+                return False, target_acc["quota"], f"账号凭据已失效: {ref_msg}"
 
         if not access_token:
             return False, None, "缺少有效 Token"
@@ -1112,15 +1345,19 @@ class AccountPoolManager:
 
         return True, quota, f"账号 {target_acc.get('email')} 额度已更新"
 
-    def refresh_all_quotas(self) -> Tuple[bool, int, str]:
-        """批量自动刷新所有账号的额度"""
+    def refresh_all_quotas(self, interval_sec: float = 1.0) -> Tuple[bool, int, str]:
+        """批量自动刷新所有账号的额度 (支持分段间隔刷新，防止并发风控)"""
         self.load_pool()
         accounts = self._pool_cache.get("accounts", [])
         if not accounts:
             return True, 0, "账号池为空，无需刷新"
 
         success_count = 0
-        for acc in accounts:
+        for i, acc in enumerate(accounts):
+            # 分段平滑刷新，错开请求峰值，彻底防止触发 Google 频率限制与风控
+            if i > 0 and interval_sec > 0:
+                time.sleep(interval_sec)
+
             try:
                 tok = acc.get("token", {})
                 refresh_token = tok.get("refresh_token")
@@ -1129,7 +1366,7 @@ class AccountPoolManager:
                 access_token = tok.get("access_token")
 
                 if refresh_token:
-                    ref_ok, ref_data, _ = self.refresh_google_token(refresh_token, client_id=cid, client_secret=csec)
+                    ref_ok, ref_data, ref_msg = self.refresh_google_token(refresh_token, client_id=cid, client_secret=csec)
                     if ref_ok and ref_data:
                         access_token = ref_data.get("access_token")
                         tok["access_token"] = access_token
@@ -1137,13 +1374,32 @@ class AccountPoolManager:
                         if ref_data.get("_used_client_id"):
                             tok["client_id"] = ref_data["_used_client_id"]
                             tok["client_secret"] = ref_data.get("_used_client_secret", "")
+                    else:
+                        acc["quota"] = {
+                            "subscription_tier": acc.get("quota", {}).get("subscription_tier", "FREE"),
+                            "tier_display": acc.get("quota", {}).get("tier_display", "免费版"),
+                            "five_hour_percent": 0,
+                            "weekly_percent": 0,
+                            "claude_5h_percent": 0,
+                            "claude_weekly_percent": 0,
+                            "gemini_5h_percent": 0,
+                            "gemini_weekly_percent": 0,
+                            "models": {},
+                            "status": "EXPIRED",
+                            "error": f"授权凭据已失效 ({ref_msg})",
+                            "last_refreshed": int(time.time()),
+                        }
+                        self.save_pool()
+                        continue
 
                 if not access_token:
                     continue
 
                 quota = self.fetch_account_quota_data(access_token)
                 acc["quota"] = quota
-                success_count += 1
+                if quota.get("status") not in ["ERROR", "EXPIRED"]:
+                    success_count += 1
+                self.save_pool()
             except Exception as e:
                 print(f"[AccountPool] 批量刷新账号 {acc.get('email')} 失败: {e}", file=sys.stderr)
 

@@ -23,6 +23,47 @@ class TestOrbitCore(unittest.TestCase):
         self.assertIsInstance(content, str)
         self.assertGreater(len(PromptManager.TEMPLATES), 0)
 
+    def test_custom_prompt_templates(self):
+        import tempfile
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            prompt_file = temp_path / "AGENTS.md"
+            backup_file = temp_path / "AGENTS.md.bak"
+            templates_file = temp_path / "prompt_templates.json"
+
+            with patch.object(PromptManager, "PROMPT_DIR", temp_path), \
+                 patch.object(PromptManager, "PROMPT_FILE", prompt_file), \
+                 patch.object(PromptManager, "BACKUP_FILE", backup_file), \
+                 patch.object(PromptManager, "TEMPLATES_FILE", templates_file):
+
+                # 1. 获取列表
+                templates = PromptManager.get_custom_templates()
+                self.assertIsInstance(templates, list)
+
+                # 2. 新增模版
+                ok, msg, tpl = PromptManager.save_custom_template("Unit Test Template", "You are a test assistant.")
+                self.assertTrue(ok)
+                self.assertIn("id", tpl)
+                tpl_id = tpl["id"]
+
+                # 3. 编辑模版
+                ok2, msg2, tpl2 = PromptManager.save_custom_template("Unit Test Template Updated", "Updated test content.", tpl_id)
+                self.assertTrue(ok2)
+                self.assertEqual(tpl2["title"], "Unit Test Template Updated")
+
+                # 4. 一键应用模版
+                ok3, msg3, applied_content = PromptManager.apply_custom_template(tpl_id)
+                self.assertTrue(ok3)
+                self.assertEqual(applied_content, "Updated test content.")
+                self.assertTrue(prompt_file.exists())
+                self.assertEqual(prompt_file.read_text(encoding="utf-8").strip(), "Updated test content.")
+
+                # 5. 删除模版
+                ok4, msg4 = PromptManager.delete_custom_template(tpl_id)
+                self.assertTrue(ok4)
+
     def test_account_pool_manager(self):
         mgr = AccountPoolManager()
         summary = mgr.get_accounts_summary()
@@ -135,17 +176,246 @@ class TestOrbitCore(unittest.TestCase):
 
     def test_cockpit_json_extraction(self):
         # 验证多样化 Cockpit Tools 导出格式的提取准确性
+        from unittest.mock import patch
         mgr = AccountPoolManager()
         # 1. 数组格式提取
         array_input = json.dumps([{
             "client_id": "test.apps.googleusercontent.com",
             "token": {"access_token": "ya29.test", "refresh_token": "1//test"}
         }])
-        # 输入格式解析测试 (由于是假 token，验证到网络阶段报错即可证明格式解析成功)
-        ok, _, msg = mgr.add_account_by_token(array_input)
-        self.assertFalse(ok)
-        self.assertTrue("Token 刷新失败" in msg or "HTTP" in msg or "Token" in msg)
+        with patch.object(AccountPoolManager, "refresh_google_token", return_value=(False, None, "Mocked token invalid")):
+            ok, _, msg = mgr.add_account_by_token(array_input)
+            self.assertFalse(ok)
+            self.assertTrue("Token" in msg or "Mocked" in msg)
 
+    def test_export_and_import_accounts(self):
+        api = OrbitApi()
+        # 测试 Cockpit 兼容格式导出 (默认)
+        res_cockpit = api.export_accounts_data(format_type="cockpit")
+        self.assertTrue(res_cockpit.get("success"))
+        self.assertIn("json_str", res_cockpit)
+        self.assertIsInstance(res_cockpit.get("count"), int)
+        parsed_cockpit = json.loads(res_cockpit["json_str"])
+        self.assertIsInstance(parsed_cockpit, list)
+
+        # 测试完整备份格式导出
+        res_full = api.export_accounts_data(format_type="full")
+        self.assertTrue(res_full.get("success"))
+        parsed_full = json.loads(res_full["json_str"])
+        self.assertIn("accounts", parsed_full)
+        self.assertIn("version", parsed_full)
+
+    def test_quota_calculation_variations(self):
+        from core.account_pool import AccountPoolManager
+        from unittest.mock import patch
+
+        # 1. 模拟正常消耗 (如 42% 与 85%)
+        mock_resp_normal = {
+            "models": {
+                "gemini-2.5-pro": {"displayName": "Gemini 2.5 Pro", "remainingFraction": 0.42, "resetTime": "2026-09-19T18:00:00Z"},
+                "claude-3-5-sonnet": {"displayName": "Claude 3.5 Sonnet", "remainingFraction": 0.85, "resetTime": "2026-09-19T18:00:00Z"}
+            }
+        }
+        with patch.object(AccountPoolManager, "_make_request", return_value=(200, mock_resp_normal, "")):
+            q = AccountPoolManager.fetch_account_quota_data("fake_token")
+            self.assertEqual(q["gemini_5h_percent"], 42)
+            self.assertEqual(q["claude_5h_percent"], 85)
+            self.assertEqual(q["status"], "HEALTHY")
+
+        # 2. 模拟配额彻底耗尽 0%
+        mock_resp_exhausted = {
+            "models": {
+                "gemini-2.5-pro": {"displayName": "Gemini 2.5 Pro", "remainingFraction": 0.0, "resetTime": "2026-09-19T18:00:00Z"},
+                "claude-3-5-sonnet": {"displayName": "Claude 3.5 Sonnet", "remainingFraction": 0.0, "resetTime": "2026-09-19T18:00:00Z"}
+            }
+        }
+        with patch.object(AccountPoolManager, "_make_request", return_value=(200, mock_resp_exhausted, "")):
+            q = AccountPoolManager.fetch_account_quota_data("fake_token")
+            self.assertEqual(q["gemini_5h_percent"], 0)
+            self.assertEqual(q["claude_5h_percent"], 0)
+            self.assertEqual(q["status"], "EXHAUSTED")
+
+        # 3. 模拟凭据过期 401
+        with patch.object(AccountPoolManager, "_make_request", return_value=(401, {}, "Unauthorized")):
+            q = AccountPoolManager.fetch_account_quota_data("fake_token")
+            self.assertEqual(q["status"], "EXPIRED")
+
+    def test_notifiers_formatting(self):
+        from notifiers import get_active_notifiers
+
+        cfg = {
+            "channels": {
+                "telegram": {"enabled": True, "bot_token": "123", "chat_id": "456"},
+                "feishu": {"enabled": True, "webhook_url": "https://open.feishu.cn/hook/123"},
+                "wecom": {"enabled": True, "webhook_url": "https://qyapi.weixin.qq.com/hook/123"}
+            }
+        }
+        notifiers = get_active_notifiers(cfg)
+        self.assertEqual(len(notifiers), 3)
+        names = {n.name for n in notifiers}
+        self.assertEqual(names, {"telegram", "feishu", "wecom"})
+
+    def test_dom_selectors_integrity(self):
+        import re
+        html = Path("core/web/index.html").read_text(encoding="utf-8")
+        js = Path("core/web/app.js").read_text(encoding="utf-8")
+        ids_in_js = set(re.findall(r"getElementById\(['\"]([^'\"]+)['\"]\)", js))
+        ids_in_js.update(re.findall(r"querySelector(?:All)?\(['\"]#([a-zA-Z0-9_\-]+)['\"]\)", js))
+        ids_in_html = set(re.findall(r'id=["\']([^"\']+)["\']', html))
+        dynamic_prefixes = ("drawer-", "tag-", "filter-opt-", "acc-card-", "btn-del-", "btn-switch-", "btn-refresh-", "badge-", "model-")
+        missing = [i for i in ids_in_js if i not in ids_in_html and not any(i.startswith(p) for p in dynamic_prefixes)]
+        self.assertEqual(missing, [], f"Missing DOM IDs: {missing}")
+
+    def test_app_js_runtime_execution(self):
+        """测试 app.js 在无头 JS 引擎下执行 renderAll 与各工作区切换，确保无 ReferenceError"""
+        import subprocess
+        js_test = """
+const fs = require('fs');
+const code = fs.readFileSync('core/web/app.js', 'utf-8');
+const vm = require('vm');
+const dummyEl = {
+  addEventListener: () => {},
+  querySelector: () => dummyEl,
+  querySelectorAll: () => [dummyEl],
+  classList: { add: () => {}, remove: () => {} },
+  value: '',
+  textContent: '',
+  innerHTML: '',
+  style: {},
+  checked: false,
+  appendChild: () => {},
+  getAttribute: () => 'accounts'
+};
+const context = {
+  window: {},
+  document: {
+    getElementById: () => dummyEl,
+    querySelectorAll: () => [dummyEl],
+    querySelector: () => dummyEl,
+    createElement: () => dummyEl,
+    addEventListener: () => {}
+  },
+  console: console,
+  setTimeout: () => {},
+  setInterval: () => {},
+  clearInterval: () => {},
+  clearTimeout: () => {},
+  Math: Math,
+  Date: Date,
+  JSON: JSON,
+  parseInt: parseInt,
+  parseFloat: parseFloat,
+  encodeURIComponent: encodeURIComponent,
+  decodeURIComponent: decodeURIComponent
+};
+context.window = context;
+context.addEventListener = () => {};
+vm.createContext(context);
+vm.runInContext(code, context);
+context.appState = {
+  config: { customization: {}, channels: {} },
+  status: {},
+  account_pool: { accounts: [{ id: '1', email: 'test@gmail.com', quota: { tier: 'pro', claude_5h_percent: 100, claude_weekly_percent: 90, gemini_5h_percent: 100, gemini_weekly_percent: 80 } }], healthy: 1, low_or_exhausted: 0 },
+  prompt: { content: 'test', templates: [{ id: 'tpl-1', title: 'Tpl 1', content: 'test content' }] }
+};
+context.renderAll();
+context.switchToTab('accounts');
+context.switchToTab('perf_localization');
+context.switchToTab('rules_prompts');
+context.switchToTab('proxy');
+context.switchToTab('healing');
+context.switchToTab('settings');
+"""
+        res = subprocess.run(["node", "-e", js_test], capture_output=True, text=True, cwd=str(Path(__file__).parent.parent))
+        self.assertEqual(res.returncode, 0, f"app.js execution failed: {res.stderr}")
+
+    def test_api_bridge_extended(self):
+        from unittest.mock import patch
+        from core.localization import LocalizationManager
+        from core.storage import StorageManager
+        from core.autostart import AutostartManager
+        import webbrowser
+        import os
+
+        api = OrbitApi()
+
+        # 1. open_external
+        with patch.object(webbrowser, "open", return_value=True) as mock_open:
+            res = api.open_external("https://example.com")
+            self.assertTrue(res.get("success"))
+            mock_open.assert_called_once_with("https://example.com")
+
+        # 2. open_config_dir
+        with patch.object(os, "startfile", return_value=True) as mock_start:
+            res = api.open_config_dir()
+            self.assertTrue(res.get("success"))
+            self.assertTrue(mock_start.called)
+
+        # 3. reset_antigravity_full
+        with patch.object(LocalizationManager, "kill_running_antigravity", return_value=True), \
+             patch.object(LocalizationManager, "restore", return_value=(True, "Restored")), \
+             patch.object(StorageManager, "clean_storage", return_value=(0, {})):
+            res = api.reset_antigravity_full()
+            self.assertTrue(res.get("success"))
+            self.assertIn("彻底初始化", res.get("message", ""))
+
+        # 4. save_and_restart
+        with patch.object(LocalizationManager, "kill_running_antigravity", return_value=True), \
+             patch.object(LocalizationManager, "install", return_value=(True, "Installed")), \
+             patch.object(LocalizationManager, "launch_antigravity", return_value=(True, "Launched")):
+            test_cfg = {
+                "customization": {"language": "zh-CN", "opt_gpu": True},
+                "channels": {}
+            }
+            res = api.save_and_restart(test_cfg)
+            self.assertTrue(res.get("success"))
+            self.assertIn("已保存", res.get("message", ""))
+
+        # 5. toggle_app_autostart
+        with patch.object(AutostartManager, "enable_app_autostart", return_value=(True, "OK")):
+            res = api.toggle_app_autostart(True)
+            self.assertTrue(res.get("success"))
+
+        # 6. clean_storage
+        with patch.object(StorageManager, "clean_storage", return_value=(1024, {"cleaned": True})):
+            res = api.clean_storage()
+            self.assertTrue(res.get("success"))
+
+    def test_tg_config_migration(self):
+        from core.config import load_config
+        cfg = load_config()
+        tg = cfg.get("channels", {}).get("telegram", {})
+        self.assertIsInstance(tg, dict)
+        self.assertTrue(tg.get("bot_token"), "Telegram bot_token should be automatically migrated if present in fallback paths")
+        self.assertTrue(tg.get("chat_id"), "Telegram chat_id should be automatically migrated if present in fallback paths")
+        self.assertTrue(str(tg.get("proxy", "")).startswith("http"), "Telegram proxy should be normalized to http format")
+
+    def test_unique_active_account(self):
+        mgr = AccountPoolManager()
+        summary = mgr.get_accounts_summary()
+        accounts = summary.get("accounts", [])
+        if accounts:
+            active_count = sum(1 for a in accounts if a.get("is_active"))
+            self.assertLessEqual(active_count, 1, "There must be at most ONE active account in the pool")
+
+    def test_skills_optimizer_status(self):
+        from core.skills_optimizer import SkillsOptimizer
+        status = SkillsOptimizer.get_status()
+        self.assertIsInstance(status, dict)
+        self.assertIn("available", status)
+        self.assertIn("is_pruned", status)
+
+
+    def test_quota_refresh_intervals(self):
+        from core.config import load_config
+        cfg = load_config()
+        custom = cfg.get("customization", {})
+        self.assertIn("quota_refresh_active_interval", custom)
+        self.assertIn("quota_refresh_idle_interval", custom)
+        self.assertEqual(custom["quota_refresh_active_interval"], 60)
+        self.assertEqual(custom["quota_refresh_idle_interval"], 900)
 
 if __name__ == "__main__":
     unittest.main()
+
+

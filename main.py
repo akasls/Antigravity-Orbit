@@ -2,6 +2,13 @@ import os
 import sys
 from pathlib import Path
 
+# 若以打包后的独立二进制执行，确保工作目录自动切换至程序所在目录（避免 Windows 开机自启默认 Cwd 为 System32）
+if getattr(sys, "frozen", False):
+    try:
+        os.chdir(str(Path(sys.executable).resolve().parent))
+    except Exception:
+        pass
+
 # 将项目根目录加入模块搜索路径
 PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -9,6 +16,11 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # 适配 Windows 控制台编码与窗口化应用 CLI 输出
 if sys.platform.startswith("win"):
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("AntigravityTeam.AntigravityOrbit.Desktop.App")
+    except Exception:
+        pass
     if getattr(sys, "frozen", False) and len(sys.argv) > 1:
         try:
             import ctypes
@@ -24,6 +36,7 @@ if sys.platform.startswith("win"):
             sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
+
 
 import time
 import socket
