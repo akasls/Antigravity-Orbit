@@ -518,6 +518,146 @@ context.switchToTab('settings');
         self.assertTrue(hasattr(AutostartManager, "enable_app_autostart"))
         self.assertTrue(hasattr(AutostartManager, "disable_app_autostart"))
 
+    def test_plan_tier_and_color_thresholds_and_auto_sort(self):
+        from core.account_pool import AccountPoolManager
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        import subprocess
+
+        # 1. 验证 Python 端配额综合得分与自动排序
+        with tempfile.TemporaryDirectory() as td:
+            mgr = AccountPoolManager(data_dir=Path(td))
+            with patch.object(mgr, "read_system_credential", return_value=(False, None, "No active credential")):
+                mgr._pool_cache = {
+                    "accounts": [
+                        {
+                            "id": "acc-low",
+                            "email": "low@example.com",
+                            "is_active": False,
+                            "added_at": 1000,
+                            "quota": {
+                                "status": "LOW",
+                                "tier_display": "Google AI Pro",
+                                "claude_5h_percent": 30,
+                                "claude_weekly_percent": 35,
+                                "gemini_5h_percent": 30,
+                                "gemini_weekly_percent": 35,
+                            }
+                        },
+                        {
+                            "id": "acc-full",
+                            "email": "full@example.com",
+                            "is_active": False,
+                            "added_at": 500,
+                            "quota": {
+                                "status": "HEALTHY",
+                                "tier_display": "Google AI Ultra",
+                                "claude_5h_percent": 100,
+                                "claude_weekly_percent": 100,
+                                "gemini_5h_percent": 100,
+                                "gemini_weekly_percent": 100,
+                            }
+                        },
+                        {
+                            "id": "acc-exhausted",
+                            "email": "exhausted@example.com",
+                            "is_active": False,
+                            "added_at": 2000,
+                            "quota": {
+                                "status": "EXHAUSTED",
+                                "tier_display": "Free",
+                                "claude_5h_percent": 0,
+                                "claude_weekly_percent": 10,
+                                "gemini_5h_percent": 0,
+                                "gemini_weekly_percent": 10,
+                            }
+                        },
+                        {
+                            "id": "acc-expired",
+                            "email": "expired@example.com",
+                            "is_active": False,
+                            "added_at": 3000,
+                            "quota": {
+                                "status": "EXPIRED",
+                                "tier_display": "Free",
+                                "claude_5h_percent": 0,
+                                "claude_weekly_percent": 0,
+                                "gemini_5h_percent": 0,
+                                "gemini_weekly_percent": 0,
+                            }
+                        }
+                    ],
+                    "active_account_id": None
+                }
+                summary = mgr.get_accounts_summary()
+                sorted_ids = [a["id"] for a in summary["accounts"]]
+                # 满额度账号 > 低额度账号 > 耗尽账号 > 失效账号
+                self.assertEqual(sorted_ids, ["acc-full", "acc-low", "acc-exhausted", "acc-expired"])
+
+        # 2. 验证前端 JS 逻辑: formatTierShort, getProgressColorClass, getAccountQuotaScore
+        js_script = """
+const fs = require('fs');
+const vm = require('vm');
+const path = require('path');
+const code = fs.readFileSync(path.join(__dirname, 'core', 'web', 'app.js'), 'utf-8');
+
+const context = {
+  console: console,
+  document: {
+    getElementById: () => ({ textContent: '', innerHTML: '', className: '', style: {} }),
+    querySelector: () => ({ textContent: '', innerHTML: '', className: '', style: {} }),
+    querySelectorAll: () => [],
+    addEventListener: () => {}
+  },
+  window: {},
+  appState: { config: {}, status: {}, account_pool: { accounts: [] } },
+  setInterval: () => {},
+  clearInterval: () => {},
+  clearTimeout: () => {},
+  Math: Math,
+  Date: Date,
+  JSON: JSON,
+  parseInt: parseInt,
+  parseFloat: parseFloat,
+  encodeURIComponent: encodeURIComponent,
+  decodeURIComponent: decodeURIComponent
+};
+context.window = context;
+context.addEventListener = () => {};
+vm.createContext(context);
+vm.runInContext(code, context);
+
+// 1. 验证 formatTierShort
+if (context.formatTierShort('Google AI Pro') !== 'Pro') throw new Error('formatTierShort failed on Google AI Pro');
+if (context.formatTierShort('GOOGLE AI PRO') !== 'Pro') throw new Error('formatTierShort failed on GOOGLE AI PRO');
+if (context.formatTierShort('Google AI Ultra') !== 'Ultra') throw new Error('formatTierShort failed on Google AI Ultra');
+if (context.formatTierShort('免费版') !== 'Free') throw new Error('formatTierShort failed on 免费版');
+if (context.formatTierShort('Free') !== 'Free') throw new Error('formatTierShort failed on Free');
+
+// 2. 验证 getProgressColorClass 阈值 (<15% 红色, <40% 黄色, >=40% 绿色)
+if (context.getProgressColorClass(0) !== 'fill-exhausted') throw new Error('0% should be fill-exhausted');
+if (context.getProgressColorClass(14.9) !== 'fill-exhausted') throw new Error('14.9% should be fill-exhausted');
+if (context.getProgressColorClass(15) !== 'fill-warning') throw new Error('15% should be fill-warning');
+if (context.getProgressColorClass(39.9) !== 'fill-warning') throw new Error('39.9% should be fill-warning');
+if (context.getProgressColorClass(40) !== 'fill-healthy') throw new Error('40% should be fill-healthy');
+if (context.getProgressColorClass(100) !== 'fill-healthy') throw new Error('100% should be fill-healthy');
+
+// 3. 验证自动排序打分
+const sFull = context.getAccountQuotaScore({ quota: { claude_5h_percent: 100, claude_weekly_percent: 100, gemini_5h_percent: 100, gemini_weekly_percent: 100 } });
+const sMid = context.getAccountQuotaScore({ quota: { claude_5h_percent: 50, claude_weekly_percent: 50, gemini_5h_percent: 50, gemini_weekly_percent: 50 } });
+const sZero = context.getAccountQuotaScore({ quota: { status: 'EXHAUSTED', claude_5h_percent: 0, claude_weekly_percent: 0, gemini_5h_percent: 0, gemini_weekly_percent: 0 } });
+const sExp = context.getAccountQuotaScore({ quota: { status: 'EXPIRED' } });
+
+if (!(sFull > sMid && sMid > sZero && sZero > sExp)) {
+  throw new Error(`getAccountQuotaScore order failed: full=${sFull}, mid=${sMid}, zero=${sZero}, exp=${sExp}`);
+}
+console.log('ALL_OK');
+"""
+        res = subprocess.run(["node", "-e", js_script], capture_output=True, text=True, cwd=str(Path(__file__).parent.parent))
+        self.assertEqual(res.returncode, 0, f"JS verification failed: {res.stderr}")
+        self.assertIn("ALL_OK", res.stdout)
+
 if __name__ == "__main__":
     unittest.main()
 

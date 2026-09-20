@@ -333,11 +333,78 @@ function formatExactDateTime(isoStr) {
 }
 
 /**
- * 渲染账号池：支持 Claude 与 Gemini 5H / 周限 对比矩阵
+ * 格式化精简套餐名称 (如 Google AI Pro -> Pro, Google AI Ultra -> Ultra, 免费版 -> Free)
+ */
+function formatTierShort(tierRaw) {
+  if (!tierRaw) return 'Free';
+  const s = String(tierRaw).trim();
+  const lower = s.toLowerCase();
+  if (lower.includes('ultra')) return 'Ultra';
+  if (lower.includes('pro')) return 'Pro';
+  if (lower.includes('free') || lower.includes('免费')) return 'Free';
+  const cleaned = s.replace(/^Google\s*AI\s*/i, '').trim();
+  return cleaned || 'Free';
+}
+
+/**
+ * 计算账号健康与配额剩余综合得分用于自动排序 (高配额在前，失效/耗尽在后)
+ */
+function getAccountQuotaScore(acc) {
+  if (!acc) return -1000;
+  const q = acc.quota || {};
+  const status = q.status || 'HEALTHY';
+
+  if (status === 'EXPIRED' || status === 'FORBIDDEN') return -1000;
+  if (status === 'ERROR') return -500;
+
+  const c5h = (typeof q.claude_5h_percent === 'number') ? q.claude_5h_percent 
+    : ((typeof q.five_hour_percent === 'number') ? q.five_hour_percent : 100);
+  const cW = (typeof q.claude_weekly_percent === 'number') ? q.claude_weekly_percent 
+    : ((typeof q.weekly_percent === 'number') ? q.weekly_percent : 100);
+  const g5h = (typeof q.gemini_5h_percent === 'number') ? q.gemini_5h_percent 
+    : ((typeof q.five_hour_percent === 'number') ? q.five_hour_percent : 100);
+  const gW = (typeof q.gemini_weekly_percent === 'number') ? q.gemini_weekly_percent 
+    : ((typeof q.weekly_percent === 'number') ? q.weekly_percent : 100);
+
+  const minPct = Math.min(c5h, cW, g5h, gW);
+  const avgPct = (c5h + cW + g5h + gW) / 4;
+
+  let score = 0;
+  if (status === 'EXHAUSTED' || minPct <= 0) {
+    score = avgPct * 0.05;
+  } else {
+    // 综合木桶最低配额与平均可用配额
+    score = (minPct * 0.7) + (avgPct * 0.3);
+  }
+
+  // 正在使用中的账号额外保留适当权重优先置前
+  if (acc.is_active) {
+    score += 5;
+  }
+
+  const tier = (q.tier_display || q.tier || '').toLowerCase();
+  if (tier.includes('ultra')) score += 1;
+  else if (tier.includes('pro')) score += 0.5;
+
+  return score;
+}
+
+/**
+ * 渲染账号池：支持 Claude 与 Gemini 5H / 周限 对比矩阵与配额自动智能排序
  */
 function renderAccountPool() {
   const pool = appState.account_pool || { accounts: [], total: 0, healthy: 0, low_or_exhausted: 0 };
-  const accounts = pool.accounts || [];
+  const rawAccounts = pool.accounts || [];
+
+  // 自动智能排序：高剩余配额账号排在前面，已耗尽/失效账号排在后面
+  const accounts = [...rawAccounts].sort((a, b) => {
+    const scoreA = getAccountQuotaScore(a);
+    const scoreB = getAccountQuotaScore(b);
+    if (scoreB !== scoreA) {
+      return scoreB - scoreA;
+    }
+    return (b.added_at || 0) - (a.added_at || 0);
+  });
 
   // 计算 Pro 账号数量
   const proCount = accounts.filter(acc => {
@@ -345,16 +412,27 @@ function renderAccountPool() {
     return tier.toLowerCase().includes('pro');
   }).length;
 
-  // 1. 更新顶部指标卡片
+  // 1. 更新顶部指标卡片 (>=40% 充足健康, <40% 紧张或耗尽)
   const totalEl = document.getElementById('metric-total-count');
   const proEl = document.getElementById('metric-pro-count');
   const healthyEl = document.getElementById('metric-healthy-count');
   const lowEl = document.getElementById('metric-low-count');
 
+  const healthyCount = accounts.filter(acc => {
+    const q = acc.quota || {};
+    if (q.status === 'EXPIRED' || q.status === 'ERROR' || q.status === 'FORBIDDEN') return false;
+    const c5h = (typeof q.claude_5h_percent === 'number') ? q.claude_5h_percent : ((typeof q.five_hour_percent === 'number') ? q.five_hour_percent : 100);
+    const cW = (typeof q.claude_weekly_percent === 'number') ? q.claude_weekly_percent : ((typeof q.weekly_percent === 'number') ? q.weekly_percent : 100);
+    const g5h = (typeof q.gemini_5h_percent === 'number') ? q.gemini_5h_percent : ((typeof q.five_hour_percent === 'number') ? q.five_hour_percent : 100);
+    const gW = (typeof q.gemini_weekly_percent === 'number') ? q.gemini_weekly_percent : ((typeof q.weekly_percent === 'number') ? q.weekly_percent : 100);
+    return Math.min(c5h, cW, g5h, gW) >= 40 && q.status !== 'EXHAUSTED';
+  }).length;
+  const lowCount = accounts.length - healthyCount;
+
   if (totalEl) totalEl.textContent = accounts.length;
   if (proEl) proEl.textContent = proCount;
-  if (healthyEl) healthyEl.textContent = pool.healthy || 0;
-  if (lowEl) lowEl.textContent = pool.low_or_exhausted || 0;
+  if (healthyEl) healthyEl.textContent = healthyCount;
+  if (lowEl) lowEl.textContent = lowCount;
 
   // 2. 渲染多账号卡片流 (按 Claude 与 Gemini 5H/周限 双列矩阵展示)
   const container = document.getElementById('account-cards-container');
@@ -424,7 +502,9 @@ function renderAccountPool() {
       statusBadge = '<span class="status-tag" style="background:#fef2f2;color:#ef4444;">受限</span>';
     } else if (minPct <= 0 || q.status === 'EXHAUSTED') {
       statusBadge = '<span class="status-tag" style="background:#fef2f2;color:#ef4444;">耗尽</span>';
-    } else if (minPct <= 20 || q.status === 'LOW') {
+    } else if (minPct < 15) {
+      statusBadge = '<span class="status-tag" style="background:#fef2f2;color:#ef4444;">耗尽</span>';
+    } else if (minPct < 40 || q.status === 'LOW') {
       statusBadge = '<span class="status-tag" style="background:#fffbeb;color:#d97706;">紧张</span>';
     }
 
@@ -444,7 +524,7 @@ function renderAccountPool() {
             </div>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
-            <span class="badge badge-plan ${badgeClass}">${tier.toUpperCase()}</span>
+            <span class="badge badge-plan ${badgeClass}">${formatTierShort(tier)}</span>
             ${statusBadge}
           </div>
         </div>
@@ -540,9 +620,9 @@ function renderAccountPool() {
 }
 
 function getProgressColorClass(pct) {
-  if (pct > 30) return 'fill-healthy';
-  if (pct > 15) return 'fill-warning';
-  return 'fill-exhausted';
+  if (pct < 15) return 'fill-exhausted';
+  if (pct < 40) return 'fill-warning';
+  return 'fill-healthy';
 }
 
 /**

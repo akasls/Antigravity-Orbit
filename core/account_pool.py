@@ -551,7 +551,7 @@ class AccountPoolManager:
 
         quota_result = {
             "subscription_tier": "FREE",
-            "tier_display": "免费版",
+            "tier_display": "Free",
             "project_id": project_id or "aicode-consumers",
             "five_hour_fraction": 1.0,
             "five_hour_percent": 100,
@@ -603,13 +603,13 @@ class AccountPoolManager:
 
                 if "pro" in tier_id.lower() or "pro" in tier_name.lower():
                     quota_result["subscription_tier"] = "PRO"
-                    quota_result["tier_display"] = "Google AI Pro"
+                    quota_result["tier_display"] = "Pro"
                 elif "ultra" in tier_id.lower() or "ultra" in tier_name.lower():
                     quota_result["subscription_tier"] = "ULTRA"
-                    quota_result["tier_display"] = "Google AI Ultra"
+                    quota_result["tier_display"] = "Ultra"
                 elif tier_name:
                     quota_result["subscription_tier"] = tier_id
-                    quota_result["tier_display"] = tier_name
+                    quota_result["tier_display"] = tier_name.replace("Google AI ", "").strip() or tier_name
 
                 if assist_data.get("cloudaicompanionProject"):
                     proj = assist_data.get("cloudaicompanionProject")
@@ -815,12 +815,14 @@ class AccountPoolManager:
                 quota_result["models"][m_id]["percent"] = 0
                 quota_result["models"][m_id]["remainingFraction"] = 0.0
 
-        # 综合评定健康度
+        # 综合评定健康度 (低于15%极低/耗尽，低于40%紧张，>=40%健康充足)
         if quota_result["status"] not in ["EXPIRED", "ERROR", "FORBIDDEN"]:
             min_percent = min(quota_result["five_hour_percent"], quota_result["weekly_percent"], quota_result["claude_5h_percent"], quota_result["gemini_5h_percent"])
             if min_percent <= 0 or quota_result["status"] == "EXHAUSTED":
                 quota_result["status"] = "EXHAUSTED"
-            elif min_percent <= 20 or quota_result["status"] == "LOW":
+            elif min_percent < 15:
+                quota_result["status"] = "EXHAUSTED"
+            elif min_percent < 40 or quota_result["status"] == "LOW":
                 quota_result["status"] = "LOW"
             else:
                 quota_result["status"] = "HEALTHY"
@@ -835,6 +837,51 @@ class AccountPoolManager:
     # ------------------------------------------------------------------
     # 业务层：账号池操作
     # ------------------------------------------------------------------
+    @staticmethod
+    def _compute_account_quota_score(acc: Dict[str, Any]) -> float:
+        """计算账号健康与配额剩余综合得分用于自动排序 (高配额在前，失效/耗尽在后)"""
+        quota = acc.get("quota") or {}
+        status = quota.get("status", "HEALTHY")
+
+        if status in ["EXPIRED", "FORBIDDEN"]:
+            return -1000.0
+        if status == "ERROR":
+            return -500.0
+
+        c5h = quota.get("claude_5h_percent", quota.get("five_hour_percent", 100))
+        cW = quota.get("claude_weekly_percent", quota.get("weekly_percent", 100))
+        g5h = quota.get("gemini_5h_percent", quota.get("five_hour_percent", 100))
+        gW = quota.get("gemini_weekly_percent", quota.get("weekly_percent", 100))
+
+        try:
+            c5h = float(c5h) if c5h is not None else 100.0
+            cW = float(cW) if cW is not None else 100.0
+            g5h = float(g5h) if g5h is not None else 100.0
+            gW = float(gW) if gW is not None else 100.0
+        except (ValueError, TypeError):
+            c5h, cW, g5h, gW = 100.0, 100.0, 100.0, 100.0
+
+        min_pct = min(c5h, cW, g5h, gW)
+        avg_pct = (c5h + cW + g5h + gW) / 4.0
+
+        if status == "EXHAUSTED" or min_pct <= 0:
+            score = avg_pct * 0.05
+        else:
+            # 综合木桶最低配额与平均可用配额
+            score = (min_pct * 0.7) + (avg_pct * 0.3)
+
+        # 正在使用中的账号额外保留适当权重优先置前
+        if acc.get("is_active"):
+            score += 5.0
+
+        tier = str(quota.get("tier_display") or quota.get("tier") or "").lower()
+        if "ultra" in tier:
+            score += 1.0
+        elif "pro" in tier:
+            score += 0.5
+
+        return score
+
     def get_accounts_summary(self) -> Dict[str, Any]:
         """获取账号池全量列表及概览统计"""
         self.load_pool()
@@ -880,9 +927,9 @@ class AccountPoolManager:
                     quota.get("gemini_5h_percent", 100),
                     quota.get("gemini_weekly_percent", 100)
                 )
-                if min_pct <= 0:
+                if min_pct <= 0 or min_pct < 15:
                     quota["status"] = "EXHAUSTED"
-                elif min_pct <= 20:
+                elif min_pct < 40:
                     quota["status"] = "LOW"
                 else:
                     quota["status"] = "HEALTHY"
@@ -891,8 +938,13 @@ class AccountPoolManager:
             acc_copy["last_refreshed_text"] = _format_time_ago(last_ts)
             accounts_list.append(acc_copy)
 
-        # 排序：活跃账号置顶，其余按添加时间倒序
-        accounts_list.sort(key=lambda x: (not x.get("is_active", False), -x.get("added_at", 0)))
+        # 智能自动排序：高配额账号排在前面，已耗尽/已失效账号排在后面
+        accounts_list.sort(
+            key=lambda x: (
+                -self._compute_account_quota_score(x),
+                -x.get("added_at", 0)
+            )
+        )
 
         # 统计数据
         total = len(accounts_list)
@@ -1320,7 +1372,7 @@ class AccountPoolManager:
             else:
                 target_acc["quota"] = {
                     "subscription_tier": target_acc.get("quota", {}).get("subscription_tier", "FREE"),
-                    "tier_display": target_acc.get("quota", {}).get("tier_display", "免费版"),
+                    "tier_display": target_acc.get("quota", {}).get("tier_display", "Free"),
                     "five_hour_percent": 0,
                     "weekly_percent": 0,
                     "claude_5h_percent": 0,
@@ -1377,7 +1429,7 @@ class AccountPoolManager:
                     else:
                         acc["quota"] = {
                             "subscription_tier": acc.get("quota", {}).get("subscription_tier", "FREE"),
-                            "tier_display": acc.get("quota", {}).get("tier_display", "免费版"),
+                            "tier_display": acc.get("quota", {}).get("tier_display", "Free"),
                             "five_hour_percent": 0,
                             "weekly_percent": 0,
                             "claude_5h_percent": 0,
