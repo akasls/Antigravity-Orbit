@@ -265,4 +265,8 @@ class AntigravityMonitor:
                     pid_file.unlink()
             except Exception:
                 pass
-            lock.release()
+            if self._lock:
+                try:
+                    self._lock.release()
+                except Exception:
+                    pass

@@ -735,6 +735,67 @@ console.log('ALL_OK');
         self.assertFalse(example_cfg.get("close_to_tray", False))
         self.assertFalse(example_cfg.get("app_autostart", False))
 
+    def test_config_corruption_recovery_and_deepcopy_integrity(self):
+        """测试配置损坏时自动降级与全局 DEFAULT_CONFIG 免疫被污染深拷贝特性"""
+        import tempfile
+        from unittest.mock import patch
+        from core.config import load_config, DEFAULT_CONFIG
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            corrupt_cfg = Path(temp_dir) / "config.json"
+            # 测试 1: 非法 JSON 字符串
+            corrupt_cfg.write_text("{broken json", encoding="utf-8")
+            with patch("core.config.find_active_config_file", return_value=corrupt_cfg):
+                cfg = load_config()
+                self.assertIsInstance(cfg, dict)
+                self.assertIn("customization", cfg)
+                # 尝试修改返回对象
+                cfg["customization"]["test_dirty"] = True
+                self.assertNotIn("test_dirty", DEFAULT_CONFIG["customization"], "DEFAULT_CONFIG must not be polluted!")
+
+            # 测试 2: JSON 顶层为数组而非字典
+            corrupt_cfg.write_text("[1, 2, 3]", encoding="utf-8")
+            with patch("core.config.find_active_config_file", return_value=corrupt_cfg):
+                cfg2 = load_config()
+                self.assertIsInstance(cfg2, dict)
+                self.assertIn("customization", cfg2)
+
+    def test_monitor_lifecycle_and_lock_cleanup(self):
+        """测试监控引擎守护与锁释放安全，绝不触发 NameError"""
+        from core.monitor import AntigravityMonitor
+        monitor = AntigravityMonitor()
+        self.assertTrue(monitor._running)
+        # 验证优雅退出
+        monitor.stop()
+        self.assertFalse(monitor._running)
+
+    def test_api_bridge_open_config_dir_cross_platform(self):
+        """测试各操作系统下打开配置目录行为"""
+        from unittest.mock import patch
+        api = OrbitApi()
+
+        with patch("platform.system", return_value="Windows"), \
+             patch("os.startfile") as mock_startfile:
+            res = api.open_config_dir()
+            self.assertTrue(res["success"])
+            mock_startfile.assert_called_once()
+
+        with patch("platform.system", return_value="Darwin"), \
+             patch("subprocess.Popen") as mock_popen:
+            res = api.open_config_dir()
+            self.assertTrue(res["success"])
+            mock_popen.assert_called_once()
+            args = mock_popen.call_args[0][0]
+            self.assertEqual(args[0], "open")
+
+        with patch("platform.system", return_value="Linux"), \
+             patch("subprocess.Popen") as mock_popen:
+            res = api.open_config_dir()
+            self.assertTrue(res["success"])
+            mock_popen.assert_called_once()
+            args = mock_popen.call_args[0][0]
+            self.assertEqual(args[0], "xdg-open")
+
 if __name__ == "__main__":
     unittest.main()
 

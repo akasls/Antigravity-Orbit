@@ -1,5 +1,6 @@
 import os
 import json
+import copy
 from pathlib import Path
 
 import sys
@@ -176,31 +177,33 @@ def is_placeholder(val: any) -> bool:
 
 def load_config() -> dict:
     active_file = find_active_config_file()
-    merged = DEFAULT_CONFIG.copy()
+    merged = copy.deepcopy(DEFAULT_CONFIG)
     user_config = {}
 
     if active_file.exists():
         try:
             with open(active_file, "r", encoding="utf-8") as f:
-                user_config = json.load(f)
-                merged.update(user_config)
-                # 合并 channels
-                if "channels" in user_config:
-                    for k, v in user_config["channels"].items():
-                        if k in merged["channels"]:
-                            merged["channels"][k].update(v)
-                        else:
-                            merged["channels"][k] = v
-                # 合并 customization
-                if "customization" in user_config:
-                    merged["customization"] = DEFAULT_CONFIG["customization"].copy()
-                    merged["customization"].update(user_config["customization"])
-                    if "quota_refresh_active_interval" not in user_config["customization"]:
-                        merged["customization"]["quota_refresh_active_interval"] = user_config["customization"].get("quota_refresh_interval", 60)
-                    if "quota_refresh_idle_interval" not in user_config["customization"]:
-                        merged["customization"]["quota_refresh_idle_interval"] = 900
+                loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    user_config = loaded
+                    merged.update(user_config)
+                    # 合并 channels
+                    if isinstance(user_config.get("channels"), dict):
+                        for k, v in user_config["channels"].items():
+                            if isinstance(v, dict) and k in merged["channels"] and isinstance(merged["channels"][k], dict):
+                                merged["channels"][k].update(v)
+                            else:
+                                merged["channels"][k] = v
+                    # 合并 customization
+                    if isinstance(user_config.get("customization"), dict):
+                        merged["customization"] = copy.deepcopy(DEFAULT_CONFIG["customization"])
+                        merged["customization"].update(user_config["customization"])
+                        if "quota_refresh_active_interval" not in user_config["customization"]:
+                            merged["customization"]["quota_refresh_active_interval"] = user_config["customization"].get("quota_refresh_interval", 60)
+                        if "quota_refresh_idle_interval" not in user_config["customization"]:
+                            merged["customization"]["quota_refresh_idle_interval"] = 900
         except Exception:
-            merged = DEFAULT_CONFIG.copy()
+            merged = copy.deepcopy(DEFAULT_CONFIG)
 
     # 自动探测与迁移：如果当前生效配置中缺少有效的 Telegram 或其它推送凭据，自动从历史候选路径中合并提取
     migrated = False

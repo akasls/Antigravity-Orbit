@@ -731,6 +731,8 @@ class OrbitApi:
             cfg_dir.mkdir(parents=True, exist_ok=True)
             if platform.system().lower() == "windows":
                 os.startfile(str(cfg_dir))
+            elif platform.system().lower() == "darwin":
+                subprocess.Popen(["open", str(cfg_dir)])
             else:
                 subprocess.Popen(["xdg-open", str(cfg_dir)])
             return {"success": True, "message": f"已打开目录: {cfg_dir}"}
