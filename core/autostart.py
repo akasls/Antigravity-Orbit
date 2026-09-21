@@ -2,6 +2,7 @@ import os
 import sys
 import platform
 from pathlib import Path
+from typing import Optional
 
 class AutostartManager:
     @staticmethod
@@ -165,6 +166,37 @@ WantedBy=default.target
         return False
 
     @staticmethod
+    def _find_installed_app_exe() -> Optional[Path]:
+        """探测已安装的 Antigravity-Orbit 客户端可执行文件 (兼容打包与安装模式)"""
+        if getattr(sys, "frozen", False):
+            return Path(sys.executable).resolve()
+
+        # 1. 尝试从注册表读取 Inno Setup 安装目录
+        try:
+            import winreg
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\AntigravityOrbit", 0, winreg.KEY_READ)
+            inst_dir, _ = winreg.QueryValueEx(key, "InstallLocation")
+            winreg.CloseKey(key)
+            if inst_dir:
+                p = Path(inst_dir) / "Antigravity-Orbit.exe"
+                if p.exists():
+                    return p.resolve()
+        except Exception:
+            pass
+
+        # 2. 尝试标准安装目录与常见目录
+        local_app = os.environ.get("LOCALAPPDATA", "")
+        candidates = [
+            Path(local_app) / "Programs" / "Antigravity-Orbit" / "Antigravity-Orbit.exe" if local_app else None,
+            Path("D:/Antigravity-Orbit/Antigravity-Orbit.exe"),
+            Path("C:/Program Files/Antigravity-Orbit/Antigravity-Orbit.exe"),
+        ]
+        for c in candidates:
+            if c and c.exists():
+                return c.resolve()
+        return None
+
+    @staticmethod
     def enable_app_autostart() -> tuple[bool, str]:
         """启用 Orbit 客户端开机自启 (开机以 --tray 参数静默驻留托盘)"""
         system = AutostartManager.get_os()
@@ -175,9 +207,9 @@ WantedBy=default.target
             if is_frozen:
                 cmd = f'"{python_exe}" --tray'
             else:
-                installed_exe = Path("D:/Antigravity-Orbit/Antigravity-Orbit.exe")
-                if installed_exe.exists():
-                    cmd = f'"{installed_exe}" --tray'
+                exe_target = AutostartManager._find_installed_app_exe()
+                if exe_target:
+                    cmd = f'"{exe_target}" --tray'
                 else:
                     pythonw_exe = Path(python_exe).parent / "pythonw.exe"
                     runner_exe = str(pythonw_exe) if pythonw_exe.exists() else python_exe

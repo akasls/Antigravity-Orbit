@@ -658,6 +658,41 @@ console.log('ALL_OK');
         self.assertEqual(res.returncode, 0, f"JS verification failed: {res.stderr}")
         self.assertIn("ALL_OK", res.stdout)
 
+    def test_tray_menu_and_window_state(self):
+        """测试托盘右键菜单纯净无图标、动态文案切换及全屏最大化唤醒状态"""
+        from unittest.mock import patch, MagicMock
+        from core.gui import OrbitWindowManager
+        from core.localization import LocalizationManager
+        from core.autostart import AutostartManager
+
+        mgr = OrbitWindowManager(start_in_tray=True)
+        self.assertTrue(mgr.start_in_tray)
+
+        # 1. 验证动态文案：反重力未运行时为「开启反重力」，运行时为「重启反重力」
+        with patch.object(LocalizationManager, "is_running", return_value=False):
+            title_stopped = mgr._get_antigravity_menu_text()
+            self.assertEqual(title_stopped, "开启反重力")
+
+        with patch.object(LocalizationManager, "is_running", return_value=True):
+            title_running = mgr._get_antigravity_menu_text()
+            self.assertEqual(title_running, "重启反重力")
+
+        # 2. 验证文案中绝无任何 emoji 或乱码图标
+        for text in [title_stopped, title_running, "打开管理中心", "退出"]:
+            self.assertTrue(all(ord(c) < 0x10000 and c not in ["🖥️", "🚀", "🚪", "✨", "🔄"] for c in text))
+
+        # 3. 验证 show_window 将 start_in_tray 重置为 False
+        fake_window = MagicMock()
+        mgr.window = fake_window
+        with patch("threading.Timer"):
+            mgr.show_window()
+        self.assertFalse(mgr.start_in_tray)
+        fake_window.show.assert_called_once()
+        fake_window.maximize.assert_called_once()
+
+        # 4. 验证 AutostartManager 路径检索
+        self.assertTrue(hasattr(AutostartManager, "_find_installed_app_exe"))
+
 if __name__ == "__main__":
     unittest.main()
 

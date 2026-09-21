@@ -32,6 +32,7 @@ from core.config import (
 )
 from core.api_bridge import OrbitApi
 from core.monitor import AntigravityMonitor
+from core.localization import LocalizationManager
 
 
 class OrbitWindowManager:
@@ -165,17 +166,34 @@ class OrbitWindowManager:
                     except Exception:
                         pass
                 else:
+                    wp.showCmd = 0  # SW_HIDE = 0
                     user32.SetWindowPlacement(hwnd, ctypes.byref(wp))
+                    user32.ShowWindow(hwnd, 0)
 
-            # 4. 仅在托盘启动且窗口未最大化时，通过 SetWindowPos 预置尺寸，绝不对普通打开或已最大化窗口调用 SetWindowPos
-            if self.start_in_tray and not is_maximized:
-                user32.SetWindowPos(hwnd, 0, cx, cy, win_w, win_h, 0x0004 | 0x0010)
+            # 4. 若为托盘静默启动模式，强制维持隐藏状态
+            if self.start_in_tray:
+                user32.ShowWindow(hwnd, 0)
         except Exception:
             pass
 
     def _on_gui_ready(self):
         """WebView2 GUI 线程就绪回调"""
-        if not self.start_in_tray:
+        if self.start_in_tray:
+            try:
+                if self.window:
+                    self.window.hide()
+            except Exception:
+                pass
+            if sys.platform == "win32":
+                try:
+                    import ctypes
+                    user32 = ctypes.windll.user32
+                    hwnd = user32.FindWindowW(None, "Antigravity Orbit")
+                    if hwnd:
+                        user32.ShowWindow(hwnd, 0)
+                except Exception:
+                    pass
+        else:
             time.sleep(0.15)
             try:
                 if self.window:
@@ -183,6 +201,34 @@ class OrbitWindowManager:
             except Exception:
                 pass
         self._apply_windows_icon()
+
+    def _get_antigravity_menu_text(self, item=None) -> str:
+        """根据当前反重力客户端运行状态动态返回菜单文案 (纯文本，无任何图标)"""
+        return "重启反重力" if LocalizationManager.is_running() else "开启反重力"
+
+    def _on_antigravity_tray_action(self, icon=None, item=None):
+        """动态托盘操作：反重力运行中则重启并更新补丁，未运行则直接拉起客户端"""
+        try:
+            if LocalizationManager.is_running():
+                self.api.restart_antigravity()
+            else:
+                cfg = load_config()
+                custom = cfg.get("customization", {})
+                lang = custom.get("language", "zh-CN")
+                is_tw = (lang == "zh-TW")
+                is_en = (lang == "en")
+                try:
+                    LocalizationManager.install(tw=is_tw, en=is_en, no_kill=True, stream_output=False)
+                except Exception:
+                    pass
+                LocalizationManager.launch_antigravity()
+        except Exception as e:
+            print(f"[Tray Action Error] 开启/重启反重力失败: {e}")
+        if self.tray_icon:
+            try:
+                self.tray_icon.update_menu()
+            except Exception:
+                pass
 
     def init_tray(self):
         """初始化系统托盘后台守护"""
@@ -196,26 +242,50 @@ class OrbitWindowManager:
 
             img = Image.open(str(icon_p))
             menu = pystray.Menu(
-                pystray.MenuItem("🖥️ 打开管理中心", self.show_window, default=True),
-                pystray.MenuItem("🚀 重启 Antigravity", lambda icon, item: self.api.restart_antigravity()),
+                pystray.MenuItem("打开管理中心", self.show_window, default=True),
+                pystray.MenuItem(self._get_antigravity_menu_text, self._on_antigravity_tray_action),
                 pystray.Menu.SEPARATOR,
-                pystray.MenuItem("🚪 彻底退出", self.force_quit)
+                pystray.MenuItem("退出", self.force_quit)
             )
             self.tray_icon = pystray.Icon("Antigravity Orbit", img, "Antigravity Orbit", menu)
+
+            # Windows 平台右键弹出菜单前拦截 WM_RBUTTONUP 动态刷新文案状态
+            orig_on_notify = getattr(self.tray_icon, "_on_notify", None)
+            if orig_on_notify:
+                def wrapped_on_notify(wparam, lparam):
+                    if lparam == 0x0205:  # WM_RBUTTONUP
+                        try:
+                            self.tray_icon.update_menu()
+                        except Exception:
+                            pass
+                    return orig_on_notify(wparam, lparam)
+                self.tray_icon._on_notify = wrapped_on_notify
+
             self.tray_icon.run_detached()
         except Exception as e:
             print(f"[Tray Warning] 托盘初始化失败: {e}")
             self.tray_icon = None
 
     def show_window(self, icon=None, item=None):
-        """从托盘恢复显示窗口"""
+        """从托盘恢复显示窗口并以最大化全屏展示"""
+        self.start_in_tray = False
         if self.window:
             try:
                 self.window.show()
-                # 重新校验设置任务栏图标
-                threading.Timer(0.1, self._apply_windows_icon).start()
+                self.window.maximize()
             except Exception:
                 pass
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                user32 = ctypes.windll.user32
+                hwnd = user32.FindWindowW(None, "Antigravity Orbit")
+                if hwnd:
+                    user32.ShowWindow(hwnd, 3)  # SW_MAXIMIZE = 3
+                    user32.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+        threading.Timer(0.1, self._apply_windows_icon).start()
 
     def on_closing(self):
         """拦截窗口关闭按钮"""
@@ -331,7 +401,20 @@ class OrbitWindowManager:
 
 
 def launch_gui(start_in_tray: bool = False):
-    """桌面可视化管理中心统一启动入口"""
+    """桌面可视化管理中心统一启动入口 (支持多实例防重激活与最大化聚焦)"""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            hwnd = user32.FindWindowW(None, "Antigravity Orbit")
+            if hwnd:
+                if not start_in_tray:
+                    user32.ShowWindow(hwnd, 3)  # SW_MAXIMIZE = 3
+                    user32.SetForegroundWindow(hwnd)
+                return
+        except Exception:
+            pass
+
     app = OrbitWindowManager(start_in_tray=start_in_tray)
     app.run()
 
