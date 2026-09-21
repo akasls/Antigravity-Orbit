@@ -1223,7 +1223,7 @@
      */
     function ensureQuotaPolling() {
         const cfg = (typeof CUSTOM_CONFIG !== 'undefined' ? CUSTOM_CONFIG : {}) || {};
-        if (cfg.show_quota_badge === false) return;
+        if (!cfg.show_quota_badge) return;
 
         if (!quotaPollTimer) {
             const intervalSec = (cfg.quota_refresh_interval && cfg.quota_refresh_interval >= 5) ? cfg.quota_refresh_interval : 60;
@@ -1239,7 +1239,7 @@
 
     function mountQuotaBadge() {
         const cfg = (typeof CUSTOM_CONFIG !== 'undefined' ? CUSTOM_CONFIG : {}) || {};
-        if (cfg.show_quota_badge === false) {
+        if (!cfg.show_quota_badge) {
             const existing = document.getElementById('antigravity-quota-root');
             if (existing) existing.remove();
             return;
@@ -1301,34 +1301,34 @@
 
         const cfg = (typeof CUSTOM_CONFIG !== 'undefined' ? CUSTOM_CONFIG : {}) || {};
 
-        if (cfg.hide_ide_buttons !== false) {
+        if (cfg.hide_ide_buttons === true || cfg.clean_ui === true) {
             injectIdeHidingStyle(document);
             removeIdeHeaderButtons(root);
         }
 
-        if (cfg.compact_ui_mode) {
+        if (cfg.compact_ui_mode === true) {
             injectCompactUiStyle(document);
         }
 
-        if (cfg.show_quota_badge !== false) {
+        if (cfg.show_quota_badge === true) {
             mountQuotaBadge();
         }
 
         const observer = new MutationObserver((mutations) => {
-            if (cfg.hide_ide_buttons !== false) {
+            if (cfg.hide_ide_buttons === true || cfg.clean_ui === true) {
                 removeIdeHeaderButtons(root);
             }
-            if (cfg.compact_ui_mode && !document.getElementById('antigravity-compact-ui-style')) {
+            if (cfg.compact_ui_mode === true && !document.getElementById('antigravity-compact-ui-style')) {
                 injectCompactUiStyle(document);
             }
-            if (cfg.show_quota_badge !== false && !document.getElementById('antigravity-quota-root')) {
+            if (cfg.show_quota_badge === true && !document.getElementById('antigravity-quota-root')) {
                 mountQuotaBadge();
             }
             for (const m of mutations) {
                 if (m.type === 'childList') {
                     for (const n of m.addedNodes) {
                         translateNode(n);
-                        if (cfg.hide_ide_buttons !== false && n.nodeType === Node.ELEMENT_NODE) {
+                        if ((cfg.hide_ide_buttons === true || cfg.clean_ui === true) && n.nodeType === Node.ELEMENT_NODE) {
                             removeIdeHeaderButtons(n);
                         }
                     }
@@ -1349,11 +1349,11 @@
         Element.prototype.attachShadow = function(...args) {
             const shadowRoot = originalAttachShadow.apply(this, args);
             try {
-                if (cfg.hide_ide_buttons !== false) {
+                if (cfg.hide_ide_buttons === true || cfg.clean_ui === true) {
                     injectIdeHidingStyle(shadowRoot);
                     removeIdeHeaderButtons(shadowRoot);
                 }
-                if (cfg.compact_ui_mode) {
+                if (cfg.compact_ui_mode === true) {
                     injectCompactUiStyle(shadowRoot);
                 }
                 observer.observe(shadowRoot, config);

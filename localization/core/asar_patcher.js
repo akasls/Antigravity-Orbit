@@ -206,8 +206,8 @@ class AsarPatcher {
     }
 
     _patchIdeInstalled() {
-        if (this.customConfig && this.customConfig.hide_ide_buttons === false) {
-            console.log('[跳过] 用户配置保留 IDE 推广按钮，跳过相关补丁。');
+        if (!this.customConfig || (!this.customConfig.hide_ide_buttons && !this.customConfig.clean_ui)) {
+            console.log('[跳过] 用户配置未开启净化/隐藏 IDE 推广按钮，跳过相关补丁。');
             return;
         }
 
@@ -400,7 +400,7 @@ class AsarPatcher {
             
             let switchLines = [];
 
-            if (cfg.disable_telemetry !== false) {
+            if (cfg.disable_telemetry === true || cfg.opt_telemetry === true) {
                 switchLines.push(
                     "// 1. 全面阻断 Chromium/Electron 遥测、指标采集、崩溃与可靠性回传",
                     "electron_1.app.commandLine.appendSwitch('disable-metrics');",
@@ -412,7 +412,7 @@ class AsarPatcher {
                 );
             }
 
-            if (cfg.enable_gpu_acceleration !== false) {
+            if (cfg.enable_gpu_acceleration === true || cfg.opt_gpu === true) {
                 switchLines.push(
                     "// 2. 启用 GPU 硬件加速与零拷贝 (大幅降低界面与流式代码渲染 CPU 开销)",
                     "electron_1.app.commandLine.appendSwitch('enable-gpu-rasterization');",
@@ -422,7 +422,7 @@ class AsarPatcher {
                 );
             }
 
-            if (cfg.enable_smooth_scrolling !== false) {
+            if (cfg.enable_smooth_scrolling === true) {
                 switchLines.push(
                     "// 3. 启用硬件级长文本平滑滚动与 60FPS 顺滑渲染",
                     "electron_1.app.commandLine.appendSwitch('enable-smooth-scrolling');",
@@ -430,7 +430,7 @@ class AsarPatcher {
                 );
             }
 
-            if (cfg.disable_background_throttling !== false) {
+            if (cfg.disable_background_throttling === true || cfg.opt_nosleep === true) {
                 switchLines.push(
                     "// 4. 解除后台降频与冻结 (保证后台多任务切换及代码流式打印满速执行)",
                     "electron_1.app.commandLine.appendSwitch('disable-background-timer-throttling');",
@@ -439,7 +439,7 @@ class AsarPatcher {
                 );
             }
 
-            if (cfg.expand_v8_memory !== false) {
+            if (cfg.expand_v8_memory === true || cfg.opt_max_heap === true) {
                 switchLines.push(
                     "// 5. 扩充 V8 垃圾回收堆内存至 4GB (杜绝大工程索引与长上下文频繁卡顿)",
                     "electron_1.app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');"
@@ -469,7 +469,7 @@ class AsarPatcher {
                 );
             }
 
-            if (cfg.start_maximized !== false) {
+            if (cfg.start_maximized === true) {
                 switchLines.push(
                     "// 7. 最大化启动反重力客户端",
                     "electron_1.app.commandLine.appendSwitch('start-maximized');"
@@ -517,7 +517,7 @@ class AsarPatcher {
                     mContent = mContent.replace(maximizeHookRegex, "");
                 }
 
-                if (cfg.start_maximized !== false) {
+                if (cfg.start_maximized === true) {
                     const whenReadyTarget = "electron_1.app\n    .whenReady()\n    .then(async () => {";
                     const maximizeCode = `${whenReadyTarget}\n    /* === ANTIGRAVITY_START_MAXIMIZED === */\n` +
                         `    try {\n` +
@@ -540,7 +540,7 @@ class AsarPatcher {
         const lsPath = path.join(this.tempDir, 'dist', 'languageServer.js');
         if (fs.existsSync(lsPath)) {
             let lsContent = fs.readFileSync(lsPath, 'utf-8');
-            if (cfg.disable_telemetry !== false) {
+            if (cfg.disable_telemetry === true || cfg.opt_telemetry === true) {
                 const targetRegex = /'--override_user_agent_name',\s*'antigravity',/;
                 if (targetRegex.test(lsContent) && !lsContent.includes("'--disable_telemetry=true'")) {
                     lsContent = lsContent.replace(targetRegex, "'--override_user_agent_name',\n            'antigravity',\n            '--disable_telemetry=true',");
@@ -581,7 +581,7 @@ class AsarPatcher {
             fs.writeFileSync(lsPath, lsContent, 'utf-8');
         }
 
-        if (cfg.disable_telemetry !== false) {
+        if (cfg.disable_telemetry === true || cfg.opt_telemetry === true) {
             // 3. 中和 Chrome DevTools MCP 中的 Clearcut 遥测外发
             const clearcutPath = path.join(this.tempDir, 'node_modules', 'chrome-devtools-mcp', 'build', 'src', 'telemetry', 'ClearcutLogger.js');
             if (fs.existsSync(clearcutPath)) {

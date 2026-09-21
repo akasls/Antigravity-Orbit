@@ -156,17 +156,24 @@ class LocalizationEngine {
         } catch (e) {}
         return {
             language: 'zh-CN',
-            show_quota_badge: true,
+            show_quota_badge: false,
             quota_refresh_interval: 60,
-            enable_gpu_acceleration: true,
-            disable_background_throttling: true,
-            expand_v8_memory: true,
-            disable_telemetry: true,
-            hide_ide_buttons: true,
-            auto_retry_on_error: true,
+            enable_gpu_acceleration: false,
+            disable_background_throttling: false,
+            expand_v8_memory: false,
+            disable_telemetry: false,
+            hide_ide_buttons: false,
+            clean_ui: false,
+            opt_gpu: false,
+            opt_max_heap: false,
+            opt_nosleep: false,
+            opt_telemetry: false,
+            proxy_enabled: false,
+            start_maximized: false,
+            auto_retry_on_error: false,
             max_retry_count: 3,
-            notify_on_quota_exhausted: true,
-            notify_on_max_retry_failed: true
+            notify_on_quota_exhausted: false,
+            notify_on_max_retry_failed: false
         };
     }
 

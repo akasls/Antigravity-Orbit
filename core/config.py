@@ -62,37 +62,42 @@ DEFAULT_CONFIG = {
     "enabled": True,
     "scan_interval": 3.0,
     "lock_port": 49222,
-    "close_to_tray": True,          # 默认点击关闭窗口时最小化到系统托盘
+    "close_to_tray": False,          # 默认点击关闭窗口时彻底退出，由用户自主开启托盘常驻
     "app_autostart": False,         # Orbit 客户端开机静默驻留托盘
     "customization": {
         "language": "zh-CN",            # "zh-CN" (简体), "zh-TW" (繁体), "en" (原版英文)
-        "show_quota_badge": True,        # 是否在顶栏显示模型额度胶囊徽章
+        "show_quota_badge": False,       # 是否在顶栏显示模型额度胶囊徽章
         "quota_refresh_interval": 60,    # 顶栏模型额度自动刷新间隔 (秒，保持兼容)
         "quota_refresh_active_interval": 60,    # 使用中活跃账号额度刷新间隔 (秒，默认 1 分钟)
         "quota_refresh_idle_interval": 900,     # 未使用闲置账号刷新间隔 (秒，默认 15 分钟)
-        "enable_gpu_acceleration": True, # GPU 硬件栅格化加速与零拷贝
-        "disable_background_throttling": True, # 解除后台定时器降频与窗口遮挡冻结
-        "expand_v8_memory": True,        # 扩充 V8 垃圾回收堆内存至 4GB
-        "disable_telemetry": True,       # 全栈关闭遥测与数据回传
-        "hide_ide_buttons": True,        # 彻底隐藏右上角多余推广按钮
-        "proxy_enabled": True,          # Antigravity 专属网络代理 (彻底取代 Proxifier)
+        "enable_gpu_acceleration": False,# GPU 硬件栅格化加速与零拷贝
+        "disable_background_throttling": False, # 解除后台定时器降频与窗口遮挡冻结
+        "expand_v8_memory": False,       # 扩充 V8 垃圾回收堆内存至 4GB/8GB
+        "disable_telemetry": False,      # 全栈关闭遥测与数据回传
+        "hide_ide_buttons": False,       # 彻底隐藏右上角多余推广按钮
+        "clean_ui": False,              # 净化界面多余横幅
+        "opt_gpu": False,
+        "opt_max_heap": False,
+        "opt_nosleep": False,
+        "opt_telemetry": False,
+        "proxy_enabled": False,         # Antigravity 专属网络代理 (彻底取代 Proxifier)
         "proxy_host": "127.0.0.1",
         "proxy_port": 10808,
         "proxy_type": "socks5",
-        "proxy_url": "socks5://127.0.0.1:10808", # 代理地址 (支持 http/socks5)
+        "proxy_url": "",                # 代理地址 (支持 http/socks5)
         "proxy_bypass": "<local>;localhost;127.0.0.1;::1;127.0.0.0/8;*.local",
-        "disable_auto_update": True,     # 锁定稳定版本，禁止后台静默更新导致补丁被覆盖
-        "enable_smooth_scrolling": True, # 硬件级长文本平滑滚动与 60FPS 渲染
-        "compact_ui_mode": False,        # 紧凑代码视野模式 (有效代码显示面积提升 35%~50%)
-        "prune_guide_skills": False,     # 裁剪内置说明型 Skills，节省前置 Token 预算
-        "auto_retry_on_error": True,          # 任务异常自动重试 (意外出错时自动点击重试继续工作)
-        "notify_on_quota_exhausted": True,    # 额度用尽告警 (发送"任务中断：额度已耗尽")
-        "notify_on_max_retry_failed": True,   # 重试超限告警 (达到最大重试次数发送"任务失败")
-        "start_maximized": True               # 启动时自动最大化反重力客户端窗口
+        "disable_auto_update": False,    # 锁定稳定版本，禁止后台静默更新导致补丁被覆盖
+        "enable_smooth_scrolling": False,# 硬件级长文本平滑滚动与 60FPS 渲染
+        "compact_ui_mode": False,       # 紧凑代码视野模式 (有效代码显示面积提升 35%~50%)
+        "prune_guide_skills": False,    # 裁剪内置说明型 Skills，节省前置 Token 预算
+        "auto_retry_on_error": False,        # 任务异常自动重试 (意外出错时自动点击重试继续工作)
+        "notify_on_quota_exhausted": False,  # 额度用尽告警 (发送"任务中断：额度已耗尽")
+        "notify_on_max_retry_failed": False, # 重试超限告警 (达到最大重试次数发送"任务失败")
+        "start_maximized": False             # 启动时自动最大化反重力客户端窗口
     },
     "channels": {
         "telegram": {
-            "enabled": True,
+            "enabled": False,
             "bot_token": "",
             "chat_id": "",
             "proxy": ""  # e.g. "http://127.0.0.1:7890"

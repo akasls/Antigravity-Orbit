@@ -293,7 +293,7 @@ class OrbitWindowManager:
             return True
 
         cfg = load_config()
-        close_to_tray = cfg.get("close_to_tray", True)
+        close_to_tray = cfg.get("close_to_tray", False)
         if close_to_tray and self.tray_icon:
             if self.window:
                 try:

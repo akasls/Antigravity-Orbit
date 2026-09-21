@@ -693,6 +693,48 @@ console.log('ALL_OK');
         # 4. 验证 AutostartManager 路径检索
         self.assertTrue(hasattr(AutostartManager, "_find_installed_app_exe"))
 
+    def test_default_fresh_install_switches_all_disabled(self):
+        """测试新用户初次安装时所有功能开关默认关闭，绝不擅自开启"""
+        from core.config import DEFAULT_CONFIG
+        import json
+        from pathlib import Path
+
+        custom = DEFAULT_CONFIG.get("customization", {})
+        switches = [
+            "enable_gpu_acceleration",
+            "disable_background_throttling",
+            "expand_v8_memory",
+            "disable_telemetry",
+            "hide_ide_buttons",
+            "clean_ui",
+            "opt_gpu",
+            "opt_max_heap",
+            "opt_nosleep",
+            "opt_telemetry",
+            "show_quota_badge",
+            "proxy_enabled",
+            "start_maximized",
+            "auto_retry_on_error",
+            "notify_on_quota_exhausted",
+            "prune_guide_skills"
+        ]
+        for sw in switches:
+            self.assertFalse(custom.get(sw, False), f"Default customization switch '{sw}' should be False!")
+
+        self.assertFalse(DEFAULT_CONFIG.get("close_to_tray", False))
+        self.assertFalse(DEFAULT_CONFIG.get("app_autostart", False))
+        self.assertFalse(DEFAULT_CONFIG.get("channels", {}).get("telegram", {}).get("enabled", False))
+
+        # 验证 config.example.json 中所有开关也是默认关闭
+        example_path = Path(__file__).parent.parent / "config.example.json"
+        self.assertTrue(example_path.exists())
+        example_cfg = json.loads(example_path.read_text(encoding="utf-8"))
+        ex_custom = example_cfg.get("customization", {})
+        for sw in switches:
+            self.assertFalse(ex_custom.get(sw, False), f"config.example.json switch '{sw}' should be False!")
+        self.assertFalse(example_cfg.get("close_to_tray", False))
+        self.assertFalse(example_cfg.get("app_autostart", False))
+
 if __name__ == "__main__":
     unittest.main()
 

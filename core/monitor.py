@@ -241,7 +241,7 @@ class AntigravityMonitor:
                                 p_name = (info.get("project_name") or info.get("title") or "默认工程") if info else "默认工程"
                                 now_ts = time.time()
 
-                                if is_quota and self.config.get("notify_on_quota_exhausted", True):
+                                if is_quota and self.config.get("notify_on_quota_exhausted", False):
                                     # 10 分钟告警冷却防连续轰炸
                                     if now_ts - self.last_quota_alerts.get(conv_id, 0) >= 600:
                                         self.last_quota_alerts[conv_id] = now_ts

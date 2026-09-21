@@ -1,5 +1,5 @@
 /**
- * Antigravity Orbit - 现代桌面核心控制器 (v3.3.6)
+ * Antigravity Orbit - 现代桌面核心控制器 (v3.3.7)
  * 实时自动保存、Google OAuth 网页授权、Claude 与 Gemini 双列配额看板、
  * 后台自动定时刷新与无感切号。
  */
@@ -633,45 +633,45 @@ function renderConfigForm() {
   const custom = cfg.customization || {};
   const ch = cfg.channels || {};
 
-  // 1. 性能汉化 (不实时自动保存)
-  setCheckbox('custom-opt-gpu', custom.opt_gpu !== false && custom.enable_gpu_acceleration !== false);
-  setCheckbox('custom-opt-max-heap', custom.opt_max_heap !== false && custom.expand_v8_memory !== false);
-  setCheckbox('custom-opt-nosleep', custom.opt_nosleep !== false && custom.disable_background_throttling !== false);
-  setCheckbox('custom-opt-telemetry', custom.opt_telemetry !== false && custom.disable_telemetry !== false);
+  // 1. 性能汉化 (不实时自动保存，初次安装默认全关由用户自主开启)
+  setCheckbox('custom-opt-gpu', Boolean(custom.opt_gpu || custom.enable_gpu_acceleration));
+  setCheckbox('custom-opt-max-heap', Boolean(custom.opt_max_heap || custom.expand_v8_memory));
+  setCheckbox('custom-opt-nosleep', Boolean(custom.opt_nosleep || custom.disable_background_throttling));
+  setCheckbox('custom-opt-telemetry', Boolean(custom.opt_telemetry || custom.disable_telemetry));
   setSelect('custom-lang', custom.language || 'zh-CN');
-  setCheckbox('custom-quota-badge', custom.show_quota_badge !== false);
-  setCheckbox('custom-clean-ui', custom.clean_ui || custom.hide_ide_buttons);
-  setCheckbox('custom-start-maximized', custom.start_maximized !== false);
-  setCheckbox('custom-prune-skills', custom.prune_guide_skills);
+  setCheckbox('custom-quota-badge', Boolean(custom.show_quota_badge));
+  setCheckbox('custom-clean-ui', Boolean(custom.clean_ui || custom.hide_ide_buttons));
+  setCheckbox('custom-start-maximized', Boolean(custom.start_maximized));
+  setCheckbox('custom-prune-skills', Boolean(custom.prune_guide_skills));
 
   // 2. 专属网络代理
-  setCheckbox('custom-proxy-enabled', custom.proxy_enabled);
+  setCheckbox('custom-proxy-enabled', Boolean(custom.proxy_enabled));
   setSelect('custom-proxy-type', custom.proxy_type || 'socks5');
   setInput('custom-proxy-host', custom.proxy_host || '127.0.0.1');
   setInput('custom-proxy-port', custom.proxy_port || 10808);
   setInput('custom-proxy-bypass', custom.proxy_bypass || 'localhost, 127.0.0.1, *.local');
 
   // 3. 自愈与推送
-  setCheckbox('custom-auto-retry', cfg.auto_retry_on_error !== false);
+  setCheckbox('custom-auto-retry', Boolean(cfg.auto_retry_on_error));
   setInput('custom-max-retries', cfg.max_retry_count || 3);
-  setCheckbox('custom-notify-quota', cfg.notify_on_quota_exhausted !== false);
+  setCheckbox('custom-notify-quota', Boolean(cfg.notify_on_quota_exhausted));
 
   const tg = ch.telegram || {};
-  setCheckbox('tg-enabled', tg.enabled);
+  setCheckbox('tg-enabled', Boolean(tg.enabled));
   setInput('tg-bot-token', tg.bot_token || '');
   setInput('tg-chat-id', tg.chat_id || '');
   setInput('tg-proxy', tg.proxy || '');
 
   const fs = ch.feishu || {};
-  setCheckbox('feishu-enabled', fs.enabled);
+  setCheckbox('feishu-enabled', Boolean(fs.enabled));
   setInput('feishu-webhook', fs.webhook || fs.webhook_url || '');
 
   const wc = ch.wecom || {};
-  setCheckbox('wecom-enabled', wc.enabled);
+  setCheckbox('wecom-enabled', Boolean(wc.enabled));
   setInput('wecom-webhook', wc.webhook || wc.webhook_url || '');
 
   // 4. 系统设置
-  setCheckbox('custom-close-tray', cfg.close_to_tray !== false);
+  setCheckbox('custom-close-tray', Boolean(cfg.close_to_tray));
   const activeInterval = custom.quota_refresh_active_interval !== undefined 
     ? custom.quota_refresh_active_interval 
     : (custom.quota_refresh_interval || 60);

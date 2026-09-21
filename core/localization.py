@@ -238,7 +238,7 @@ class LocalizationManager:
                     try:
                         from core.config import load_config
                         cfg = load_config()
-                        if cfg.get("customization", {}).get("start_maximized", True):
+                        if cfg.get("customization", {}).get("start_maximized", False):
                             cmd.append("--start-maximized")
                     except Exception:
                         pass
