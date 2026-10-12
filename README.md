@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20x64-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11 x64" />
-  <img src="https://img.shields.io/badge/Release-v3.3.17-10B981?style=for-the-badge&logo=github&logoColor=white" alt="Release v3.3.17" />
+  <img src="https://img.shields.io/badge/Release-v3.3.18-10B981?style=for-the-badge&logo=github&logoColor=white" alt="Release v3.3.18" />
   <img src="https://img.shields.io/badge/Antigravity-2.0+-FF6F00?style=for-the-badge" alt="Antigravity 2.0+" />
   <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License MIT" />
 </p>
@@ -98,11 +98,20 @@ python main.py gui
 
 ## 📝 更新日志 (Release Notes)
 
-### 📌 2026-10-12 重大功能迭代与体验调优 (v3.3.9 ~ v3.3.17)
+### 📌 2026-10-12 重大功能迭代与体验调优 (v3.3.9 ~ v3.3.18)
 
-> 💡 **核心更新速览**：本次集中迭代重点攻克了**内存级零中断热切号引擎 (Zero-Kill In-Memory Hot-Switch)**、**低额度秒级无感自动切号**、**极简顶栏与侧栏专注模式**、**汉化引擎代码与命令行双层防污染隔离**、**活跃账号置顶与 403 受限原生报错诊断**、**托盘前台极速唤醒**以及**界面视觉统一调优与 Skills 裁剪持久记忆**。
+> 💡 **核心更新速览**：本次集中迭代重点攻克了**内存级零中断热切号引擎 (Zero-Kill In-Memory Hot-Switch)**、**低额度秒级无感自动切号**、**极简顶栏与侧栏专注模式 (清除多余浮动工具条)**、**专属网络代理运行时动态接管与 SOCKS5/HTTP 深度握手测速**、**汉化引擎代码与命令行双层防污染隔离**、**活跃账号置顶与 403 受限原生报错诊断**、**托盘前台极速唤醒**以及**界面视觉统一调优与 Skills 裁剪持久记忆**。
 
-#### 🔥 v3.3.17 (当前最新)
+#### 🔥 v3.3.18 (当前最新)
+- **彻底清除左侧边栏顶部浮动工具栏**：在极简侧栏模式中彻底消除 Antigravity Launchpad 顶部遗留的绝对定位浮动工具栏容器（`div.absolute.left-0.top-0`），隐藏包含反重力图标、侧边栏展开/收缩开关、前进/后退、搜索对话框等全部遗留按钮，解决项目列表与浮动工具条重叠遮挡问题，让左侧边栏纯粹、无干扰展示项目列表与会话列表。
+- **专属网络代理服务彻底重构与动态运行时热生效**：
+  - 重构 `asar_patcher.js` 补丁，由过去仅在安装时静态写入代理，升级为**动态代理运行时引擎**：自动常驻监听 `%APPDATA%\Antigravity-Orbit\config.json`，在 Electron 主进程、Session 和 Go 后端 `language_server.exe` 中动态读取与挂载代理配置，修改配置无需重装补丁即可自动接管。
+  - 新增 CDP 秒级热生效管道（`sync_electron_session_proxy_via_cdp`），在 Orbit 中修改代理端口或类型后，通过 `session.defaultSession.setProxy` 实时通知运行中客户端热生效，实现零重启秒级代理切换。
+  - 代理连通性测试与智能探测全面升级：引入 TCP Socket SOCKS5 底层协议握手校验（防止把 HTTP 误设为 SOCKS5）与真实 `https://www.google.com/generate_204` 跨境延迟测速；探测器自动优先检查 Windows 注册表系统代理并智能测试常见端口（`10808` / `7890` / `7897` / `10809` 等），自动按最低延迟匹配最佳可用节点。
+  - 解决 Windows 系统代理与本地回环冲突：为 Orbit 内部所有针对 `127.0.0.1` 的 CDP 和 Language Server 通信强制注入 `ProxyHandler({})` 本地回环直连旁路，杜绝因本地代理监听或系统代理未分流导致的 RPC 超时。
+  - 修复 OAuth 授权换取 Token 走代理逻辑：将 `exchange_code_for_token` 纳入统一代理分流管道，确保国内网络环境下一键 Google OAuth 登录顺畅无阻。
+
+#### 🚀 v3.3.17
 - **内存级零中断热切号引擎 (`reload_language_server_in_memory`)**：彻底重构账号热切换底层机制，摒弃传统的强杀 `language_server` 进程方式；通过解析 Go 1.20+ `pclntab` 符号表在内存中驱动 `AuthClient.tryRestoreToken` 与 `CodeAssistClient.ResetCaches()` 原地刷新系统凭据与 7 大内部缓存，并通过 CDP 同步刷新前端 React `PollingUserStatusProvider` 状态，实现 **<1 秒免重启窗口、零进程中断、不打断任何运行中任务** 的真热切换。
 - **修复 Windows 凭据管理器 `StoredToken` 序列化格式 Bug**：修复切号写入 `gemini:antigravity` 时将 `auth_method` 误写为 `"oauth"`（应为 `"consumer"`）、缺失 `id_token` JWT（导致 `IDTokenClaims` 校验拒绝）以及 `expiry` 被写为已过期当前时间导致后台拒绝加载新凭据的核心缺陷。
 - **修复低额度自动热切号 (`auto_switch_on_low_quota`) 全链路触发**：修复多模型配额木桶最小值计算（取 `five_hour_percent`、`claude_5h_percent`、`gemini_5h_percent` 最小值），新增本地进程级回环 RPC 实时配额嗅探与账号池后台自动巡检，确保任务执行中一旦额度降至或低于设定阈值（如 10%）立即原地无感热切换至健康备用账号。

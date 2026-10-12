@@ -148,23 +148,8 @@ class OrbitApi:
         """异步刷新状态接口"""
         return self.get_initial_data()
 
-    def test_proxy(self, proxy_type: str = "http", host: str = "127.0.0.1", port: int = 7890) -> dict:
-        """测试专属代理网络连通性"""
-        import socket
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(3.0)
-            res = sock.connect_ex((host, int(port)))
-            sock.close()
-            if res == 0:
-                return {"success": True, "message": f"代理端口测试成功: {proxy_type.upper()}://{host}:{port}"}
-            else:
-                return {"success": False, "message": f"无法连接到代理目标端口 {host}:{port} (代码: {res})"}
-        except Exception as e:
-            return {"success": False, "message": f"代理探测异常: {e}"}
-
     def save_and_apply(self, new_cfg: dict) -> dict:
-        """保存配置并实时生效 (绝对不干扰或强杀正在运行中的 Antigravity 客户端)"""
+        """保存配置并实时生效 (支持正在运行中的客户端秒级动态生效代理)"""
         try:
             cfg = load_config()
             cfg.update(new_cfg)
@@ -172,7 +157,7 @@ class OrbitApi:
             # 自动维护 proxy_url
             custom = cfg.get("customization", {})
             if custom.get("proxy_host") and custom.get("proxy_port"):
-                p_type = (custom.get("proxy_type") or "http").lower()
+                p_type = (custom.get("proxy_type") or "socks5").lower()
                 custom["proxy_url"] = f"{p_type}://{custom['proxy_host']}:{custom['proxy_port']}"
 
             save_config(cfg)
@@ -185,11 +170,15 @@ class OrbitApi:
 
             # 核心机制：
             # 1. 代理、自愈、推送、自启动等后台服务配置写入后即刻生效；
-            # 2. 若 Antigravity 正在运行中：绝不强行杀掉客户端，避免弹黑窗或打断用户工作流。
-            #    若修改了外观/语言/专属代理等需要底层重载的项，用户可随时在「系统维护」点击【重启客户端】一次性生效。
-            # 3. 若 Antigravity 处于未运行状态：静默注入最新补丁。
+            # 2. 若 Antigravity 正在运行中：通过 CDP 实时触发 Electron session 动态更新代理设置，免杀进程秒级生效！
+            # 3. 若 Antigravity 处于未运行状态：静默注入最新补丁到 app.asar。
             is_running = LocalizationManager.is_running()
-            if not is_running:
+            if is_running:
+                try:
+                    LocalizationManager.sync_electron_session_proxy_via_cdp()
+                except Exception:
+                    pass
+            else:
                 lang = custom.get("language", "zh-CN")
                 is_tw = (lang == "zh-TW")
                 is_en = (lang == "en")
@@ -197,7 +186,7 @@ class OrbitApi:
 
             return {
                 "success": True,
-                "message": "配置已保存生效！如修改了代理或加速，点击【重启客户端】即可让 Antigravity 彻底切入代理。"
+                "message": "配置已保存！专属网络代理与优化设置已即时生效。"
             }
         except Exception as e:
             return {"success": False, "message": f"处理配置异常: {e}"}
@@ -652,7 +641,7 @@ class OrbitApi:
             return {"success": False, "message": str(e)}
 
     def test_proxy(self, a: str = "127.0.0.1", b=10808, c: str = "socks5") -> dict:
-        """真实探测指定代理节点并测试访问 Google (兼容各种调用签名)"""
+        """真实探测指定代理节点连通性并测试访问 Google (严格校验协议握手与回传延迟)"""
         if str(a).lower() in ("http", "https", "socks5", "socks5h"):
             p_type = str(a).lower()
             host = str(b).strip()
@@ -665,27 +654,68 @@ class OrbitApi:
         import socket
         import time
 
-        # 1. TCP 端口连通性
+        # 1. TCP 端口物理连通性
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(2.0)
+        sock.settimeout(2.5)
         res = sock.connect_ex((host, port))
-        sock.close()
         if res != 0:
+            sock.close()
             return {
                 "success": False,
-                "message": f"无法连接到代理端口 {host}:{port} (错误码: {res})。请确认代理客户端 (如 v2rayN/Clash/Xray) 是否正在运行。"
+                "message": f"无法连接到代理目标端口 {host}:{port} (错误码: {res})。请确认代理工具 (如 v2rayN/Clash/Xray) 是否正在运行。"
             }
 
-        # 2. 真实 HTTP/SOCKS5 握手并访问 Google 204
+        # 2. 若配置为 SOCKS5，校验底层 SOCKS5 握手协议 (杜绝将 HTTP 端口误设为 SOCKS5)
+        if p_type in ("socks5", "socks5h"):
+            try:
+                sock.sendall(b"\x05\x01\x00")
+                reply = sock.recv(2)
+                if len(reply) < 2 or reply[0] != 0x05 or reply[1] != 0x00:
+                    sock.close()
+                    return {
+                        "success": False,
+                        "message": f"端口 {host}:{port} 未响应 SOCKS5 握手协议 (可能为 HTTP/HTTPS 专有代理端口，请将代理类型切换为 HTTP 测试)。"
+                    }
+            except Exception as e:
+                sock.close()
+                return {
+                    "success": False,
+                    "message": f"SOCKS5 协议握手失败: {e}"
+                }
+        sock.close()
+
+        # 3. 真实通过代理访问 Google 204 测试跨境网络连通性与节点质量
+        scheme = "socks5h" if p_type in ("socks5", "socks5h") else "http"
+        proxy_addr = f"{scheme}://{host}:{port}"
         start_t = time.time()
+        google_err = None
+
+        try:
+            import requests
+            resp = requests.get(
+                "https://www.google.com/generate_204",
+                proxies={"http": proxy_addr, "https": proxy_addr},
+                timeout=4.5
+            )
+            latency_ms = int((time.time() - start_t) * 1000)
+            if resp.status_code in (200, 204):
+                return {
+                    "success": True,
+                    "message": f"代理连通成功！Google 延迟: {latency_ms}ms ({p_type.upper()} {host}:{port})",
+                    "latency_ms": latency_ms
+                }
+            google_err = f"状态码: {resp.status_code}"
+        except Exception as e:
+            google_err = str(e)
+
+        # urllib 兜底测试
         try:
             import urllib.request
-            scheme = "socks5h" if p_type == "socks5" else "http"
-            proxy_addr = f"{scheme}://{host}:{port}"
+            u_addr = f"http://{host}:{port}" if p_type == "http" else proxy_addr
             opener = urllib.request.build_opener(
-                urllib.request.ProxyHandler({"http": proxy_addr, "https": proxy_addr})
+                urllib.request.ProxyHandler({"http": u_addr, "https": u_addr})
             )
-            resp = opener.open("https://www.google.com/generate_204", timeout=4.0)
+            resp = opener.open("https://www.google.com/generate_204", timeout=3.5)
             latency_ms = int((time.time() - start_t) * 1000)
             if resp.status in (200, 204):
                 return {
@@ -693,17 +723,39 @@ class OrbitApi:
                     "message": f"代理连通成功！Google 延迟: {latency_ms}ms ({p_type.upper()} {host}:{port})",
                     "latency_ms": latency_ms
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            if not google_err:
+                google_err = str(e)
 
         return {
-            "success": True,
-            "message": f"代理本地端口握手成功 ({p_type.upper()} {host}:{port})！"
+            "success": False,
+            "message": f"本地代理端口已连通，但无法通过该代理访问 Google ({google_err or '连接超时'})，请检查代理节点是否有效。"
         }
 
     def detect_local_proxy(self) -> dict:
-        """自动扫描并探测本机常用代理端口 (v2rayN/Xray/Clash/Surge)"""
-        candidates = [
+        """自动扫描并探测本机常用代理端口与系统代理 (优先探测系统代理与 10808/7890/7897/10809)"""
+        candidates = []
+        import urllib.request
+        import socket
+        import time
+
+        # 1. 优先提取当前操作系统设置中生效的系统代理 (如 Windows Internet Settings)
+        try:
+            sys_proxies = urllib.request.getproxies()
+            for proto in ("http", "https"):
+                p_val = sys_proxies.get(proto, "")
+                if p_val:
+                    parsed = urllib.parse.urlparse(p_val if "//" in p_val else f"http://{p_val}")
+                    h = parsed.hostname or "127.0.0.1"
+                    p = parsed.port
+                    if p and (h, p, "http") not in candidates:
+                        candidates.append((h, p, "http"))
+                        candidates.append((h, p, "socks5"))
+        except Exception:
+            pass
+
+        # 2. 补充常见客户端预置默认端口
+        default_candidates = [
             ("127.0.0.1", 10808, "socks5"),
             ("127.0.0.1", 10808, "http"),
             ("127.0.0.1", 7890, "socks5"),
@@ -712,49 +764,48 @@ class OrbitApi:
             ("127.0.0.1", 10809, "http"),
             ("127.0.0.1", 1080, "socks5"),
         ]
-        import socket
-        import time
+        for c in default_candidates:
+            if c not in candidates:
+                candidates.append(c)
 
         for host, port, p_type in candidates:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(0.5)
+                sock.settimeout(0.4)
                 res = sock.connect_ex((host, port))
-                sock.close()
-                if res == 0:
-                    try:
-                        import urllib.request
-                        scheme = "socks5h" if p_type == "socks5" else "http"
-                        opener = urllib.request.build_opener(
-                            urllib.request.ProxyHandler({"http": f"{scheme}://{host}:{port}", "https": f"{scheme}://{host}:{port}"})
-                        )
-                        start_t = time.time()
-                        resp = opener.open("https://www.google.com/generate_204", timeout=2.0)
-                        latency = int((time.time() - start_t) * 1000)
-                        if resp.status in (200, 204):
-                            return {
-                                "detected": True,
-                                "host": host,
-                                "port": port,
-                                "type": p_type,
-                                "latency_ms": latency,
-                                "message": f"成功探测到可用代理: {host}:{port} ({p_type.upper()}, 延迟 {latency}ms)"
-                            }
-                    except Exception:
-                        pass
+                if res != 0:
+                    sock.close()
+                    continue
 
+                # 若是 SOCKS5，做握手校验
+                if p_type == "socks5":
+                    try:
+                        sock.sendall(b"\x05\x01\x00")
+                        rep = sock.recv(2)
+                        if len(rep) < 2 or rep[0] != 0x05 or rep[1] != 0x00:
+                            sock.close()
+                            continue
+                    except Exception:
+                        sock.close()
+                        continue
+                sock.close()
+
+                # 测试 Google 真实连通性
+                test_res = self.test_proxy(host, port, p_type)
+                if test_res.get("success"):
+                    lat = test_res.get("latency_ms", 0)
                     return {
                         "detected": True,
                         "host": host,
                         "port": port,
                         "type": p_type,
-                        "latency_ms": 0,
-                        "message": f"探测到本地代理监听端口: {host}:{port} ({p_type.upper()})"
+                        "latency_ms": lat,
+                        "message": f"成功探测到可用代理: {host}:{port} ({p_type.upper()}, 延迟 {lat}ms)"
                     }
             except Exception:
                 continue
 
-        return {"detected": False, "message": "未扫描到本机运行的常见代理服务 (10808/7890/7897/10809)"}
+        return {"detected": False, "message": "未扫描到本机运行的可用代理服务 (请确认 v2rayN/Clash 等代理已开启)"}
 
     def export_accounts_data(self, format_type: str = "cockpit") -> dict:
         """导出账号池所有凭据为 JSON 格式 (支持 cockpit 或 full)"""

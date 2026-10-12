@@ -1251,11 +1251,12 @@ console.log('ALL_OK');
             self.assertEqual(len(spec.get("patches", [])), 4)
 
     def test_clean_sidebar_and_menu_config_and_version(self):
-        """测试 v3.3.17 版本号与极简侧栏顶栏配置项定义"""
+        """测试 v3.3.18 版本号与极简侧栏顶栏配置项定义"""
         from core.config import APP_VERSION, DEFAULT_CONFIG
-        self.assertEqual(APP_VERSION, "3.3.17")
+        self.assertEqual(APP_VERSION, "3.3.18")
         self.assertIn("clean_sidebar_and_menu", DEFAULT_CONFIG["customization"])
         self.assertTrue(DEFAULT_CONFIG["customization"].get("auto_switch_on_low_quota"))
+        self.assertEqual(DEFAULT_CONFIG["customization"].get("proxy_port"), 10808)
 
     def test_runtime_translation_isolation_and_clean_sidebar(self):
         """测试汉化引擎对代码/命令字词（如 apt update && apt install）的隔离保护与极简侧栏注入"""
@@ -1269,6 +1270,10 @@ console.log('ALL_OK');
         if (!runtime.includes('injectCleanSidebarStyle')) throw new Error('injectCleanSidebarStyle missing');
         if (!runtime.includes('mountTopSettingsButton')) throw new Error('mountTopSettingsButton missing');
         if (!runtime.includes('clean_sidebar_and_menu')) throw new Error('clean_sidebar_and_menu missing');
+        if (!runtime.includes('div.absolute.left-0.top-0:has([data-testid="app-icon-new-conversation-button"])')) {
+            throw new Error('Floating toolbar container selector missing');
+        }
+        if (!runtime.includes('sidebar-search-button')) throw new Error('sidebar-search-button selector missing');
         
         // 验证关键词清单
         const words = ['update', 'install', 'run', 'build'];
@@ -1279,6 +1284,15 @@ console.log('ALL_OK');
         """
         res = subprocess.run(["node", "-e", node_script], cwd=Path(__file__).parent.parent, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, f"Node verification failed: {res.stderr}")
+
+    def test_asar_patcher_dynamic_proxy_engine(self):
+        """测试 asar_patcher.js 中动态代理运行时引擎与高容错重启机制"""
+        patcher_code = (Path(__file__).parent.parent / "localization" / "core" / "asar_patcher.js").read_text(encoding="utf-8")
+        self.assertIn("__applyOrbitDynamicProxy", patcher_code)
+        self.assertIn("_getOrbitProxyConfig", patcher_code)
+        self.assertIn("MAX_RESTARTS = 999999", patcher_code)
+        self.assertIn("RESTART_COOLDOWN_MS = 300", patcher_code)
+        self.assertIn("proxy-bypass-list", patcher_code)
 
 if __name__ == "__main__":
     unittest.main()

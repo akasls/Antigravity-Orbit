@@ -442,6 +442,7 @@ class LocalizationManager:
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
 
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=ctx))
             for conn in psutil.net_connections(kind="inet"):
                 if conn.pid == ls_pid and conn.status == "LISTEN":
                     port = conn.laddr.port
@@ -452,7 +453,7 @@ class LocalizationManager:
                         method="POST",
                     )
                     try:
-                        with urllib.request.urlopen(req, context=ctx, timeout=1.5) as resp:
+                        with opener.open(req, timeout=1.5) as resp:
                             body = json.loads(resp.read().decode("utf-8", errors="ignore"))
                             if isinstance(body, dict) and "userStatus" in body:
                                 return {
@@ -587,7 +588,8 @@ class LocalizationManager:
             if not cdp_port:
                 return None
 
-            with urllib.request.urlopen(f"http://127.0.0.1:{cdp_port}/json", timeout=2.0) as resp:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open(f"http://127.0.0.1:{cdp_port}/json", timeout=2.0) as resp:
                 targets = json.loads(resp.read().decode("utf-8", errors="ignore"))
 
             js_sync = """
@@ -664,6 +666,50 @@ class LocalizationManager:
             return synced_email
         except Exception:
             return None
+
+    @classmethod
+    def sync_electron_session_proxy_via_cdp(cls) -> bool:
+        """
+        通过 CDP 实时通知运行中的 Antigravity Electron 进程调用 session.defaultSession.setProxy 立即生效代理，
+        实现秒级零重启代理热生效。
+        """
+        try:
+            import urllib.request
+            port_candidates = []
+            appdata = os.environ.get("APPDATA")
+            if appdata:
+                port_candidates.append(Path(appdata) / "Antigravity" / "DevToolsActivePort")
+            port_candidates.append(Path.home() / "AppData" / "Roaming" / "Antigravity" / "DevToolsActivePort")
+
+            cdp_port = None
+            for pf in port_candidates:
+                if pf.exists():
+                    lines = pf.read_text(encoding="utf-8", errors="ignore").splitlines()
+                    if lines and lines[0].strip().isdigit():
+                        cdp_port = int(lines[0].strip())
+                        break
+            if not cdp_port:
+                return False
+
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open(f"http://127.0.0.1:{cdp_port}/json", timeout=2.0) as resp:
+                targets = json.loads(resp.read().decode("utf-8", errors="ignore"))
+
+            js_proxy = """
+            (() => {
+                if (typeof globalThis.__applyOrbitDynamicProxy === 'function') {
+                    globalThis.__applyOrbitDynamicProxy();
+                    return true;
+                }
+                return false;
+            })()
+            """
+            for t in targets:
+                if t.get("type") == "page" and t.get("webSocketDebuggerUrl"):
+                    cls._cdp_eval_js(t["webSocketDebuggerUrl"], js_proxy, timeout=3.0)
+            return True
+        except Exception:
+            return False
 
     @classmethod
     def reload_language_server_in_memory(cls, expected_email: Optional[str] = None) -> Tuple[bool, str]:
@@ -769,13 +815,14 @@ class LocalizationManager:
                         ctx = ssl.create_default_context()
                         ctx.check_hostname = False
                         ctx.verify_mode = ssl.CERT_NONE
+                        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=ctx))
                         req = urllib.request.Request(
                             f"https://127.0.0.1:{ls_port}/exa.language_server_pb.LanguageServerService/AuthLogout",
                             data=b"{}",
                             headers={"Content-Type": "application/json", "x-codeium-csrf-token": ls_csrf},
                             method="POST",
                         )
-                        with urllib.request.urlopen(req, context=ctx, timeout=8.0) as resp:
+                        with opener.open(req, timeout=8.0) as resp:
                             resp.read()
                     finally:
                         # 无论如何立即还原原始指令字节与内存页属性
@@ -792,6 +839,7 @@ class LocalizationManager:
                 ctx = ssl.create_default_context()
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
+                opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=ctx))
                 req_status = urllib.request.Request(
                     f"https://127.0.0.1:{ls_port}/exa.language_server_pb.LanguageServerService/GetUserStatus",
                     data=b"{}",
@@ -799,7 +847,7 @@ class LocalizationManager:
                     method="POST",
                 )
                 active_email = ""
-                with urllib.request.urlopen(req_status, context=ctx, timeout=8.0) as resp:
+                with opener.open(req_status, timeout=8.0) as resp:
                     status_body = json.loads(resp.read().decode("utf-8", errors="ignore"))
                     active_email = status_body.get("userStatus", {}).get("email", "")
 

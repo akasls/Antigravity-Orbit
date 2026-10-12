@@ -446,28 +446,52 @@ class AsarPatcher {
                 );
             }
 
-            let proxyUrl = (cfg.proxy_url || '').trim();
-            if (!proxyUrl && cfg.proxy_host && cfg.proxy_port) {
-                const pType = (cfg.proxy_type || 'http').toLowerCase();
-                proxyUrl = `${pType}://${cfg.proxy_host}:${cfg.proxy_port}`;
+            // 6. Antigravity 专属网络代理与实时动态接管引擎 (彻底取代 Proxifier，直通本地与后台进程)
+            const dynamicProxyHeader = `
+/* === ANTIGRAVITY_DYNAMIC_PROXY_START === */
+function _getOrbitProxyConfig() {
+    try {
+        const home = process.env.USERPROFILE || process.env.HOME || '';
+        const appdata = process.env.APPDATA || (home ? path.join(home, 'AppData', 'Roaming') : '');
+        const candidatePaths = [
+            appdata ? path.join(appdata, 'Antigravity-Orbit', 'config.json') : '',
+            home ? path.join(home, '.antigravity-orbit', 'config.json') : ''
+        ].filter(Boolean);
+        for (const cp of candidatePaths) {
+            if (fs.existsSync(cp)) {
+                const raw = JSON.parse(fs.readFileSync(cp, 'utf8'));
+                const custom = raw.customization || {};
+                let pType = (custom.proxy_type || 'socks5').toLowerCase();
+                let host = (custom.proxy_host || '127.0.0.1').trim();
+                let port = parseInt(custom.proxy_port, 10) || 10808;
+                let proxyUrl = (custom.proxy_url || '').trim() || (pType + '://' + host + ':' + port);
+                let bypass = (custom.proxy_bypass || '<local>;localhost;127.0.0.1;::1;127.0.0.0/8;*.local').trim();
+                return {
+                    enabled: !!custom.proxy_enabled,
+                    proxyUrl: proxyUrl,
+                    bypass: bypass
+                };
             }
-
-            if (cfg.proxy_enabled && proxyUrl) {
-                const bypassList = '<local>;localhost;127.0.0.1;::1;127.0.0.0/8;*.local';
-                switchLines.push(
-                    "// 6. Antigravity 专属网络代理 (彻底取代 Proxifier，直通本地与后台进程)",
-                    `electron_1.app.commandLine.appendSwitch('proxy-server', ${JSON.stringify(proxyUrl)});`,
-                    `electron_1.app.commandLine.appendSwitch('proxy-bypass-list', ${JSON.stringify(bypassList)});`,
-                    `process.env['HTTP_PROXY'] = ${JSON.stringify(proxyUrl)};`,
-                    `process.env['HTTPS_PROXY'] = ${JSON.stringify(proxyUrl)};`,
-                    `process.env['ALL_PROXY'] = ${JSON.stringify(proxyUrl)};`,
-                    `process.env['http_proxy'] = ${JSON.stringify(proxyUrl)};`,
-                    `process.env['https_proxy'] = ${JSON.stringify(proxyUrl)};`,
-                    `process.env['all_proxy'] = ${JSON.stringify(proxyUrl)};`,
-                    `process.env['NO_PROXY'] = 'localhost,127.0.0.1,::1,127.0.0.0/8';`,
-                    `process.env['no_proxy'] = 'localhost,127.0.0.1,::1,127.0.0.0/8';`
-                );
-            }
+        }
+    } catch (e) {}
+    return { enabled: false, proxyUrl: '', bypass: '' };
+}
+const _initProxy = _getOrbitProxyConfig();
+if (_initProxy.enabled && _initProxy.proxyUrl) {
+    electron_1.app.commandLine.appendSwitch('proxy-server', _initProxy.proxyUrl);
+    electron_1.app.commandLine.appendSwitch('proxy-bypass-list', _initProxy.bypass);
+    process.env['HTTP_PROXY'] = _initProxy.proxyUrl;
+    process.env['HTTPS_PROXY'] = _initProxy.proxyUrl;
+    process.env['ALL_PROXY'] = _initProxy.proxyUrl;
+    process.env['http_proxy'] = _initProxy.proxyUrl;
+    process.env['https_proxy'] = _initProxy.proxyUrl;
+    process.env['all_proxy'] = _initProxy.proxyUrl;
+    process.env['NO_PROXY'] = 'localhost,127.0.0.1,::1,127.0.0.0/8';
+    process.env['no_proxy'] = 'localhost,127.0.0.1,::1,127.0.0.0/8';
+}
+/* === ANTIGRAVITY_DYNAMIC_PROXY_END === */
+`;
+            switchLines.push(dynamicProxyHeader);
 
             if (cfg.start_maximized === true) {
                 switchLines.push(
@@ -488,27 +512,48 @@ class AsarPatcher {
                     mContent = mContent.replace(targetLock, optSwitches + "\n" + targetLock);
                 }
 
-                // 为 session.defaultSession 设置代理与绕过规则，确保所有 WebContents 和 Fetch 请求无遗漏且 loopback 直连
+                // 为 session.defaultSession 设置动态代理与绕过规则，确保所有 WebContents 和 Fetch 请求无遗漏且 loopback 直连
                 const sessionProxyRegex = /\/\* === ANTIGRAVITY_SESSION_PROXY === \*\/[\s\S]*?\/\* === ANTIGRAVITY_SESSION_PROXY_END === \*\/\n?/;
                 if (sessionProxyRegex.test(mContent)) {
                     mContent = mContent.replace(sessionProxyRegex, "");
                 }
 
-                if (cfg.proxy_enabled && proxyUrl) {
-                    const sessionHook = "electron_1.app\n    .whenReady()\n    .then(async () => {";
-                    const sessionProxyCode = `${sessionHook}\n    /* === ANTIGRAVITY_SESSION_PROXY === */\n` +
-                        `    try {\n` +
-                        `        if (electron_1.session && electron_1.session.defaultSession) {\n` +
-                        `            electron_1.session.defaultSession.setProxy({\n` +
-                        `                proxyRules: ${JSON.stringify(proxyUrl)},\n` +
-                        `                proxyBypassRules: '<local>;localhost;127.0.0.1;::1;127.0.0.0/8;*.local'\n` +
-                        `            });\n` +
-                        `        }\n` +
-                        `    } catch (e) {}\n` +
-                        `    /* === ANTIGRAVITY_SESSION_PROXY_END === */\n`;
-                    if (mContent.includes(sessionHook)) {
-                        mContent = mContent.replace(sessionHook, sessionProxyCode);
-                    }
+                const sessionHook = "electron_1.app\n    .whenReady()\n    .then(async () => {";
+                const sessionProxyCode = `${sessionHook}\n    /* === ANTIGRAVITY_SESSION_PROXY === */\n` +
+                    `    try {\n` +
+                    `        let _lastAppliedProxyKey = null;\n` +
+                    `        globalThis.__applyOrbitDynamicProxy = function() {\n` +
+                    `            try {\n` +
+                    `                if (!electron_1.session || !electron_1.session.defaultSession) return;\n` +
+                    `                const curP = typeof _getOrbitProxyConfig === 'function' ? _getOrbitProxyConfig() : { enabled: false };\n` +
+                    `                const key = curP.enabled ? curP.proxyUrl + '|' + curP.bypass : 'DISABLED';\n` +
+                    `                if (key === _lastAppliedProxyKey) return;\n` +
+                    `                _lastAppliedProxyKey = key;\n` +
+                    `                if (curP.enabled && curP.proxyUrl) {\n` +
+                    `                    electron_1.session.defaultSession.setProxy({\n` +
+                    `                        mode: 'fixed_servers',\n` +
+                    `                        proxyRules: curP.proxyUrl,\n` +
+                    `                        proxyBypassRules: curP.bypass || '<local>;localhost;127.0.0.1;::1;127.0.0.0/8;*.local'\n` +
+                    `                    });\n` +
+                    `                    process.env['HTTP_PROXY'] = curP.proxyUrl;\n` +
+                    `                    process.env['HTTPS_PROXY'] = curP.proxyUrl;\n` +
+                    `                    process.env['ALL_PROXY'] = curP.proxyUrl;\n` +
+                    `                    console.log('[Orbit 专属代理] Electron Session 动态生效: ' + curP.proxyUrl);\n` +
+                    `                } else {\n` +
+                    `                    electron_1.session.defaultSession.setProxy({ mode: 'system' });\n` +
+                    `                    delete process.env['HTTP_PROXY'];\n` +
+                    `                    delete process.env['HTTPS_PROXY'];\n` +
+                    `                    delete process.env['ALL_PROXY'];\n` +
+                    `                    console.log('[Orbit 专属代理] Electron Session 恢复系统直连');\n` +
+                    `                }\n` +
+                    `            } catch (e) {}\n` +
+                    `        };\n` +
+                    `        globalThis.__applyOrbitDynamicProxy();\n` +
+                    `        setInterval(globalThis.__applyOrbitDynamicProxy, 2500);\n` +
+                    `    } catch (e) {}\n` +
+                    `    /* === ANTIGRAVITY_SESSION_PROXY_END === */\n`;
+                if (mContent.includes(sessionHook)) {
+                    mContent = mContent.replace(sessionHook, sessionProxyCode);
                 }
 
                 // 最大化启动窗口钩子 (启动时自动全屏最大化打开)
@@ -532,7 +577,7 @@ class AsarPatcher {
                 }
 
                 fs.writeFileSync(mainPath, mContent, 'utf-8');
-                console.log('[优化] main.js 已按需注入硬件加速、专属代理与 session 代理接管。');
+                console.log('[优化] main.js 已按需注入硬件加速、实时专属动态代理与 session 代理接管。');
             }
         }
 
@@ -548,12 +593,6 @@ class AsarPatcher {
                 }
             }
 
-            let proxyUrl = (cfg.proxy_url || '').trim();
-            if (!proxyUrl && cfg.proxy_host && cfg.proxy_port) {
-                const pType = (cfg.proxy_type || 'http').toLowerCase();
-                proxyUrl = `${pType}://${cfg.proxy_host}:${cfg.proxy_port}`;
-            }
-
             const targetEnv = "const env = { ...process.env, ...(0, shell_env_1.shellEnvSync)() };";
             const proxyInjectRegex = /\/\* === ANTIGRAVITY_PROXY_INJECT === \*\/[\s\S]*?\/\* === ANTIGRAVITY_PROXY_INJECT_END === \*\/\n?/;
 
@@ -561,21 +600,42 @@ class AsarPatcher {
                 lsContent = lsContent.replace(proxyInjectRegex, "");
             }
 
-            if (cfg.proxy_enabled && proxyUrl) {
-                if (lsContent.includes(targetEnv)) {
-                    const proxyEnvCode = `${targetEnv}\n        /* === ANTIGRAVITY_PROXY_INJECT === */\n` +
-                        `        env['HTTP_PROXY'] = ${JSON.stringify(proxyUrl)};\n` +
-                        `        env['HTTPS_PROXY'] = ${JSON.stringify(proxyUrl)};\n` +
-                        `        env['ALL_PROXY'] = ${JSON.stringify(proxyUrl)};\n` +
-                        `        env['http_proxy'] = ${JSON.stringify(proxyUrl)};\n` +
-                        `        env['https_proxy'] = ${JSON.stringify(proxyUrl)};\n` +
-                        `        env['all_proxy'] = ${JSON.stringify(proxyUrl)};\n` +
-                        `        env['NO_PROXY'] = 'localhost,127.0.0.1,::1,127.0.0.0/8';\n` +
-                        `        env['no_proxy'] = 'localhost,127.0.0.1,::1,127.0.0.0/8';\n` +
-                        `        /* === ANTIGRAVITY_PROXY_INJECT_END === */\n`;
-                    lsContent = lsContent.replace(targetEnv, proxyEnvCode);
-                    console.log(`[代理] languageServer.js 已为 Language Server 注入专属代理环境: ${proxyUrl}。`);
-                }
+            const dynamicLsProxyCode = `${targetEnv}\n        /* === ANTIGRAVITY_PROXY_INJECT === */\n` +
+                `        try {\n` +
+                `            const _home = process.env.USERPROFILE || process.env.HOME || '';\n` +
+                `            const _appdata = process.env.APPDATA || (_home ? path_1.default.join(_home, 'AppData', 'Roaming') : '');\n` +
+                `            const _candidatePaths = [\n` +
+                `                _appdata ? path_1.default.join(_appdata, 'Antigravity-Orbit', 'config.json') : '',\n` +
+                `                _home ? path_1.default.join(_home, '.antigravity-orbit', 'config.json') : ''\n` +
+                `            ].filter(Boolean);\n` +
+                `            for (const _cp of _candidatePaths) {\n` +
+                `                if (fs.existsSync(_cp)) {\n` +
+                `                    const _raw = JSON.parse(fs.readFileSync(_cp, 'utf8'));\n` +
+                `                    const _cust = _raw.customization || {};\n` +
+                `                    if (_cust.proxy_enabled) {\n` +
+                `                        const _pType = (_cust.proxy_type || 'socks5').toLowerCase();\n` +
+                `                        const _host = (_cust.proxy_host || '127.0.0.1').trim();\n` +
+                `                        const _port = parseInt(_cust.proxy_port, 10) || 10808;\n` +
+                `                        const _pUrl = (_cust.proxy_url || '').trim() || (_pType + '://' + _host + ':' + _port);\n` +
+                `                        env['HTTP_PROXY'] = _pUrl;\n` +
+                `                        env['HTTPS_PROXY'] = _pUrl;\n` +
+                `                        env['ALL_PROXY'] = _pUrl;\n` +
+                `                        env['http_proxy'] = _pUrl;\n` +
+                `                        env['https_proxy'] = _pUrl;\n` +
+                `                        env['all_proxy'] = _pUrl;\n` +
+                `                        env['NO_PROXY'] = 'localhost,127.0.0.1,::1,127.0.0.0/8';\n` +
+                `                        env['no_proxy'] = 'localhost,127.0.0.1,::1,127.0.0.0/8';\n` +
+                `                        console.log('[Orbit 专属代理] Language Server 已自动注入动态代理环境: ' + _pUrl);\n` +
+                `                        break;\n` +
+                `                    }\n` +
+                `                }\n` +
+                `            }\n` +
+                `        } catch (e) {}\n` +
+                `        /* === ANTIGRAVITY_PROXY_INJECT_END === */\n`;
+
+            if (lsContent.includes(targetEnv)) {
+                lsContent = lsContent.replace(targetEnv, dynamicLsProxyCode);
+                console.log('[代理] languageServer.js 已注入动态运行时代理环境侦测与挂载。');
             }
 
             // 解除 Language Server 默认最多重启 5 次的限制，确保极端降级重启场景下永不熔断

@@ -620,17 +620,25 @@
                     display: none !important;
                 }
 
-                /* 2. 隐藏侧边栏顶部第一行：反重力图标、侧栏折叠按钮、前进/后退、后台/辅助面板图标 */
+                /* 2. 隐藏左侧边栏顶部第一行浮动工具栏：反重力图标、侧栏展开/折叠、前进/后退、搜索对话/后台面板图标 */
+                div.absolute.left-0.top-0:has([data-testid="app-icon-new-conversation-button"]),
+                div.absolute.left-0.top-0:has([data-testid="sidebar-toggle"]),
+                div.absolute.left-0.top-0:has([data-testid="sidebar-search-button"]),
+                [data-testid="app-icon-new-conversation-button"],
+                [data-testid="sidebar-toggle"],
+                [data-testid="sidebar-search-button"],
                 .bg-sidebar.flex-col > div.shrink-0:first-child,
                 .bg-sidebar > div.shrink-0.flex.items-center.pr-2 {
                     display: none !important;
                 }
 
-                /* 3. 隐藏侧边栏快捷操作：新建对话、对话历史、计划任务 */
+                /* 3. 隐藏侧边栏快捷操作：新建对话、对话历史、计划任务、个性化定制 */
                 .bg-sidebar.flex-col > div:has([data-testid="new-conversation-button"]),
                 .bg-sidebar.flex-col > div:has([data-testid="history-button"]),
                 .bg-sidebar.flex-col > div:has([data-testid="automations-button"]),
-                .bg-sidebar.flex-col > div:nth-child(2):has(button) {
+                .bg-sidebar.flex-col > div:has(a[href="/customizations"]),
+                .bg-sidebar.flex-col > div:nth-child(2):has(button),
+                .bg-sidebar.flex-col > div:nth-child(2):has(a) {
                     display: none !important;
                 }
 
@@ -681,6 +689,14 @@
     }
 
     function mountTopSettingsButton(doc = document) {
+        // 若侧边栏当前处于收缩状态，先自动展开保证项目与对话列表正常可视
+        try {
+            const toggleBtn = doc.querySelector('[data-testid="sidebar-toggle"]');
+            if (toggleBtn && toggleBtn.getAttribute('aria-expanded') === 'false') {
+                toggleBtn.click();
+            }
+        } catch (e) {}
+
         const titleBar = doc.querySelector('[data-testid="title-menu-bar"]');
         if (!titleBar) return;
         if (doc.getElementById('antigravity-top-settings-wrapper')) return;

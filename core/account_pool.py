@@ -1864,35 +1864,27 @@ class AccountPoolManager:
         if not code:
             return False, None, "未解析到有效的授权码 (code)"
 
-        data = urllib.parse.urlencode({
+        form_data = {
             "client_id": GOOGLE_CLIENT_ID,
             "client_secret": GOOGLE_CLIENT_SECRET,
             "code": code,
             "grant_type": "authorization_code",
             "redirect_uri": redirect_uri,
-        }).encode("utf-8")
-
-        req = urllib.request.Request(
-            GOOGLE_TOKEN_URL,
-            data=data,
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded",
-                "User-Agent": USER_AGENT
-            }
-        )
+        }
 
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
+            status, result, raw_resp = AccountPoolManager._make_request(
+                "POST",
+                GOOGLE_TOKEN_URL,
+                form_data=form_data,
+                timeout=15
+            )
+            if status == 200 and isinstance(result, dict):
                 return True, result, "成功换取 OAuth Token"
-        except urllib.error.HTTPError as e:
-            err_msg = e.read().decode("utf-8", errors="ignore")
-            try:
-                err_json = json.loads(err_msg)
-                err_desc = err_json.get("error_description") or err_json.get("error") or err_msg
-            except Exception:
-                err_desc = err_msg
-            return False, None, f"换取 Token 失败 (HTTP {e.code}): {err_desc}"
+            err_desc = ""
+            if isinstance(result, dict):
+                err_desc = result.get("error_description") or result.get("error") or ""
+            return False, None, f"换取 Token 失败 (HTTP {status}): {err_desc or raw_resp}"
         except Exception as e:
             return False, None, f"请求 Token 异常: {e}"
 
