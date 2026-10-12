@@ -1818,5 +1818,167 @@ input:checked + .slider:before {
   background: #f8fafc;
 }
 
+/* 状态标签按钮与交互化 */
+.status-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1.5px 7px;
+  border-radius: var(--radius-full);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.status-tag-btn {
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.status-tag-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(0.95);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.status-tag-btn:active {
+  transform: translateY(0);
+}
+
+.status-tag-healthy {
+  background: #ecfdf5;
+  color: #059669;
+  border-color: #a7f3d0;
+}
+
+.status-tag-forbidden {
+  background: #fef2f2;
+  color: #ef4444;
+  border-color: #fecaca;
+  animation: gentlePulse 2.5s infinite;
+}
+
+@keyframes gentlePulse {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.2); }
+  70% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.status-tag-expired {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
+.status-tag-error {
+  background: #fffbeb;
+  color: #d97706;
+  border-color: #fde68a;
+}
+
+.status-tag-exhausted {
+  background: #fff1f2;
+  color: #e11d48;
+  border-color: #fecdd3;
+}
+
+.status-tag-low {
+  background: #fffbeb;
+  color: #d97706;
+  border-color: #fde68a;
+}
+
+/* 账号诊断详情模态框组件 */
+.account-diag-user-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.account-diag-summary-text {
+  font-size: 12px;
+  color: var(--text-main);
+  background: #f8fafc;
+  border-left: 3.5px solid var(--accent);
+  padding: 8px 12px;
+  border-radius: var(--radius-xs);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.account-diag-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.account-diag-error-box {
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-family: Consolas, Monaco, "Courier New", monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 110px;
+  overflow-y: auto;
+  border: 1px solid #334155;
+  margin: 0;
+}
+
+.account-diag-advice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.account-diag-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #ffffff;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  transition: border-color 0.15s ease;
+}
+
+.account-diag-item:hover {
+  border-color: var(--accent-border);
+}
+
+.account-diag-icon {
+  font-size: 16px;
+  line-height: 1.2;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.account-diag-content {
+  flex: 1;
+}
+
+.account-diag-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 2px;
+}
+
+.account-diag-desc {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 
 

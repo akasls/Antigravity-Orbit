@@ -15,7 +15,7 @@ from pathlib import Path
 
 DEFAULT_INSTALL_DIR = Path.home() / "AppData" / "Local" / "Programs" / "Antigravity-Orbit"
 APP_NAME = "Antigravity Orbit"
-APP_VERSION = "3.3.13"
+APP_VERSION = "3.3.14"
 APP_PUBLISHER = "Antigravity Team"
 EXE_NAME = "Antigravity-Orbit.exe"
 

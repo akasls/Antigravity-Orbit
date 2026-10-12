@@ -1,5 +1,5 @@
 /**
- * Antigravity Orbit - 现代桌面核心控制器 (v3.3.13)
+ * Antigravity Orbit - 现代桌面核心控制器 (v3.3.14)
  * 实时自动保存、Google OAuth 网页授权、Claude 与 Gemini 双列配额看板、
  * 后台自动定时刷新与无感切号。
  */
@@ -396,8 +396,10 @@ function renderAccountPool() {
   const pool = appState.account_pool || { accounts: [], total: 0, healthy: 0, low_or_exhausted: 0 };
   const rawAccounts = pool.accounts || [];
 
-  // 自动智能排序：高剩余配额账号排在前面，已耗尽/失效账号排在后面
+  // 自动智能排序：当前使用中（活跃）账号始终排在第 1 位，其余高剩余配额账号排在前面，已耗尽/失效账号排在后面
   const accounts = [...rawAccounts].sort((a, b) => {
+    if (a.is_active && !b.is_active) return -1;
+    if (!a.is_active && b.is_active) return 1;
     const scoreA = getAccountQuotaScore(a);
     const scoreB = getAccountQuotaScore(b);
     if (scoreB !== scoreA) {
@@ -491,21 +493,19 @@ function renderAccountPool() {
     const fillGW = getProgressColorClass(gW);
 
     const minPct = Math.min(c5h, cW, g5h, gW);
-    let statusBadge = '<span class="status-tag status-online">正常</span>';
+    let statusBadge = `<button class="status-tag status-tag-btn status-tag-healthy" onclick="showAccountStatusModal('${acc.id}')" title="点击查看账号健康状态与诊断详情">正常 ℹ️</button>`;
     if (appState.isSyncingPool || refreshingAccountIds.has(acc.id) || q.status === 'SYNCING') {
       statusBadge = '<span class="status-tag status-syncing"><span class="spin-icon-inline">🔄</span> 刷新中</span>';
-    } else if (q.status === 'EXPIRED') {
-      statusBadge = `<span class="status-tag" style="background:#fef2f2;color:#ef4444;" title="${q.error || '登录授权已过期，请重新登录'}">已失效</span>`;
-    } else if (q.status === 'ERROR') {
-      statusBadge = `<span class="status-tag" style="background:#fffbeb;color:#d97706;" title="${q.error || '网络连接失败'}">未同步</span>`;
     } else if (q.status === 'FORBIDDEN') {
-      statusBadge = '<span class="status-tag" style="background:#fef2f2;color:#ef4444;">受限</span>';
-    } else if (minPct <= 0 || q.status === 'EXHAUSTED') {
-      statusBadge = '<span class="status-tag" style="background:#fef2f2;color:#ef4444;">耗尽</span>';
-    } else if (minPct < 15) {
-      statusBadge = '<span class="status-tag" style="background:#fef2f2;color:#ef4444;">耗尽</span>';
+      statusBadge = `<button class="status-tag status-tag-btn status-tag-forbidden" onclick="showAccountStatusModal('${acc.id}')" title="点击查看受限原因与排查建议">受限 ℹ️</button>`;
+    } else if (q.status === 'EXPIRED') {
+      statusBadge = `<button class="status-tag status-tag-btn status-tag-expired" onclick="showAccountStatusModal('${acc.id}')" title="点击查看失效原因与排查建议">已失效 ℹ️</button>`;
+    } else if (q.status === 'ERROR') {
+      statusBadge = `<button class="status-tag status-tag-btn status-tag-error" onclick="showAccountStatusModal('${acc.id}')" title="点击查看异常原因与排查建议">未同步 ℹ️</button>`;
+    } else if (minPct <= 0 || q.status === 'EXHAUSTED' || minPct < 15) {
+      statusBadge = `<button class="status-tag status-tag-btn status-tag-exhausted" onclick="showAccountStatusModal('${acc.id}')" title="点击查看耗尽状态与排查建议">耗尽 ℹ️</button>`;
     } else if (minPct < 40 || q.status === 'LOW') {
-      statusBadge = '<span class="status-tag" style="background:#fffbeb;color:#d97706;">紧张</span>';
+      statusBadge = `<button class="status-tag status-tag-btn status-tag-low" onclick="showAccountStatusModal('${acc.id}')" title="点击查看配额状态与排查建议">紧张 ℹ️</button>`;
     }
 
 
@@ -1650,6 +1650,200 @@ async function handleDeleteAccount(accountId, email) {
     renderAccountPool();
   }
 }
+
+// -------------------------------------------------------------
+// 账号状态与受限诊断详情模态框控制器
+// -------------------------------------------------------------
+let currentDiagnosingAccountId = null;
+
+window.showAccountStatusModal = function(accountId) {
+  const accounts = (appState.account_pool && appState.account_pool.accounts) || [];
+  const acc = accounts.find(a => a.id === accountId);
+  if (!acc) {
+    showToast("未找到该账号信息", "warning");
+    return;
+  }
+  currentDiagnosingAccountId = accountId;
+
+  const modal = document.getElementById('modal-account-status-reason');
+  if (!modal) return;
+
+  const emailEl = document.getElementById('diag-account-email');
+  const nameEl = document.getElementById('diag-account-name');
+  const avatarEl = document.getElementById('diag-account-avatar');
+  const tierEl = document.getElementById('diag-account-tier');
+  const statusBadgeEl = document.getElementById('diag-status-badge');
+  const statusDescEl = document.getElementById('diag-status-desc');
+  const errorTextEl = document.getElementById('diag-error-text');
+  const adviceListEl = document.getElementById('diag-advice-list');
+
+  const q = acc.quota || {};
+  const status = q.status || 'HEALTHY';
+  const tier = q.tier_display || q.tier || 'Google AI Free';
+
+  if (emailEl) emailEl.textContent = acc.email || '未知邮箱';
+  if (nameEl) nameEl.textContent = acc.name || 'Antigravity 用户';
+  if (tierEl) tierEl.textContent = formatTierShort(tier);
+
+  if (avatarEl) {
+    avatarEl.innerHTML = acc.avatar 
+      ? `<img src="${acc.avatar}" alt="Avatar">`
+      : (acc.email || "A").charAt(0).toUpperCase();
+  }
+
+  // 状态识别与描述
+  let badgeHtml = '';
+  let statusSummary = '';
+  let adviceItems = [];
+
+  const rawErr = q.error ? String(q.error).trim() : '';
+
+  if (status === 'FORBIDDEN') {
+    badgeHtml = '<span class="status-tag status-tag-forbidden">受限 (403 Forbidden)</span>';
+    statusSummary = 'Google 官方接口拒绝访问 (403 Forbidden)。该账号当前受安全风控或权限策略拦截。';
+    adviceItems = [
+      {
+        icon: '🛡️',
+        title: '网络节点与机房 IP 触发 Google 严格风控',
+        desc: 'Google 对数据中心 (IDC) 机房、大量共享节点及高频滥用 IP 实施了自动拉黑与 403 阻断。建议将科学上网节点切换为纯净的【美区或日区原生家庭宽带/住宅 ISP】代理，避免使用香港或人多拥挤的公共节点。'
+      },
+      {
+        icon: '🌐',
+        title: '开启 TUN 虚拟网卡模式 / 全局网络接管',
+        desc: '确保代理客户端开启了 TUN 虚拟网卡模式或系统代理，避免 gRPC / HTTP2 请求绕过代理直接走大陆直连网络导致被 Google 防火墙拦截。'
+      },
+      {
+        icon: '🔐',
+        title: '账号权限或企业组织 (Workspace) 策略限制',
+        desc: '部分公司或学校 Google Workspace 域管理员在后台禁用了外部 AI 代码助手服务；如为普通 Gmail 个人号，请尝试在浏览器正常登录 Google Cloud Console 检查 Gemini Code Assist 状态。'
+      },
+      {
+        icon: '🔄',
+        title: '凭据授权与一键重新检测',
+        desc: '点击下方【重新检测此账号】或使用右上角【网页登录】重新授权该账号以更新有效凭据。'
+      }
+    ];
+  } else if (status === 'EXPIRED') {
+    badgeHtml = '<span class="status-tag status-tag-expired">授权失效 (401 Unauthorized)</span>';
+    statusSummary = 'Google OAuth 登录凭据 (Refresh Token) 已过期或已被 Google 服务端撤销。';
+    adviceItems = [
+      {
+        icon: '🔑',
+        title: 'OAuth Refresh Token 失效或被重置',
+        desc: '您可能在 Google 账号安全中心修改了密码、登出了所有设备或撤销了应用授权。请点击右上角【网页登录】重新为此账号登录授权即可恢复使用。'
+      }
+    ];
+  } else if (status === 'ERROR') {
+    badgeHtml = '<span class="status-tag status-tag-error">同步异常 / 网络通信受阻</span>';
+    statusSummary = '本地客户端与 Google 官方服务器通信失败，未成功获取最新额度。';
+    adviceItems = [
+      {
+        icon: '📡',
+        title: '本地代理或网络环境异常',
+        desc: '请检查代理客户端是否正常运行、系统代理端口是否正确，并在 Orbit【专属代理】设置中检测代理连通性。'
+      }
+    ];
+  } else if (status === 'EXHAUSTED') {
+    badgeHtml = '<span class="status-tag status-tag-exhausted">配额耗尽 (429 Rate Limit)</span>';
+    statusSummary = '该账号当前周期内的模型调用配额已用尽 (HTTP 429 Too Many Requests)。';
+    adviceItems = [
+      {
+        icon: '⏳',
+        title: '等待配额周期自动重置',
+        desc: '5 小时滚动配额或周度调用额度已用尽。Orbit 会自动热切换到其他高配额账号，待重置时间到达后该账号将自动恢复可用。'
+      }
+    ];
+  } else if (status === 'LOW') {
+    badgeHtml = '<span class="status-tag status-tag-low">配额紧张 (低于 40%)</span>';
+    statusSummary = '当前账号可用配额偏低，建议开启自动热切换或准备备用账号。';
+    adviceItems = [
+      {
+        icon: '💡',
+        title: '开启智能热切换保护',
+        desc: '在设置中开启【低额度自动无感热切换】，当配额低于阈值时将无感调度更高额度账号接力执行任务。'
+      }
+    ];
+  } else {
+    badgeHtml = '<span class="status-tag status-tag-healthy">正常健康 (Healthy)</span>';
+    statusSummary = '账号授权与配额状态完全正常，随时可供反重力客户端调用。';
+    adviceItems = [
+      {
+        icon: '✅',
+        title: '状态优良',
+        desc: '该账号通信畅通，各核心模型可用额度充足。'
+      }
+    ];
+  }
+
+  if (statusBadgeEl) statusBadgeEl.innerHTML = badgeHtml;
+  if (statusDescEl) statusDescEl.textContent = statusSummary;
+  if (errorTextEl) {
+    errorTextEl.textContent = rawErr || (status === 'FORBIDDEN' ? 'Google API 拒绝访问 (HTTP 403 Forbidden)：无访问权限或账号受限' : '无详细报错信息 (状态正常)');
+  }
+
+  if (adviceListEl) {
+    adviceListEl.innerHTML = adviceItems.map(item => `
+      <div class="account-diag-item">
+        <div class="account-diag-icon">${item.icon}</div>
+        <div class="account-diag-content">
+          <div class="account-diag-title">${escapeHtml(item.title)}</div>
+          <div class="account-diag-desc">${escapeHtml(item.desc)}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  modal.classList.add('active');
+};
+
+window.handleCloseAccountStatusModal = function() {
+  const modal = document.getElementById('modal-account-status-reason');
+  if (modal) modal.classList.remove('active');
+  currentDiagnosingAccountId = null;
+};
+
+window.handleCopyDiagnosticInfo = function() {
+  if (!currentDiagnosingAccountId) return;
+  const accounts = (appState.account_pool && appState.account_pool.accounts) || [];
+  const acc = accounts.find(a => a.id === currentDiagnosingAccountId);
+  if (!acc) return;
+  const q = acc.quota || {};
+  const report = [
+    `【Antigravity Orbit 账号状态诊断报告】`,
+    `账号邮箱: ${acc.email}`,
+    `账号类型: ${q.tier_display || q.tier || 'Free'}`,
+    `当前状态: ${q.status || 'UNKNOWN'}`,
+    `接口报错: ${q.error || '无'}`,
+    `Claude 5H 额度: ${q.claude_5h_percent !== undefined ? q.claude_5h_percent : '未同步'}%`,
+    `Gemini 5H 额度: ${q.gemini_5h_percent !== undefined ? q.gemini_5h_percent : '未同步'}%`,
+    `诊断时间: ${new Date().toLocaleString()}`
+  ].join('\n');
+
+  navigator.clipboard.writeText(report).then(() => {
+    showToast("完整诊断报告已复制到剪贴板", "success");
+  }).catch(() => {
+    showToast("复制失败，请手动选取文本", "error");
+  });
+};
+
+window.handleCopyDiagnosticRawError = function() {
+  const errorTextEl = document.getElementById('diag-error-text');
+  const txt = errorTextEl ? errorTextEl.textContent : '';
+  if (!txt) return;
+  navigator.clipboard.writeText(txt).then(() => {
+    showToast("接口报错已复制到剪贴板", "success");
+  }).catch(() => {
+    showToast("复制失败", "error");
+  });
+};
+
+window.handleRecheckDiagnosingAccount = async function() {
+  if (!currentDiagnosingAccountId) return;
+  const accId = currentDiagnosingAccountId;
+  showToast("正在重新检测该账号...", "info");
+  await handleRefreshSingleQuota(accId);
+  window.showAccountStatusModal(accId);
+};
 
 function resetAddAccountModal() {
   const tokenEl = document.getElementById('input-account-token');

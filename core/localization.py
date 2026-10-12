@@ -292,6 +292,40 @@ class LocalizationManager:
             return False, f"热重载后台服务异常: {e}"
 
     @classmethod
+    def focus_antigravity(cls) -> bool:
+        """若 Antigravity 正在运行，将其主窗口唤醒并置顶到前台"""
+        if sys.platform != "win32":
+            return False
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            found_hwnd = None
+
+            def _enum_win_proc(hwnd, extra):
+                nonlocal found_hwnd
+                if user32.IsWindowVisible(hwnd):
+                    length = user32.GetWindowTextLengthW(hwnd)
+                    if length > 0:
+                        buff = ctypes.create_unicode_buffer(length + 1)
+                        user32.GetWindowTextW(hwnd, buff, length + 1)
+                        title = buff.value
+                        if "Antigravity" in title and "Antigravity Orbit" not in title:
+                            found_hwnd = hwnd
+                            return False
+                return True
+
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+            user32.EnumWindows(WNDENUMPROC(_enum_win_proc), 0)
+            if found_hwnd:
+                # 9 = SW_RESTORE (恢复最小化并显示窗口)
+                user32.ShowWindow(found_hwnd, 9)
+                user32.SetForegroundWindow(found_hwnd)
+                return True
+        except Exception:
+            pass
+        return False
+
+    @classmethod
     def launch_antigravity(cls, install_dir: Optional[str] = None) -> Tuple[bool, str]:
         """拉起启动 Antigravity 客户端 (杜绝 CREATE_NO_WINDOW 导致的 Chromium 白屏与卡死)"""
         target_dir = cls._fallback_detect_dir(install_dir)
@@ -302,21 +336,35 @@ class LocalizationManager:
             if sys.platform == "win32":
                 exe_path = Path(target_dir) / "Antigravity.exe"
                 if exe_path.exists():
-                    cmd = [str(exe_path)]
+                    # 检查是否配置了最大化启动
+                    start_maximized = False
                     try:
                         from core.config import load_config
                         cfg = load_config()
-                        if cfg.get("customization", {}).get("start_maximized", False):
-                            cmd.append("--start-maximized")
+                        start_maximized = bool(cfg.get("customization", {}).get("start_maximized", False))
                     except Exception:
                         pass
-                    # GUI 进程绝对不能加 CREATE_NO_WINDOW，否则破坏 Chromium 渲染器上下文与 GPU 初始化导致白屏
-                    # 必须指定 cwd 为应用安装目录，保证 Electron 资源模块正确定位与加载
+
+                    cmd = [str(exe_path)]
+                    if start_maximized:
+                        cmd.append("--start-maximized")
+
+                    # 如果反重力已经在运行，先尝试激活前台窗口
+                    if cls.is_running() and cls.focus_antigravity():
+                        return True, "已唤醒并聚焦 Antigravity 客户端窗口"
+
+                    # 优先尝试使用 Windows 原生 Shell 启动 (等同于双击，自动处理权限与单实例激活)
+                    try:
+                        if not start_maximized:
+                            os.startfile(str(exe_path))
+                            return True, "已启动 Antigravity 客户端"
+                    except Exception:
+                        pass
+
+                    # 备选使用 subprocess.Popen (不使用 DETACHED_PROCESS 避免前台窗口句柄丢失)
                     subprocess.Popen(
                         cmd,
-                        cwd=str(target_dir),
-                        creationflags=subprocess.DETACHED_PROCESS,
-                        close_fds=True
+                        cwd=str(target_dir)
                     )
                     return True, "已启动 Antigravity 客户端"
             elif sys.platform == "darwin":

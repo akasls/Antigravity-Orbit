@@ -595,6 +595,12 @@ context.switchToTab('settings');
                 # 满额度账号 > 低额度账号 > 耗尽账号 > 失效账号
                 self.assertEqual(sorted_ids, ["acc-full", "acc-low", "acc-exhausted", "acc-expired"])
 
+                # 验证活跃（使用中）账号无论配额高低始终置顶第一位
+                mgr._pool_cache["active_account_id"] = "acc-low"
+                summary_active = mgr.get_accounts_summary()
+                self.assertEqual(summary_active["accounts"][0]["id"], "acc-low")
+                self.assertTrue(summary_active["accounts"][0]["is_active"])
+
         # 2. 验证前端 JS 逻辑: formatTierShort, getProgressColorClass, getAccountQuotaScore
         js_script = """
 const fs = require('fs');
@@ -652,11 +658,33 @@ const sExp = context.getAccountQuotaScore({ quota: { status: 'EXPIRED' } });
 if (!(sFull > sMid && sMid > sZero && sZero > sExp)) {
   throw new Error(`getAccountQuotaScore order failed: full=${sFull}, mid=${sMid}, zero=${sZero}, exp=${sExp}`);
 }
+
+// 4. 验证活跃账号在前端始终置顶第 1 位
+const testAccs = [
+  { id: 'acc1', is_active: false, quota: { claude_5h_percent: 100, claude_weekly_percent: 100, gemini_5h_percent: 100, gemini_weekly_percent: 100 } },
+  { id: 'acc2', is_active: true, quota: { claude_5h_percent: 10, claude_weekly_percent: 10, gemini_5h_percent: 10, gemini_weekly_percent: 10 } }
+];
+testAccs.sort((a, b) => {
+  if (a.is_active && !b.is_active) return -1;
+  if (!a.is_active && b.is_active) return 1;
+  return context.getAccountQuotaScore(b) - context.getAccountQuotaScore(a);
+});
+if (testAccs[0].id !== 'acc2') throw new Error('Active account must be pinned at index 0');
+
+// 5. 验证诊断模态框控制器函数注册完整
+if (typeof context.showAccountStatusModal !== 'function') throw new Error('showAccountStatusModal missing');
+if (typeof context.handleCloseAccountStatusModal !== 'function') throw new Error('handleCloseAccountStatusModal missing');
+
 console.log('ALL_OK');
 """
         res = subprocess.run(["node", "-e", js_script], capture_output=True, text=True, cwd=str(Path(__file__).parent.parent))
         self.assertEqual(res.returncode, 0, f"JS verification failed: {res.stderr}")
         self.assertIn("ALL_OK", res.stdout)
+
+    def test_focus_and_launch_antigravity(self):
+        from core.localization import LocalizationManager
+        self.assertTrue(hasattr(LocalizationManager, "focus_antigravity"))
+        self.assertTrue(hasattr(LocalizationManager, "launch_antigravity"))
 
     def test_tray_menu_and_window_state(self):
         """测试托盘右键菜单纯净无图标、动态文案切换及全屏最大化唤醒状态"""

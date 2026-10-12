@@ -207,29 +207,27 @@ class OrbitWindowManager:
         """根据当前反重力客户端运行状态动态返回菜单文案 (纯文本，无任何图标)"""
         return "重启反重力" if LocalizationManager.is_running() else "开启反重力"
 
-    def _on_antigravity_tray_action(self, icon=None, item=None):
-        """动态托盘操作：反重力运行中则重启并更新补丁，未运行则直接拉起客户端"""
-        try:
-            if LocalizationManager.is_running():
-                self.api.restart_antigravity()
-            else:
-                cfg = load_config()
-                custom = cfg.get("customization", {})
-                lang = custom.get("language", "zh-CN")
-                is_tw = (lang == "zh-TW")
-                is_en = (lang == "en")
-                try:
-                    LocalizationManager.install(tw=is_tw, en=is_en, no_kill=True, stream_output=False)
-                except Exception:
-                    pass
-                LocalizationManager.launch_antigravity()
-        except Exception as e:
-            print(f"[Tray Action Error] 开启/重启反重力失败: {e}")
-        if self.tray_icon:
+    def _on_launch_antigravity_tray_action(self, icon=None, item=None):
+        """开启或激活前台反重力客户端 (异步无阻塞，杜绝托盘卡死)"""
+        def _worker():
             try:
-                self.tray_icon.update_menu()
-            except Exception:
-                pass
+                if LocalizationManager.is_running():
+                    if not LocalizationManager.focus_antigravity():
+                        LocalizationManager.launch_antigravity()
+                else:
+                    LocalizationManager.launch_antigravity()
+            except Exception as e:
+                print(f"[Tray Action Error] 开启反重力失败: {e}")
+        threading.Thread(target=_worker, daemon=True, name="orbit-tray-launch").start()
+
+    def _on_restart_antigravity_tray_action(self, icon=None, item=None):
+        """重启反重力客户端并同步最新优化补丁 (异步无阻塞)"""
+        def _worker():
+            try:
+                self.api.restart_antigravity()
+            except Exception as e:
+                print(f"[Tray Action Error] 重启反重力失败: {e}")
+        threading.Thread(target=_worker, daemon=True, name="orbit-tray-restart").start()
 
     def init_tray(self):
         """初始化系统托盘后台守护"""
@@ -244,7 +242,8 @@ class OrbitWindowManager:
             img = Image.open(str(icon_p))
             menu = pystray.Menu(
                 pystray.MenuItem("打开管理中心", self.show_window, default=True),
-                pystray.MenuItem(self._get_antigravity_menu_text, self._on_antigravity_tray_action),
+                pystray.MenuItem("开启反重力", self._on_launch_antigravity_tray_action),
+                pystray.MenuItem("重启反重力", self._on_restart_antigravity_tray_action),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("退出", self.force_quit)
             )

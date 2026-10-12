@@ -794,7 +794,16 @@ class AccountPoolManager:
             gemini_found = True
         elif code == 403:
             quota_result["status"] = "FORBIDDEN"
-            quota_result["error"] = "无访问权限或账号受限"
+            err_msg = ""
+            if isinstance(summary_data, dict) and "error" in summary_data:
+                err_obj = summary_data.get("error", {})
+                if isinstance(err_obj, dict):
+                    err_msg = err_obj.get("message", "")
+                elif isinstance(err_obj, str):
+                    err_msg = err_obj
+            if not err_msg and err_text:
+                err_msg = err_text.strip()
+            quota_result["error"] = err_msg or "Google API 拒绝访问 (403 Forbidden)：无访问权限或账号受限"
             quota_result["five_hour_percent"] = 0
             quota_result["claude_5h_percent"] = 0
             quota_result["gemini_5h_percent"] = 0
@@ -1064,9 +1073,10 @@ class AccountPoolManager:
             acc_copy["last_refreshed_text"] = _format_time_ago(last_ts)
             accounts_list.append(acc_copy)
 
-        # 智能自动排序：高配额账号排在前面，已耗尽/已失效账号排在后面
+        # 智能自动排序：当前正在使用中（活跃）账号始终置顶第 1 位，其余高配额账号排在前面，已耗尽/已失效账号排在后面
         accounts_list.sort(
             key=lambda x: (
+                0 if x.get("is_active") else 1,
                 -self._compute_account_quota_score(x),
                 -x.get("added_at", 0)
             )
