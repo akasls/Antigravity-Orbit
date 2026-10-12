@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20x64-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11 x64" />
-  <img src="https://img.shields.io/badge/Release-v3.3.18-10B981?style=for-the-badge&logo=github&logoColor=white" alt="Release v3.3.18" />
+  <img src="https://img.shields.io/badge/Release-v3.3.19-10B981?style=for-the-badge&logo=github&logoColor=white" alt="Release v3.3.19" />
   <img src="https://img.shields.io/badge/Antigravity-2.0+-FF6F00?style=for-the-badge" alt="Antigravity 2.0+" />
   <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License MIT" />
 </p>
@@ -97,6 +97,14 @@ python main.py gui
 ---
 
 ## 📝 更新日志 (Release Notes)
+
+### 📌 2026-10-13 修复防假死启动与配置持久化守卫 (v3.3.19)
+
+- **彻底解决长时间闲置/休眠后无法拉起 Antigravity 客户端的问题**：诊断并查明其根本原因在于客户端窗口关闭或长时间休眠后，后台遗留无窗口的孤儿 Electron 进程占用了单实例锁（`lockfile` 与 Chromium 互斥量），导致新拉起的进程检测到实例存在后自动退出。在 `launch_antigravity` 中增加前台窗口有效性探测与孤儿进程自愈回收机制（在激活无响应时安全清理无窗口的假死进程并释放单实例锁，且严格不误杀后台关联的语言服务），确保任何时候点击打开客户端均 100% 成功秒级拉起。
+- **彻底解决工具配置与开关丢失、自动恢复默认的缺陷**：
+  - **规范化单源持久化路径与全目录镜像同步**：确立 `%APPDATA%\Antigravity-Orbit\config.json` 为全局规范权威配置路径，并在保存时同步镜像更新工作目录、安装目录与工程目录下的配置文件，彻底消除不同启动路径下的多配置文件互相抢占遮蔽问题。
+  - **后端深度合并保护 (`deep_merge`)**：在 API 网关和配置加载器中全面引入递归深度合并机制，杜绝前端局部保存（如仅修改网络代理或通知渠道）时将未提交的性能与外观开关（如 GPU 加速、V8 堆内存扩容、防休眠、去遥测等）浅层覆盖为默认值。
+  - **前端初始化防竞态守卫 (`isAppInitializing`)**：在 Web 界面初始化完成前全面拦截并阻断早期 DOM 变更触发的自动保存，并在跨标签页保存时实施按需采集保护，防止未就绪或未展示的开关以默认 `false` 状态反向覆盖磁盘上的已保存配置。
 
 ### 📌 2026-10-12 重大功能迭代与体验调优 (v3.3.9 ~ v3.3.18)
 

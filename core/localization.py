@@ -956,8 +956,30 @@ class LocalizationManager:
                         cmd.append("--start-maximized")
 
                     # 如果反重力已经在运行，先尝试激活前台窗口
-                    if cls.is_running() and cls.focus_antigravity():
-                        return True, "已唤醒并聚焦 Antigravity 客户端窗口"
+                    if cls.is_running():
+                        if cls.focus_antigravity():
+                            return True, "已唤醒并聚焦 Antigravity 客户端窗口"
+                        else:
+                            # 进程在后台存在但没有可见主窗口 (休眠后假死或无界面孤儿僵尸进程，锁定了 Electron 单实例锁)
+                            # 此时必须清理无窗口的 Antigravity.exe 僵尸主进程 (不加 /T，绝对不误杀后台活跃的语言服务)，释放单实例锁后干净重新拉起
+                            try:
+                                cls._run_subp(["taskkill", "/F", "/IM", "Antigravity.exe"], capture_output=True)
+                                for _ in range(15):
+                                    if not cls.is_running():
+                                        break
+                                    import time
+                                    time.sleep(0.1)
+                                # 检查并清理残留的 Electron 单实例锁文件
+                                appdata_dir = os.environ.get("APPDATA")
+                                if appdata_dir:
+                                    lock_f = Path(appdata_dir) / "Antigravity" / "lockfile"
+                                    if lock_f.exists():
+                                        try:
+                                            lock_f.unlink()
+                                        except Exception:
+                                            pass
+                            except Exception:
+                                pass
 
                     # 优先尝试使用 Windows 原生 Shell 启动 (等同于双击，自动处理权限与单实例激活)
                     try:
@@ -974,6 +996,13 @@ class LocalizationManager:
                     )
                     return True, "已启动 Antigravity 客户端"
             elif sys.platform == "darwin":
+                if cls.is_running():
+                    if cls.focus_antigravity():
+                        return True, "已唤醒并聚焦 Antigravity 客户端窗口"
+                    else:
+                        cls._run_subp(["pkill", "-x", "Antigravity"], capture_output=True)
+                        import time
+                        time.sleep(0.5)
                 cls._run_subp(["open", str(target_dir)], capture_output=True)
                 return True, "已启动 Antigravity 客户端"
         except Exception as e:

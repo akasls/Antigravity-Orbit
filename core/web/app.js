@@ -1,5 +1,5 @@
 /**
- * Antigravity Orbit - 现代桌面核心控制器 (v3.3.18)
+ * Antigravity Orbit - 现代桌面核心控制器 (v3.3.19)
  * 实时自动保存、Google OAuth 网页授权、Claude 与 Gemini 双列配额看板、
  * 后台自动定时刷新与无感切号。
  */
@@ -20,6 +20,7 @@ const refreshingAccountIds = new Set();
 let oauthPollTimer = null;
 let autoSaveTimer = null;
 let autoRefreshTimer = null;
+let isAppInitializing = true;
 
 // 监听 pywebview 原生桥接就绪
 window.addEventListener('pywebviewready', () => {
@@ -129,9 +130,11 @@ async function loadInitialData() {
       // 初次载入完成，平滑关闭全屏骨架同步状态
       appState.isSyncingPool = false;
       renderAll();
+      isAppInitializing = false;
     }
   } catch (err) {
     appState.isSyncingPool = false;
+    isAppInitializing = false;
     console.error("加载初始数据失败:", err);
     showToast("连接原生后端失败: " + err, "error");
   }
@@ -990,70 +993,101 @@ window.applyCustomPrompt = applyCustomPrompt;
 /**
  * 收集当前表单数据
  */
-function gatherCurrentConfig() {
+function gatherCurrentConfig(isExplicitPerf = false) {
   const cfg = JSON.parse(JSON.stringify(appState.config || {}));
   cfg.customization = cfg.customization || {};
   cfg.channels = cfg.channels || {};
 
-  // 1. 性能汉化
-  cfg.customization.opt_gpu = getCheckbox('custom-opt-gpu');
-  cfg.customization.enable_gpu_acceleration = cfg.customization.opt_gpu;
+  // 1. 性能汉化 (仅在明确保存性能页或当前处于性能汉化标签页时才从表单采集，杜绝其他页面自动保存时因 DOM 未处于活动状态或未就绪导致覆盖为 false)
+  if (isExplicitPerf || appState.activeTab === 'perf_localization') {
+    cfg.customization.opt_gpu = getCheckbox('custom-opt-gpu');
+    cfg.customization.enable_gpu_acceleration = cfg.customization.opt_gpu;
 
-  cfg.customization.opt_max_heap = getCheckbox('custom-opt-max-heap');
-  cfg.customization.expand_v8_memory = cfg.customization.opt_max_heap;
+    cfg.customization.opt_max_heap = getCheckbox('custom-opt-max-heap');
+    cfg.customization.expand_v8_memory = cfg.customization.opt_max_heap;
 
-  cfg.customization.opt_nosleep = getCheckbox('custom-opt-nosleep');
-  cfg.customization.disable_background_throttling = cfg.customization.opt_nosleep;
+    cfg.customization.opt_nosleep = getCheckbox('custom-opt-nosleep');
+    cfg.customization.disable_background_throttling = cfg.customization.opt_nosleep;
 
-  cfg.customization.opt_telemetry = getCheckbox('custom-opt-telemetry');
-  cfg.customization.disable_telemetry = cfg.customization.opt_telemetry;
+    cfg.customization.opt_telemetry = getCheckbox('custom-opt-telemetry');
+    cfg.customization.disable_telemetry = cfg.customization.opt_telemetry;
 
-  cfg.customization.language = getSelect('custom-lang') || 'zh-CN';
-  cfg.customization.show_quota_badge = getCheckbox('custom-quota-badge');
-  cfg.customization.clean_ui = getCheckbox('custom-clean-ui');
-  cfg.customization.hide_ide_buttons = cfg.customization.clean_ui;
-  cfg.customization.clean_sidebar_and_menu = getCheckbox('custom-clean-sidebar');
-  cfg.customization.start_maximized = getCheckbox('custom-start-maximized');
-  cfg.customization.prune_guide_skills = getCheckbox('custom-prune-skills');
+    cfg.customization.language = getSelect('custom-lang') || cfg.customization.language || 'zh-CN';
+    cfg.customization.show_quota_badge = getCheckbox('custom-quota-badge');
+    cfg.customization.clean_ui = getCheckbox('custom-clean-ui');
+    cfg.customization.hide_ide_buttons = cfg.customization.clean_ui;
+    cfg.customization.clean_sidebar_and_menu = getCheckbox('custom-clean-sidebar');
+    cfg.customization.start_maximized = getCheckbox('custom-start-maximized');
+  }
+
+  // Skills 裁剪开关
+  const pruneEl = document.getElementById('custom-prune-skills');
+  if (pruneEl) {
+    cfg.customization.prune_guide_skills = pruneEl.checked;
+  }
 
   // 2. 专属网络代理
-  cfg.customization.proxy_enabled = getCheckbox('custom-proxy-enabled');
-  cfg.customization.proxy_type = getSelect('custom-proxy-type') || 'socks5';
-  cfg.customization.proxy_host = getInput('custom-proxy-host') || '127.0.0.1';
-  cfg.customization.proxy_port = parseInt(getInput('custom-proxy-port')) || 10808;
-  cfg.customization.proxy_bypass = getInput('custom-proxy-bypass');
-  const pType = (cfg.customization.proxy_type || 'socks5').toLowerCase();
-  cfg.customization.proxy_url = `${pType}://${cfg.customization.proxy_host}:${cfg.customization.proxy_port}`;
+  const proxyEnabledEl = document.getElementById('custom-proxy-enabled');
+  if (proxyEnabledEl) {
+    cfg.customization.proxy_enabled = proxyEnabledEl.checked;
+    cfg.customization.proxy_type = getSelect('custom-proxy-type') || cfg.customization.proxy_type || 'socks5';
+    cfg.customization.proxy_host = getInput('custom-proxy-host') || cfg.customization.proxy_host || '127.0.0.1';
+    cfg.customization.proxy_port = parseInt(getInput('custom-proxy-port')) || cfg.customization.proxy_port || 10808;
+    cfg.customization.proxy_bypass = getInput('custom-proxy-bypass') || cfg.customization.proxy_bypass || '';
+    const pType = (cfg.customization.proxy_type || 'socks5').toLowerCase();
+    cfg.customization.proxy_url = `${pType}://${cfg.customization.proxy_host}:${cfg.customization.proxy_port}`;
+  }
 
   // 3. 自愈与推送
-  cfg.auto_retry_on_error = getCheckbox('custom-auto-retry');
-  cfg.max_retry_count = parseInt(getInput('custom-max-retries')) || 3;
-  cfg.notify_on_quota_exhausted = getCheckbox('custom-notify-quota');
-  cfg.customization.auto_switch_on_low_quota = getCheckbox('custom-auto-switch-quota');
-  cfg.customization.low_quota_threshold_pct = parseInt(getSelect('custom-auto-switch-threshold')) || 10;
+  const autoRetryEl = document.getElementById('custom-auto-retry');
+  if (autoRetryEl) {
+    cfg.auto_retry_on_error = autoRetryEl.checked;
+    cfg.max_retry_count = parseInt(getInput('custom-max-retries')) || cfg.max_retry_count || 3;
+    cfg.notify_on_quota_exhausted = getCheckbox('custom-notify-quota');
+    cfg.customization.auto_switch_on_low_quota = getCheckbox('custom-auto-switch-quota');
+    cfg.customization.low_quota_threshold_pct = parseInt(getSelect('custom-auto-switch-threshold')) || cfg.customization.low_quota_threshold_pct || 10;
+  }
 
-  cfg.channels.telegram = {
-    enabled: getCheckbox('tg-enabled'),
-    bot_token: getInput('tg-bot-token'),
-    chat_id: getInput('tg-chat-id'),
-    proxy: getInput('tg-proxy')
-  };
+  const tgEl = document.getElementById('tg-enabled');
+  if (tgEl) {
+    cfg.channels.telegram = {
+      enabled: tgEl.checked,
+      bot_token: getInput('tg-bot-token'),
+      chat_id: getInput('tg-chat-id'),
+      proxy: getInput('tg-proxy')
+    };
+  }
 
-  cfg.channels.feishu = {
-    enabled: getCheckbox('feishu-enabled'),
-    webhook: getInput('feishu-webhook')
-  };
+  const feishuEl = document.getElementById('feishu-enabled');
+  if (feishuEl) {
+    cfg.channels.feishu = {
+      enabled: feishuEl.checked,
+      webhook: getInput('feishu-webhook')
+    };
+  }
 
-  cfg.channels.wecom = {
-    enabled: getCheckbox('wecom-enabled'),
-    webhook: getInput('wecom-webhook')
-  };
+  const wecomEl = document.getElementById('wecom-enabled');
+  if (wecomEl) {
+    cfg.channels.wecom = {
+      enabled: wecomEl.checked,
+      webhook: getInput('wecom-webhook')
+    };
+  }
 
   // 4. 系统设置
-  cfg.close_to_tray = getCheckbox('custom-close-tray');
-  cfg.customization.quota_refresh_active_interval = parseInt(getSelect('custom-quota-refresh-active')) || 60;
-  cfg.customization.quota_refresh_idle_interval = parseInt(getSelect('custom-quota-refresh-idle')) || 900;
-  cfg.customization.quota_refresh_interval = cfg.customization.quota_refresh_active_interval;
+  const closeTrayEl = document.getElementById('custom-close-tray');
+  if (closeTrayEl) {
+    cfg.close_to_tray = closeTrayEl.checked;
+  }
+  const qActiveEl = document.getElementById('custom-quota-refresh-active');
+  if (qActiveEl) {
+    cfg.customization.quota_refresh_active_interval = parseInt(qActiveEl.value) || 60;
+    cfg.customization.quota_refresh_interval = cfg.customization.quota_refresh_active_interval;
+  }
+  const qIdleEl = document.getElementById('custom-quota-refresh-idle');
+  if (qIdleEl) {
+    cfg.customization.quota_refresh_idle_interval = parseInt(qIdleEl.value) || 900;
+  }
 
   return cfg;
 }
@@ -1071,6 +1105,10 @@ function triggerAutoSave(debounceMs = 0) {
 }
 
 async function handleAutoSaveConfig() {
+  if (isAppInitializing) {
+    console.warn("应用正在初始化中，跳过自动保存以防配置覆盖");
+    return;
+  }
   try {
     const updatedCfg = gatherCurrentConfig();
     if (window.pywebview && window.pywebview.api) {
@@ -1999,7 +2037,7 @@ async function handlePerfSaveAndRestart() {
   if (btn) btn.classList.add('loading');
   showToast("正在保存补丁配置并重启 Antigravity...", "warning");
   try {
-    const cfg = gatherCurrentConfig();
+    const cfg = gatherCurrentConfig(true);
     const res = await window.pywebview.api.save_and_restart(cfg);
     showToast(res.message, res.success ? "success" : "error");
     const data = await window.pywebview.api.get_initial_data();

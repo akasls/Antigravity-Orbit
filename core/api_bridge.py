@@ -24,6 +24,7 @@ from core.config import (
     BASE_DIR,
     load_config,
     save_config,
+    deep_merge,
 )
 from core.localization import LocalizationManager
 from core.autostart import AutostartManager
@@ -152,7 +153,7 @@ class OrbitApi:
         """保存配置并实时生效 (支持正在运行中的客户端秒级动态生效代理)"""
         try:
             cfg = load_config()
-            cfg.update(new_cfg)
+            deep_merge(cfg, new_cfg)
 
             # 自动维护 proxy_url
             custom = cfg.get("customization", {})
@@ -230,7 +231,7 @@ class OrbitApi:
         """保存「性能汉化」各项设定，并重启 Antigravity 客户端以注入生效"""
         try:
             cfg = load_config()
-            cfg.update(new_cfg)
+            deep_merge(cfg, new_cfg)
 
             custom = cfg.get("customization", {})
             if custom.get("proxy_host") and custom.get("proxy_port"):

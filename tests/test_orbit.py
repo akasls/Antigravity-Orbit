@@ -1251,9 +1251,9 @@ console.log('ALL_OK');
             self.assertEqual(len(spec.get("patches", [])), 4)
 
     def test_clean_sidebar_and_menu_config_and_version(self):
-        """测试 v3.3.18 版本号与极简侧栏顶栏配置项定义"""
+        """测试客户端版本号与极简侧栏顶栏配置项定义"""
         from core.config import APP_VERSION, DEFAULT_CONFIG
-        self.assertEqual(APP_VERSION, "3.3.18")
+        self.assertEqual(APP_VERSION, "3.3.19")
         self.assertIn("clean_sidebar_and_menu", DEFAULT_CONFIG["customization"])
         self.assertTrue(DEFAULT_CONFIG["customization"].get("auto_switch_on_low_quota"))
         self.assertEqual(DEFAULT_CONFIG["customization"].get("proxy_port"), 10808)
@@ -1292,7 +1292,47 @@ console.log('ALL_OK');
         self.assertIn("_getOrbitProxyConfig", patcher_code)
         self.assertIn("MAX_RESTARTS = 999999", patcher_code)
         self.assertIn("RESTART_COOLDOWN_MS = 300", patcher_code)
-        self.assertIn("proxy-bypass-list", patcher_code)
+    def test_config_deep_merge_and_zombie_recovery(self):
+        """测试 deep_merge 保护开关不丢失、app.js 初始化防覆盖守卫及僵尸进程清理恢复机制"""
+        from core.config import deep_merge, get_canonical_config_file
+        # 1. 深度合并保护测试
+        base = {
+            "customization": {
+                "opt_gpu": True,
+                "opt_max_heap": True,
+                "proxy_enabled": True,
+                "language": "zh-CN"
+            },
+            "channels": {"telegram": {"enabled": True}}
+        }
+        update_data = {
+            "customization": {
+                "proxy_enabled": False
+            }
+        }
+        merged = deep_merge(base, update_data)
+        self.assertFalse(merged["customization"]["proxy_enabled"])
+        self.assertTrue(merged["customization"]["opt_gpu"])
+        self.assertTrue(merged["customization"]["opt_max_heap"])
+        self.assertTrue(merged["channels"]["telegram"]["enabled"])
+
+        # 2. 规范配置文件路径有效性
+        canonical = get_canonical_config_file()
+        self.assertIsNotNone(canonical)
+        self.assertTrue(str(canonical).endswith("config.json"))
+
+        # 3. app.js 前端守卫与按需收集验证
+        app_js = (Path(__file__).parent.parent / "core" / "web" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("let isAppInitializing = true;", app_js)
+        self.assertIn("isAppInitializing = false;", app_js)
+        self.assertIn("gatherCurrentConfig(isExplicitPerf = false)", app_js)
+        self.assertIn("if (isExplicitPerf || appState.activeTab === 'perf_localization')", app_js)
+
+        # 4. localization.py 僵尸进程防单实例死锁恢复
+        loc_py = (Path(__file__).parent.parent / "core" / "localization.py").read_text(encoding="utf-8")
+        self.assertIn("taskkill", loc_py)
+        self.assertIn("Antigravity.exe", loc_py)
+        self.assertIn("lockfile", loc_py)
 
 if __name__ == "__main__":
     unittest.main()

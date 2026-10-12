@@ -52,15 +52,45 @@ def get_resource_dir() -> Path:
         return Path(sys._MEIPASS)
     return Path(__file__).resolve().parent.parent
 
+def get_canonical_config_file() -> Path:
+    """获取系统规范唯一的持久化配置文件路径 (彻底解决多处候选配置文件抢占覆盖问题)"""
+    if platform.system().lower() == "windows":
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            p = Path(appdata) / "Antigravity-Orbit" / "config.json"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            return p
+        return Path.home() / ".antigravity-orbit" / "config.json"
+    else:
+        p = Path.home() / ".antigravity-orbit" / "config.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+
+
+def deep_merge(target: dict, source: dict) -> dict:
+    """
+    深度合并字典，递归保留 target 中的已有字段，防止浅层覆盖导致开关/字典字段丢失。
+    返回合并后的 target。
+    """
+    if not isinstance(target, dict) or not isinstance(source, dict):
+        return copy.deepcopy(source)
+    for k, v in source.items():
+        if k in target and isinstance(target[k], dict) and isinstance(v, dict):
+            deep_merge(target[k], v)
+        else:
+            target[k] = copy.deepcopy(v)
+    return target
+
+
 # 本地数据存储路径
 BASE_DIR = get_app_dir()
 RESOURCE_DIR = get_resource_dir()
-CONFIG_FILE = BASE_DIR / "config.json"
+CONFIG_FILE = get_canonical_config_file()
 STATE_FILE = BASE_DIR / "watch_state.json"
 LOG_FILE = BASE_DIR / "watch_log.txt"
 
 # 客户端全局版本号
-APP_VERSION = "3.3.18"
+APP_VERSION = "3.3.19"
 
 DEFAULT_CONFIG = {
     "enabled": True,
@@ -160,25 +190,42 @@ def get_config_search_paths() -> list:
 
 
 def find_active_config_file() -> Path:
-    """寻找实际存在且有有效自定义内容的配置文件，若无则返回默认存储路径"""
-    # 优先找存在且包含自定义配置内容的文件
+    """寻找实际生效的配置文件，始终保证规范路径唯一性并自动平滑迁移旧路径配置"""
+    canonical = get_canonical_config_file()
+    if canonical.exists() and canonical.is_file():
+        try:
+            content = canonical.read_text(encoding="utf-8").strip()
+            if content and content != "{}":
+                return canonical
+        except Exception:
+            pass
+
+    # 若规范路径尚未建立或为空，从候选路径寻找最佳历史配置迁移过来
+    best_candidate = None
     for p in get_config_search_paths():
-        if p.exists() and p.is_file():
+        if p != canonical and p.exists() and p.is_file():
             try:
                 content = p.read_text(encoding="utf-8").strip()
                 if content and content != "{}":
                     data = json.loads(content)
                     if data.get("channels") or data.get("customization"):
-                        return p
+                        best_candidate = p
+                        break
+                    elif best_candidate is None:
+                        best_candidate = p
             except Exception:
                 pass
 
-    # 其次寻找任意存在的 config.json
-    for p in get_config_search_paths():
-        if p.exists() and p.is_file():
-            return p
+    if best_candidate and best_candidate != canonical:
+        try:
+            import shutil
+            canonical.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(best_candidate, canonical)
+            return canonical
+        except Exception:
+            return best_candidate
 
-    return get_app_dir() / "config.json"
+    return canonical
 
 
 def is_placeholder(val: any) -> bool:
@@ -199,22 +246,23 @@ def load_config() -> dict:
                 loaded = json.load(f)
                 if isinstance(loaded, dict):
                     user_config = loaded
-                    merged.update(user_config)
-                    # 合并 channels
-                    if isinstance(user_config.get("channels"), dict):
-                        for k, v in user_config["channels"].items():
-                            if isinstance(v, dict) and k in merged["channels"] and isinstance(merged["channels"][k], dict):
-                                merged["channels"][k].update(v)
-                            else:
-                                merged["channels"][k] = v
-                    # 合并 customization
-                    if isinstance(user_config.get("customization"), dict):
-                        merged["customization"] = copy.deepcopy(DEFAULT_CONFIG["customization"])
-                        merged["customization"].update(user_config["customization"])
-                        if "quota_refresh_active_interval" not in user_config["customization"]:
-                            merged["customization"]["quota_refresh_active_interval"] = user_config["customization"].get("quota_refresh_interval", 60)
-                        if "quota_refresh_idle_interval" not in user_config["customization"]:
-                            merged["customization"]["quota_refresh_idle_interval"] = 900
+                    deep_merge(merged, user_config)
+                    # 确保别名开关双向联动一致，杜绝不同模块读取单一别名时失效
+                    custom = merged.get("customization", {})
+                    for a, b in [
+                        ("opt_gpu", "enable_gpu_acceleration"),
+                        ("opt_max_heap", "expand_v8_memory"),
+                        ("opt_nosleep", "disable_background_throttling"),
+                        ("opt_telemetry", "disable_telemetry"),
+                        ("clean_ui", "hide_ide_buttons"),
+                    ]:
+                        if custom.get(a) or custom.get(b):
+                            custom[a] = True
+                            custom[b] = True
+                    if "quota_refresh_active_interval" not in user_config.get("customization", {}):
+                        merged["customization"]["quota_refresh_active_interval"] = user_config.get("customization", {}).get("quota_refresh_interval", 60)
+                    if "quota_refresh_idle_interval" not in user_config.get("customization", {}):
+                        merged["customization"]["quota_refresh_idle_interval"] = 900
         except Exception:
             merged = copy.deepcopy(DEFAULT_CONFIG)
 
@@ -275,28 +323,43 @@ def save_config(cfg: dict):
         p_port = custom.get("proxy_port")
         custom["proxy_url"] = f"{p_type}://{p_host}:{p_port}"
 
-    active_file = find_active_config_file()
-    active_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(active_file, "w", encoding="utf-8") as f:
+    canonical_file = get_canonical_config_file()
+    canonical_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(canonical_file, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
-    # 镜像同步到源码/应用目录、AppData 及全局家目录，防止不同启动方式下配置不一致
+    # 镜像同步到源码/应用目录、AppData 及全局家目录与安装目录，彻底杜绝不同工作目录/启动方式下读取到旧配置
     sync_targets = [
+        canonical_file,
         BASE_DIR / "config.json",
         Path.home() / ".antigravity-orbit" / "config.json",
+        Path.cwd() / "config.json",
+        Path(__file__).resolve().parent.parent / "config.json",
     ]
+    if getattr(sys, "frozen", False):
+        exe_parent = Path(sys.executable).resolve().parent
+        sync_targets.append(exe_parent / "config.json")
     if platform.system().lower() == "windows":
         appdata = os.environ.get("APPDATA")
         if appdata:
             sync_targets.append(Path(appdata) / "Antigravity-Orbit" / "config.json")
+        for drive in ["C", "D", "E"]:
+            cand = Path(f"{drive}:/Antigravity-Orbit/config.json")
+            if cand.exists():
+                sync_targets.append(cand)
+
+    seen = set()
     for target in sync_targets:
-        if target != active_file:
-            try:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with open(target, "w", encoding="utf-8") as f:
-                    json.dump(cfg, f, ensure_ascii=False, indent=2)
-            except Exception:
-                pass
+        try:
+            t_key = str(target.resolve()) if target.exists() else str(target)
+            if t_key in seen:
+                continue
+            seen.add(t_key)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with open(target, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
 
 def load_state() -> dict:
     if STATE_FILE.exists():
