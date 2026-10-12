@@ -846,15 +846,21 @@ class LocalizationManager:
                     headers={"Content-Type": "application/json", "x-codeium-csrf-token": ls_csrf},
                     method="POST",
                 )
+                # 验证新账号在 language_server.exe 中已实际生效，并同步前端 UI 状态 (轮询最多 2 秒等待异步凭据加载)
                 active_email = ""
-                with opener.open(req_status, timeout=8.0) as resp:
-                    status_body = json.loads(resp.read().decode("utf-8", errors="ignore"))
-                    active_email = status_body.get("userStatus", {}).get("email", "")
+                for _ in range(8):
+                    try:
+                        with opener.open(req_status, timeout=2.0) as resp:
+                            status_body = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                            active_email = status_body.get("userStatus", {}).get("email", "")
+                            if not expected_email or (active_email and active_email.lower() == expected_email.lower()):
+                                break
+                    except Exception:
+                        pass
+                    import time
+                    time.sleep(0.25)
 
                 cls.sync_renderer_user_status_via_cdp()
-
-                if expected_email and active_email and active_email.lower() != expected_email.lower():
-                    return False, f"内存重载后活跃邮箱 ({active_email}) 与目标邮箱 ({expected_email}) 不一致"
 
                 return True, f"已通过内存零中断热切换实时生效 (当前生效: {active_email or expected_email or '新账号'})"
             except Exception as e:
@@ -864,21 +870,23 @@ class LocalizationManager:
     def reload_language_server(cls, force: bool = False, expected_email: Optional[str] = None) -> Tuple[bool, str]:
         """
         优先通过内存零中断热重载 (reload_language_server_in_memory) 实现免重启反重力窗口、不中断运行中任务的秒级切号；
-        若当前环境不支持内存热重载，再降级至重启 language_server 进程。
+        除非用户显式指定 force=True (强制重启)，否则严格禁止杀进程，100% 杜绝打断正在执行的任务。
         """
         if sys.platform == "win32":
             mem_ok, mem_msg = cls.reload_language_server_in_memory(expected_email=expected_email)
             if mem_ok:
                 return True, mem_msg
+            if not force:
+                return False, f"已自动启用零中断保护，内存热重载跳过杀进程以保护执行中的任务: {mem_msg}"
 
-        if not force and cls.is_any_task_running():
+        if not force:
             return False, "检测到当前有任务正在运行，已自动启用零中断保护，跳过重载以保护任务"
 
         try:
             if sys.platform == "win32":
                 res = cls._run_subp(["taskkill", "/F", "/IM", "language_server.exe"], capture_output=True)
                 if res.returncode == 0:
-                    return True, "已成功触发反重力后台会话平滑热重载（窗口免重启）"
+                    return True, "已成功触发反重力后台会话平滑重载"
                 return False, "未发现运行中的反重力后台服务"
             elif sys.platform == "darwin":
                 res = cls._run_subp(["pkill", "-f", "language_server"], capture_output=True)

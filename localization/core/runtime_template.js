@@ -620,15 +620,17 @@
                     display: none !important;
                 }
 
-                /* 2. 隐藏左上角与侧边栏多余操作图标 (展开收缩侧栏、搜索对话、反重力图标、前进后退) - 严格保留左上角 Antigravity 标题与设置按钮！ */
+                /* 2. 隐藏左侧边栏顶部浮动工具栏容器与多余图标 (展开收缩侧栏、搜索对话、反重力图标、前进后退) */
+                div.absolute.left-0.top-0,
                 [data-testid="sidebar-toggle"],
                 [data-testid="sidebar-search-button"],
-                [data-testid="app-icon-new-conversation-button"],
-                div.absolute.left-0.top-0 div.flex.items-center.gap-1 {
+                [data-testid="app-icon-new-conversation-button"] {
                     display: none !important;
                 }
 
-                /* 3. 隐藏侧边栏快捷操作：新建对话、对话历史、计划任务、个性化定制 */
+                /* 3. 隐藏侧边栏顶部原第一行占位空白与快捷操作，消除项目列表上方一切多余留白！ */
+                .bg-sidebar.flex-col > div.shrink-0:first-child,
+                .bg-sidebar > div.shrink-0.flex.items-center.pr-2,
                 .bg-sidebar.flex-col > div:has([data-testid="new-conversation-button"]),
                 .bg-sidebar.flex-col > div:has([data-testid="history-button"]),
                 .bg-sidebar.flex-col > div:has([data-testid="automations-button"]),
@@ -650,14 +652,9 @@
                     display: none !important;
                 }
 
-                /* 5. 确保左侧栏顶部占位保留 40px 高度，保证“项目列表”不被左上角标题与设置遮挡 */
-                .bg-sidebar.flex-col > div.shrink-0:first-child {
-                    height: 40px !important;
-                    min-height: 40px !important;
-                    display: flex !important;
-                    visibility: hidden !important;
-                    margin-bottom: 0 !important;
-                    padding: 0 !important;
+                /* 5. 消除项目列表上方多余的留白，紧凑优雅展示项目列表 */
+                .bg-sidebar.flex-col > div.flex-1.min-h-0 {
+                    padding-top: 8px !important;
                 }
 
                 /* 6. 顶部设置按钮精致微调 */

@@ -1269,10 +1269,10 @@ console.log('ALL_OK');
         if (!runtime.includes('ISOLATED_UI_WORDS')) throw new Error('ISOLATED_UI_WORDS missing');
         if (!runtime.includes('injectCleanSidebarStyle')) throw new Error('injectCleanSidebarStyle missing');
         if (!runtime.includes('mountTopSettingsButton')) throw new Error('mountTopSettingsButton missing');
-        if (!runtime.includes('div.absolute.left-0.top-0 div.flex.items-center.gap-1')) {
-            throw new Error('Floating toolbar button group selector missing');
+        if (!runtime.includes('div.absolute.left-0.top-0')) {
+            throw new Error('Floating toolbar container selector missing');
         }
-        if (!runtime.includes('titleSpan')) throw new Error('titleSpan handling missing');
+        if (!runtime.includes('padding-top: 8px')) throw new Error('Compact padding-top missing');
         if (!runtime.includes('sidebar-search-button')) throw new Error('sidebar-search-button selector missing');
         
         // 验证关键词清单
