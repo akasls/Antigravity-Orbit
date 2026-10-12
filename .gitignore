@@ -1,6 +1,8 @@
 # 敏感凭据与本地配置文件 (切勿上传至 GitHub)
 config.json
 **/config.json
+orbit_accounts.json
+**/orbit_accounts.json
 telegram.json
 .env
 *.local.json
