@@ -615,20 +615,16 @@
             const style = (doc.ownerDocument || document).createElement('style');
             style.id = 'antigravity-clean-sidebar-style';
             style.textContent = `
-                /* 1. 隐藏顶部菜单栏中的 文件、视图、窗口 菜单项 (保留第一个 Antigravity 及新设置按钮与额度胶囊) */
+                /* 1. 隐藏顶部原生菜单栏中的 文件、视图、窗口 菜单项 (保留第一个 Antigravity 及新设置按钮与额度胶囊) */
                 [data-testid="title-menu-bar"] > div.relative:not(:first-child):not(#antigravity-top-settings-wrapper):not(#antigravity-quota-root) {
                     display: none !important;
                 }
 
-                /* 2. 隐藏左侧边栏顶部第一行浮动工具栏：反重力图标、侧栏展开/折叠、前进/后退、搜索对话/后台面板图标 */
-                div.absolute.left-0.top-0:has([data-testid="app-icon-new-conversation-button"]),
-                div.absolute.left-0.top-0:has([data-testid="sidebar-toggle"]),
-                div.absolute.left-0.top-0:has([data-testid="sidebar-search-button"]),
-                [data-testid="app-icon-new-conversation-button"],
+                /* 2. 隐藏左上角与侧边栏多余操作图标 (展开收缩侧栏、搜索对话、反重力图标、前进后退) - 严格保留左上角 Antigravity 标题与设置按钮！ */
                 [data-testid="sidebar-toggle"],
                 [data-testid="sidebar-search-button"],
-                .bg-sidebar.flex-col > div.shrink-0:first-child,
-                .bg-sidebar > div.shrink-0.flex.items-center.pr-2 {
+                [data-testid="app-icon-new-conversation-button"],
+                div.absolute.left-0.top-0 div.flex.items-center.gap-1 {
                     display: none !important;
                 }
 
@@ -654,13 +650,25 @@
                     display: none !important;
                 }
 
-                /* 5. 顶部设置按钮精致微调 */
+                /* 5. 确保左侧栏顶部占位保留 40px 高度，保证“项目列表”不被左上角标题与设置遮挡 */
+                .bg-sidebar.flex-col > div.shrink-0:first-child {
+                    height: 40px !important;
+                    min-height: 40px !important;
+                    display: flex !important;
+                    visibility: hidden !important;
+                    margin-bottom: 0 !important;
+                    padding: 0 !important;
+                }
+
+                /* 6. 顶部设置按钮精致微调 */
                 #antigravity-top-settings-wrapper {
                     display: inline-flex;
                     align-items: center;
                     position: relative;
                     user-select: none;
                     -webkit-app-region: no-drag;
+                    app-region: no-drag;
+                    margin-left: 4px;
                 }
                 #antigravity-top-settings-btn {
                     display: inline-flex;
@@ -689,6 +697,7 @@
     }
 
     function mountTopSettingsButton(doc = document) {
+        if (!doc) return;
         // 若侧边栏当前处于收缩状态，先自动展开保证项目与对话列表正常可视
         try {
             const toggleBtn = doc.querySelector('[data-testid="sidebar-toggle"]');
@@ -697,12 +706,15 @@
             }
         } catch (e) {}
 
-        const titleBar = doc.querySelector('[data-testid="title-menu-bar"]');
-        if (!titleBar) return;
         if (doc.getElementById('antigravity-top-settings-wrapper')) return;
 
-        const firstItem = titleBar.querySelector('div.relative');
-        if (!firstItem) return;
+        // 优先定位左上角浮动栏中的标题 span (Launchpad / Jetski 架构)
+        const titleSpan = doc.querySelector('div.absolute.left-0.top-0 span.font-semibold') ||
+                          Array.from(doc.querySelectorAll('div.absolute.left-0.top-0 *')).find(el => (el.textContent || '').trim() === 'Antigravity');
+        // 兼容定位原生桌面菜单栏 (Native Menu Bar 架构)
+        const titleBar = doc.querySelector('[data-testid="title-menu-bar"]');
+
+        if (!titleSpan && !titleBar) return;
 
         const isTw = typeof IS_TRADITIONAL !== 'undefined' && IS_TRADITIONAL;
         const wrapper = doc.createElement('div');
@@ -718,7 +730,13 @@
             </button>
         `;
 
-        firstItem.after(wrapper);
+        if (titleSpan) {
+            titleSpan.after(wrapper);
+        } else if (titleBar) {
+            const firstItem = titleBar.querySelector('div.relative');
+            if (firstItem) firstItem.after(wrapper);
+            else titleBar.appendChild(wrapper);
+        }
 
         const btn = wrapper.querySelector('#antigravity-top-settings-btn');
         btn.addEventListener('click', (e) => {
