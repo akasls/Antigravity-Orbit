@@ -35,6 +35,9 @@
     "max_retry_count": 3,
     "notify_on_quota_exhausted": false,
     "notify_on_max_retry_failed": false,
+    "auto_switch_on_low_quota": true,
+    "low_quota_threshold_pct": 10,
+    "auto_switch_cooldown_sec": 60,
     "start_maximized": false
   },
   "channels": {

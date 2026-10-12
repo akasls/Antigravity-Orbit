@@ -60,7 +60,7 @@ STATE_FILE = BASE_DIR / "watch_state.json"
 LOG_FILE = BASE_DIR / "watch_log.txt"
 
 # 客户端全局版本号
-APP_VERSION = "3.3.16"
+APP_VERSION = "3.3.17"
 
 DEFAULT_CONFIG = {
     "enabled": True,
@@ -98,7 +98,7 @@ DEFAULT_CONFIG = {
         "auto_retry_on_error": False,        # 任务异常自动重试 (意外出错时自动点击重试继续工作)
         "notify_on_quota_exhausted": False,  # 额度用尽告警 (发送"任务中断：额度已耗尽")
         "notify_on_max_retry_failed": False, # 重试超限告警 (达到最大重试次数发送"任务失败")
-        "auto_switch_on_low_quota": False,   # 低额度自动热切换账号 (额度低于阈值时自动免重启切换至健康账号)
+        "auto_switch_on_low_quota": True,    # 低额度自动热切换账号 (额度低于阈值时自动免重启切换至健康账号)
         "low_quota_threshold_pct": 10,       # 触发自动切号的 5h 剩余额度百分比阈值 (默认 10%)
         "auto_switch_cooldown_sec": 60,      # 自动切号保护冷却 (秒，默认 60 秒，防止死循环切换)
         "start_maximized": False             # 启动时自动最大化反重力客户端窗口
@@ -124,6 +124,12 @@ DEFAULT_CONFIG = {
 def get_config_search_paths() -> list:
     """返回配置文件的候选探测路径列表，按优先级排序"""
     paths = []
+    # 0. Windows AppData 目录 (保证打包版与源码版共享最新用户设定)
+    if platform.system().lower() == "windows":
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            paths.append(Path(appdata) / "Antigravity-Orbit" / "config.json")
+
     # 1. 应用程序自身目录及 dist 目录
     app_dir = get_app_dir()
     paths.append(app_dir / "config.json")
@@ -274,14 +280,23 @@ def save_config(cfg: dict):
     with open(active_file, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
-    # 镜像同步到全局家目录，防止换路径丢失凭据
-    try:
-        global_file = Path.home() / ".antigravity-orbit" / "config.json"
-        global_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(global_file, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+    # 镜像同步到源码/应用目录、AppData 及全局家目录，防止不同启动方式下配置不一致
+    sync_targets = [
+        BASE_DIR / "config.json",
+        Path.home() / ".antigravity-orbit" / "config.json",
+    ]
+    if platform.system().lower() == "windows":
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            sync_targets.append(Path(appdata) / "Antigravity-Orbit" / "config.json")
+    for target in sync_targets:
+        if target != active_file:
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with open(target, "w", encoding="utf-8") as f:
+                    json.dump(cfg, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
 
 def load_state() -> dict:
     if STATE_FILE.exists():

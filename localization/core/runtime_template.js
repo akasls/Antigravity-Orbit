@@ -1222,18 +1222,35 @@
         isRetrying: false,
         consecutiveWorkingSeconds: 0,
         hasNotifiedQuota: false,
-        hasNotifiedMaxRetries: false
+        hasNotifiedMaxRetries: false,
+        lastAutoSwitchTs: 0
     };
 
     function checkQuotaLimits(data) {
         const cfg = (typeof CUSTOM_CONFIG !== 'undefined' ? CUSTOM_CONFIG : {}) || {};
-        if (cfg.notify_on_quota_exhausted === false) return;
+        const autoSwitchEnabled = cfg.auto_switch_on_low_quota !== false;
+        const notifyExhausted = cfg.notify_on_quota_exhausted === true;
+        if (!autoSwitchEnabled && !notifyExhausted) return;
 
         const info = parseQuotaBuckets(data);
+        const threshold = (typeof cfg.low_quota_threshold_pct === 'number') ? cfg.low_quota_threshold_pct : 10;
+        const min5h = Math.min(info.gemini.pct5h, info.claude.pct5h);
         const geminiExhausted = (info.gemini.pct5h === 0 || info.gemini.pctWeekly === 0);
         const claudeExhausted = (info.claude.pct5h === 0 || info.claude.pctWeekly === 0);
 
-        if (geminiExhausted || claudeExhausted) {
+        if (autoSwitchEnabled && (min5h <= threshold || geminiExhausted || claudeExhausted)) {
+            const now = Date.now();
+            const cooldownMs = ((typeof cfg.auto_switch_cooldown_sec === 'number') ? cfg.auto_switch_cooldown_sec : 60) * 1000;
+            if (now - healingState.lastAutoSwitchTs >= cooldownMs) {
+                healingState.lastAutoSwitchTs = now;
+                const detail = `当前活跃账号 5H 剩余额度已降至 ${min5h}% (阈值: ${threshold}%)`;
+                console.warn('[AutoHealing] 检测到低额度阈值触发，请求 Orbit 内存级热切换:', detail);
+                sendOrbitNotification('低额度预警：触发自动热切换', detail);
+                setTimeout(() => { fetchQuotaSummary(); }, 2500);
+            }
+        }
+
+        if (notifyExhausted && (geminiExhausted || claudeExhausted)) {
             if (!healingState.hasNotifiedQuota) {
                 healingState.hasNotifiedQuota = true;
                 const detail = geminiExhausted
@@ -1411,12 +1428,16 @@
         return latestQuotaData;
     }
 
+    try {
+        window.__agRefreshQuota = fetchQuotaSummary;
+    } catch (e) {}
+
     /**
      * 确保额度定时轮询器启动 (完全脱离 Orbit 客户端独立工作)
      */
     function ensureQuotaPolling() {
         const cfg = (typeof CUSTOM_CONFIG !== 'undefined' ? CUSTOM_CONFIG : {}) || {};
-        if (!cfg.show_quota_badge) return;
+        if (!cfg.show_quota_badge && cfg.auto_switch_on_low_quota === false && !cfg.notify_on_quota_exhausted) return;
 
         if (!quotaPollTimer) {
             const intervalSec = (cfg.quota_refresh_interval && cfg.quota_refresh_interval >= 5) ? cfg.quota_refresh_interval : 60;
@@ -1510,6 +1531,8 @@
 
         if (cfg.show_quota_badge === true) {
             mountQuotaBadge();
+        } else if (cfg.auto_switch_on_low_quota !== false || cfg.notify_on_quota_exhausted === true) {
+            ensureQuotaPolling();
         }
 
         const observer = new MutationObserver((mutations) => {

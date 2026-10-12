@@ -148,7 +148,11 @@ class LocalizationManager:
             cmd.append("--tw")
         elif en:
             cmd.append("--en")
-        if CONFIG_FILE.exists():
+        from core.config import find_active_config_file
+        active_cfg = find_active_config_file()
+        if active_cfg.exists():
+            cmd.extend(["--config-file", str(active_cfg)])
+        elif CONFIG_FILE.exists():
             cmd.extend(["--config-file", str(CONFIG_FILE)])
         if install_dir:
             cmd.extend(["--install-dir", install_dir])
@@ -214,12 +218,14 @@ class LocalizationManager:
                 for _ in range(20):
                     if not cls.is_running():
                         break
+                    import time
                     time.sleep(0.15)
             elif sys.platform == "darwin":
                 cls._run_subp(["pkill", "-f", "Antigravity"], capture_output=True)
                 for _ in range(20):
                     if not cls.is_running():
                         break
+                    import time
                     time.sleep(0.15)
             return True
         except Exception:
@@ -267,14 +273,556 @@ class LocalizationManager:
         except Exception:
             return False
 
+    _ls_patch_cache: Dict[Tuple[str, int, int], Dict[str, Any]] = {}
+    _in_memory_reload_lock = None
+
     @classmethod
-    def reload_language_server(cls, force: bool = False) -> Tuple[bool, str]:
+    def _get_reload_lock(cls):
+        if cls._in_memory_reload_lock is None:
+            import threading
+            cls._in_memory_reload_lock = threading.Lock()
+        return cls._in_memory_reload_lock
+
+    @classmethod
+    def _resolve_ls_hotreload_patches(cls, exe_path: Path) -> Optional[Dict[str, Any]]:
         """
-        通过平滑重载反重力后台服务 (language_server.exe)，实现免重启反重力窗口无感热切换账号。
-        Antigravity 宿主窗口保持打开，Electron 主进程会自动拉起新实例并读取系统凭据管理器中的新 Token，
-        随后自动刷新界面中的用户状态与额度。
-        【零中断安全锁】：默认情况下若探测到有任务（长任务或短任务）正在运行，严格禁止终止服务，保护任务完整执行。
+        动态解析 language_server.exe 的 Go 1.20+ pclntab 符号表，
+        定位 (*AuthClient).Logout 与 (*Server).AuthLogout 的热重载补丁偏移点。
+        结果按 (exe_path, mtime_ns, size) 缓存，首次耗时 ~20ms，后续 0ms。
         """
+        try:
+            import struct
+            import re
+
+            st = exe_path.stat()
+            cache_key = (str(exe_path), st.st_mtime_ns, st.st_size)
+            if cache_key in cls._ls_patch_cache:
+                return cls._ls_patch_cache[cache_key]
+
+            data = exe_path.read_bytes()
+            e_lfanew = struct.unpack_from("<I", data, 0x3C)[0]
+            size_opt_hdr = struct.unpack_from("<H", data, e_lfanew + 20)[0]
+            sec_off = e_lfanew + 24 + size_opt_hdr
+            _, _, text_rva, _, text_raw_ptr = struct.unpack_from("<8sIIII", data, sec_off)
+
+            pcln_pos = None
+            nfunc = 0
+            text_start = 0
+            funcname_offset = 0
+            pcln_offset = 0
+            for m in re.finditer(b"\xf1\xff\xff\xff\x00\x00\x01\x08", data):
+                pos = m.start()
+                nf, _, ts, fn_off, _, _, _, pc_off = struct.unpack_from("<QQQQQQQQ", data, pos + 8)
+                if 1000 < nf < 500000:
+                    pcln_pos = pos
+                    nfunc = nf
+                    text_start = ts
+                    funcname_offset = fn_off
+                    pcln_offset = pc_off
+                    break
+
+            if pcln_pos is None:
+                return None
+
+            ftab_off = pcln_pos + pcln_offset
+            funcnames_base = pcln_pos + funcname_offset
+
+            target_suffixes = {
+                "authclient.(*AuthClient).Logout": "logout",
+                "authclient.(*AuthClient).tryRestoreToken": "restore",
+                "codeassistclient.(*AntigravityHubAuthProvider).SetWIFProvider": "setwif",
+                "authclient.(*AuthClient).clearEnterpriseMetadata": "clearent",
+                "language_server.(*Server).AuthLogout": "authlogout",
+                "language_server.(*Server).stopRemoteControlConnectionAfterLogout": "stopremote",
+            }
+            found_funcs: Dict[str, Tuple[int, int]] = {}
+
+            for i in range(nfunc):
+                entry_rel, func_off = struct.unpack_from("<II", data, ftab_off + i * 8)
+                _, name_off = struct.unpack_from("<Ii", data, ftab_off + func_off)
+                end_str = data.find(b"\x00", funcnames_base + name_off)
+                fname = data[funcnames_base + name_off:end_str].decode("utf-8", errors="ignore")
+                for suffix, key in target_suffixes.items():
+                    if fname.endswith(suffix):
+                        next_entry_rel, _ = struct.unpack_from("<II", data, ftab_off + (i + 1) * 8)
+                        va = text_start + entry_rel
+                        sz = next_entry_rel - entry_rel
+                        found_funcs[key] = (va, sz)
+                        break
+                if len(found_funcs) == len(target_suffixes):
+                    break
+
+            if len(found_funcs) < len(target_suffixes):
+                return None
+
+            logout_va, logout_sz = found_funcs["logout"]
+            restore_va, _ = found_funcs["restore"]
+            setwif_va, _ = found_funcs["setwif"]
+            clearent_va, _ = found_funcs["clearent"]
+            authlogout_va, authlogout_sz = found_funcs["authlogout"]
+            stopremote_va, _ = found_funcs["stopremote"]
+
+            logout_foff = text_raw_ptr + (logout_va - text_start)
+            logout_bytes = data[logout_foff:logout_foff + logout_sz]
+
+            setwif_patch = None
+            clearent_patch = None
+            cleartoken_patch = None
+
+            for off in range(len(logout_bytes) - 5):
+                if logout_bytes[off] == 0xE8:
+                    rel = struct.unpack_from("<i", logout_bytes, off + 1)[0]
+                    call_va = logout_va + off
+                    dest_va = call_va + 5 + rel
+                    if dest_va == setwif_va and setwif_patch is None:
+                        setwif_patch = (call_va, logout_bytes[off:off + 5], b"\x90\x90\x90\x90\x90")
+                    elif dest_va == clearent_va and clearent_patch is None:
+                        new_rel = restore_va - (call_va + 5)
+                        clearent_patch = (call_va, logout_bytes[off:off + 5], b"\xe8" + struct.pack("<i", new_rel))
+
+            idx_clear = logout_bytes.find(b"\x48\x8b\x4a\x28\xff\xd1")
+            if idx_clear != -1:
+                call_rcx_va = logout_va + idx_clear + 4
+                cleartoken_patch = (call_rcx_va, b"\xff\xd1", b"\x31\xc0")
+
+            authlogout_foff = text_raw_ptr + (authlogout_va - text_start)
+            authlogout_bytes = data[authlogout_foff:authlogout_foff + authlogout_sz]
+            stopremote_patch = None
+            for off in range(len(authlogout_bytes) - 5):
+                if authlogout_bytes[off] == 0xE8:
+                    rel = struct.unpack_from("<i", authlogout_bytes, off + 1)[0]
+                    call_va = authlogout_va + off
+                    dest_va = call_va + 5 + rel
+                    if dest_va == stopremote_va:
+                        stopremote_patch = (call_va, authlogout_bytes[off:off + 5], b"\x90\x90\x90\x90\x90")
+                        break
+
+            if not (setwif_patch and clearent_patch and cleartoken_patch and stopremote_patch):
+                return None
+
+            result = {
+                "text_rva": text_rva,
+                "patches": [setwif_patch, clearent_patch, cleartoken_patch, stopremote_patch],
+            }
+            cls._ls_patch_cache[cache_key] = result
+            return result
+        except Exception:
+            return None
+
+    @classmethod
+    def get_live_language_server_info(cls) -> Optional[Dict[str, Any]]:
+        """获取正在运行的 language_server.exe 的 PID、路径、HTTPS 端口与 CSRF Token"""
+        if sys.platform != "win32":
+            return None
+        try:
+            import ssl
+            import urllib.request
+            import psutil
+
+            ls_pid = None
+            ls_exe = None
+            ls_csrf = None
+
+            for p in psutil.process_iter(["pid", "name", "exe", "cmdline"]):
+                name = (p.info.get("name") or "").lower()
+                if "language_server" in name:
+                    ls_pid = p.info["pid"]
+                    ls_exe = p.info.get("exe")
+                    cmd = p.info.get("cmdline") or []
+                    for i, arg in enumerate(cmd):
+                        if arg == "--csrf_token" and i + 1 < len(cmd):
+                            ls_csrf = cmd[i + 1]
+                            break
+                    break
+
+            if not ls_pid or not ls_csrf:
+                return None
+
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+            for conn in psutil.net_connections(kind="inet"):
+                if conn.pid == ls_pid and conn.status == "LISTEN":
+                    port = conn.laddr.port
+                    req = urllib.request.Request(
+                        f"https://127.0.0.1:{port}/exa.language_server_pb.LanguageServerService/GetUserStatus",
+                        data=b"{}",
+                        headers={"Content-Type": "application/json", "x-codeium-csrf-token": ls_csrf},
+                        method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(req, context=ctx, timeout=1.5) as resp:
+                            body = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                            if isinstance(body, dict) and "userStatus" in body:
+                                return {
+                                    "pid": ls_pid,
+                                    "exe": Path(ls_exe) if ls_exe else None,
+                                    "port": port,
+                                    "csrf": ls_csrf,
+                                    "user_status": body["userStatus"],
+                                }
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        return None
+
+    @classmethod
+    def get_live_active_account_email(cls) -> Optional[str]:
+        """实时查询反重力后台服务当前生效的账号邮箱"""
+        info = cls.get_live_language_server_info()
+        if info and isinstance(info.get("user_status"), dict):
+            return info["user_status"].get("email") or None
+        return None
+
+    @classmethod
+    def _cdp_eval_js(cls, ws_url: str, expression: str, timeout: float = 4.0) -> Any:
+        """在指定 CDP WebSocket 目标中执行 JS 表达式 (优先使用 websocket-client，内置原生 socket 兜底)"""
+        payload = json.dumps({
+            "id": 1,
+            "method": "Runtime.evaluate",
+            "params": {
+                "expression": expression,
+                "awaitPromise": True,
+                "returnByValue": True,
+            },
+        })
+        try:
+            import websocket
+            ws = websocket.create_connection(ws_url, timeout=timeout, suppress_origin=True)
+            try:
+                ws.send(payload)
+                resp = json.loads(ws.recv())
+                return resp.get("result", {}).get("result", {}).get("value")
+            finally:
+                ws.close()
+        except Exception:
+            pass
+
+        # 纯 Python 标准库 socket WebSocket 客户端兜底 (兼容打包环境无 websocket-client)
+        try:
+            import socket
+            import base64
+            import struct
+            import urllib.parse
+
+            parsed = urllib.parse.urlparse(ws_url)
+            host = parsed.hostname or "127.0.0.1"
+            port = parsed.port or 80
+            path = parsed.path or "/"
+            key = base64.b64encode(os.urandom(16)).decode("ascii")
+
+            sock = socket.create_connection((host, port), timeout=timeout)
+            try:
+                handshake = (
+                    f"GET {path} HTTP/1.1\r\n"
+                    f"Host: {host}:{port}\r\n"
+                    f"Upgrade: websocket\r\n"
+                    f"Connection: Upgrade\r\n"
+                    f"Sec-WebSocket-Key: {key}\r\n"
+                    f"Sec-WebSocket-Version: 13\r\n\r\n"
+                )
+                sock.sendall(handshake.encode("ascii"))
+                buf = b""
+                while b"\r\n\r\n" not in buf:
+                    chunk = sock.recv(4096)
+                    if not chunk:
+                        return None
+                    buf += chunk
+
+                raw_bytes = payload.encode("utf-8")
+                mask_key = os.urandom(4)
+                header = bytearray([0x81])
+                length = len(raw_bytes)
+                if length < 126:
+                    header.append(0x80 | length)
+                elif length < 65536:
+                    header.append(0x80 | 126)
+                    header.extend(struct.pack("!H", length))
+                else:
+                    header.append(0x80 | 127)
+                    header.extend(struct.pack("!Q", length))
+                header.extend(mask_key)
+                masked = bytearray(b ^ mask_key[i % 4] for i, b in enumerate(raw_bytes))
+                sock.sendall(header + masked)
+
+                resp_frame = sock.recv(65536)
+                if len(resp_frame) >= 2:
+                    plen = resp_frame[1] & 0x7F
+                    offset = 2
+                    if plen == 126:
+                        offset = 4
+                    elif plen == 127:
+                        offset = 10
+                    txt = resp_frame[offset:].decode("utf-8", errors="ignore")
+                    obj = json.loads(txt)
+                    return obj.get("result", {}).get("result", {}).get("value")
+            finally:
+                sock.close()
+        except Exception:
+            return None
+
+    @classmethod
+    def sync_renderer_user_status_via_cdp(cls) -> Optional[str]:
+        """
+        通过 CDP 实时通知 Antigravity 渲染进程刷新 PollingUserStatusProvider 与顶栏额度胶囊，
+        使界面设置页与状态栏无需刷新网页即可秒级显示新切换的账号。
+        """
+        try:
+            import urllib.request
+            port_candidates = []
+            appdata = os.environ.get("APPDATA")
+            if appdata:
+                port_candidates.append(Path(appdata) / "Antigravity" / "DevToolsActivePort")
+            port_candidates.append(Path.home() / "AppData" / "Roaming" / "Antigravity" / "DevToolsActivePort")
+
+            cdp_port = None
+            for pf in port_candidates:
+                if pf.exists():
+                    lines = pf.read_text(encoding="utf-8", errors="ignore").splitlines()
+                    if lines and lines[0].strip().isdigit():
+                        cdp_port = int(lines[0].strip())
+                        break
+            if not cdp_port:
+                return None
+
+            with urllib.request.urlopen(f"http://127.0.0.1:{cdp_port}/json", timeout=2.0) as resp:
+                targets = json.loads(resp.read().decode("utf-8", errors="ignore"))
+
+            js_sync = """
+            (async () => {
+                let updatedEmail = null;
+                try {
+                    if (typeof window.__agRefreshQuota === 'function') {
+                        window.__agRefreshQuota();
+                    }
+                } catch (e) {}
+
+                let rootFiber = null;
+                for (const el of [document.getElementById('root'), document.getElementById('app'), document.body, ...(document.body ? document.body.children : [])]) {
+                    if (!el) continue;
+                    const k = Object.keys(el).find(k => k.startsWith('__reactContainer$') || k.startsWith('__reactFiber$'));
+                    if (k && el[k]) {
+                        rootFiber = el[k];
+                        while (rootFiber.return) rootFiber = rootFiber.return;
+                        break;
+                    }
+                }
+                if (!rootFiber) return null;
+
+                const visited = new Set();
+                const foundProviders = [];
+                function inspectObj(obj, depth = 0) {
+                    if (!obj || typeof obj !== 'object' || depth > 6 || visited.has(obj)) return;
+                    visited.add(obj);
+                    if (obj.lsClient && obj.provider && typeof obj.provider.setState === 'function' && typeof obj.lsClient.getUserStatus === 'function') {
+                        foundProviders.push(obj);
+                        return;
+                    }
+                    for (const k of Object.keys(obj)) {
+                        if (k.startsWith('_') && k !== '_context' && k !== '_currentValue' && k !== '_currentValue2') continue;
+                        try { inspectObj(obj[k], depth + 1); } catch (e) {}
+                    }
+                }
+
+                const queue = [rootFiber];
+                const seenFibers = new Set();
+                while (queue.length > 0) {
+                    const f = queue.shift();
+                    if (!f || seenFibers.has(f)) continue;
+                    seenFibers.add(f);
+                    if (f.memoizedProps) inspectObj(f.memoizedProps, 0);
+                    if (f.type && f.type._context) inspectObj(f.type._context, 0);
+                    let ms = f.memoizedState;
+                    while (ms) {
+                        inspectObj(ms.memoizedState, 0);
+                        ms = ms.next;
+                    }
+                    if (f.child) queue.push(f.child);
+                    if (f.sibling) queue.push(f.sibling);
+                }
+
+                for (const p of foundProviders) {
+                    try {
+                        const resp = await p.lsClient.getUserStatus({});
+                        if (resp && resp.userStatus) {
+                            p.provider.setState(resp.userStatus);
+                            updatedEmail = resp.userStatus.email || updatedEmail;
+                        }
+                    } catch (e) {}
+                }
+                return updatedEmail;
+            })()
+            """
+            synced_email = None
+            for t in targets:
+                if t.get("type") == "page" and t.get("webSocketDebuggerUrl"):
+                    res = cls._cdp_eval_js(t["webSocketDebuggerUrl"], js_sync, timeout=4.0)
+                    if res:
+                        synced_email = res
+            return synced_email
+        except Exception:
+            return None
+
+    @classmethod
+    def reload_language_server_in_memory(cls, expected_email: Optional[str] = None) -> Tuple[bool, str]:
+        """
+        【核心突破】内存级零中断热重载反重力账号 (Zero-Kill In-Memory Hot-Switch)：
+        不终止 language_server.exe、不刷新客户端窗口、不打断正在执行的长/短任务流，
+        直接在进程内存中驱动 AuthClient.tryRestoreToken + CodeAssistClient.ResetCaches 重新加载系统凭据，
+        并通过 CDP 同步更新前端 UI 状态。
+        """
+        if sys.platform != "win32":
+            return False, "仅 Windows 支持内存级热重载"
+
+        lock = cls._get_reload_lock()
+        with lock:
+            try:
+                import ctypes
+                from ctypes import wintypes
+                import ssl
+                import urllib.request
+
+                ls_info = cls.get_live_language_server_info()
+                if not ls_info:
+                    return False, "未探测到运行中的 language_server.exe 实例"
+
+                ls_pid = ls_info["pid"]
+                ls_port = ls_info["port"]
+                ls_csrf = ls_info["csrf"]
+                ls_exe = ls_info.get("exe")
+                if not ls_exe or not ls_exe.exists():
+                    target_dir = cls._fallback_detect_dir()
+                    if target_dir:
+                        ls_exe = Path(target_dir) / "resources" / "bin" / "language_server.exe"
+                if not ls_exe or not ls_exe.exists():
+                    return False, "未找到 language_server.exe 二进制文件"
+
+                patch_spec = cls._resolve_ls_hotreload_patches(ls_exe)
+                if not patch_spec:
+                    return False, "未能解析 language_server.exe 符号表偏移"
+
+                PROCESS_VM_OPERATION = 0x0008
+                PROCESS_VM_READ = 0x0010
+                PROCESS_VM_WRITE = 0x0020
+                PROCESS_QUERY_INFORMATION = 0x0400
+                PAGE_EXECUTE_READWRITE = 0x40
+
+                k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+                psapi = ctypes.WinDLL("psapi", use_last_error=True)
+
+                k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+                k32.OpenProcess.restype = wintypes.HANDLE
+                k32.ReadProcessMemory.argtypes = [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+                k32.ReadProcessMemory.restype = wintypes.BOOL
+                k32.WriteProcessMemory.argtypes = [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+                k32.WriteProcessMemory.restype = wintypes.BOOL
+                k32.VirtualProtectEx.argtypes = [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_size_t, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+                k32.VirtualProtectEx.restype = wintypes.BOOL
+                k32.FlushInstructionCache.argtypes = [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_size_t]
+                k32.FlushInstructionCache.restype = wintypes.BOOL
+                k32.CloseHandle.argtypes = [wintypes.HANDLE]
+                psapi.EnumProcessModulesEx.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.HMODULE), wintypes.DWORD, ctypes.POINTER(wintypes.DWORD), wintypes.DWORD]
+                psapi.EnumProcessModulesEx.restype = wintypes.BOOL
+
+                h_proc = k32.OpenProcess(
+                    PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_QUERY_INFORMATION,
+                    False,
+                    ls_pid,
+                )
+                if not h_proc:
+                    return False, f"打开 language_server.exe 进程失败 (错误码: {ctypes.get_last_error()})"
+
+                try:
+                    h_mods = (wintypes.HMODULE * 1024)()
+                    cb_needed = wintypes.DWORD()
+                    if not psapi.EnumProcessModulesEx(h_proc, h_mods, ctypes.sizeof(h_mods), ctypes.byref(cb_needed), 0x03):
+                        return False, "枚举进程模块基址失败"
+
+                    base_addr = h_mods[0]
+                    delta = base_addr + patch_spec["text_rva"]
+                    runtime_patches = [
+                        (delta + va_off, orig_b, patch_b)
+                        for va_off, orig_b, patch_b in patch_spec["patches"]
+                    ]
+
+                    # 校验原始机器码指令
+                    for addr, orig_b, _ in runtime_patches:
+                        buf = ctypes.create_string_buffer(len(orig_b))
+                        n_read = ctypes.c_size_t()
+                        if not k32.ReadProcessMemory(h_proc, ctypes.c_void_p(addr), buf, len(orig_b), ctypes.byref(n_read)):
+                            return False, f"读取内存校验失败 @ 0x{addr:x}"
+                        if buf.raw != orig_b:
+                            return False, f"内存指令特征不匹配 @ 0x{addr:x}"
+
+                    old_prots = []
+                    for addr, _, patch_b in runtime_patches:
+                        old_prot = wintypes.DWORD()
+                        k32.VirtualProtectEx(h_proc, ctypes.c_void_p(addr), len(patch_b), PAGE_EXECUTE_READWRITE, ctypes.byref(old_prot))
+                        old_prots.append((addr, len(patch_b), old_prot))
+                        n_written = ctypes.c_size_t()
+                        k32.WriteProcessMemory(h_proc, ctypes.c_void_p(addr), patch_b, len(patch_b), ctypes.byref(n_written))
+                        k32.FlushInstructionCache(h_proc, ctypes.c_void_p(addr), len(patch_b))
+
+                    try:
+                        ctx = ssl.create_default_context()
+                        ctx.check_hostname = False
+                        ctx.verify_mode = ssl.CERT_NONE
+                        req = urllib.request.Request(
+                            f"https://127.0.0.1:{ls_port}/exa.language_server_pb.LanguageServerService/AuthLogout",
+                            data=b"{}",
+                            headers={"Content-Type": "application/json", "x-codeium-csrf-token": ls_csrf},
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(req, context=ctx, timeout=8.0) as resp:
+                            resp.read()
+                    finally:
+                        # 无论如何立即还原原始指令字节与内存页属性
+                        for (addr, orig_b, _), (_, sz, old_prot) in zip(runtime_patches, old_prots):
+                            n_written = ctypes.c_size_t()
+                            k32.WriteProcessMemory(h_proc, ctypes.c_void_p(addr), orig_b, len(orig_b), ctypes.byref(n_written))
+                            k32.FlushInstructionCache(h_proc, ctypes.c_void_p(addr), len(orig_b))
+                            dummy = wintypes.DWORD()
+                            k32.VirtualProtectEx(h_proc, ctypes.c_void_p(addr), sz, old_prot.value, ctypes.byref(dummy))
+                finally:
+                    k32.CloseHandle(h_proc)
+
+                # 验证新账号在 language_server.exe 中已实际生效，并同步前端 UI 状态
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                req_status = urllib.request.Request(
+                    f"https://127.0.0.1:{ls_port}/exa.language_server_pb.LanguageServerService/GetUserStatus",
+                    data=b"{}",
+                    headers={"Content-Type": "application/json", "x-codeium-csrf-token": ls_csrf},
+                    method="POST",
+                )
+                active_email = ""
+                with urllib.request.urlopen(req_status, context=ctx, timeout=8.0) as resp:
+                    status_body = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                    active_email = status_body.get("userStatus", {}).get("email", "")
+
+                cls.sync_renderer_user_status_via_cdp()
+
+                if expected_email and active_email and active_email.lower() != expected_email.lower():
+                    return False, f"内存重载后活跃邮箱 ({active_email}) 与目标邮箱 ({expected_email}) 不一致"
+
+                return True, f"已通过内存零中断热切换实时生效 (当前生效: {active_email or expected_email or '新账号'})"
+            except Exception as e:
+                return False, f"内存级热重载异常: {e}"
+
+    @classmethod
+    def reload_language_server(cls, force: bool = False, expected_email: Optional[str] = None) -> Tuple[bool, str]:
+        """
+        优先通过内存零中断热重载 (reload_language_server_in_memory) 实现免重启反重力窗口、不中断运行中任务的秒级切号；
+        若当前环境不支持内存热重载，再降级至重启 language_server 进程。
+        """
+        if sys.platform == "win32":
+            mem_ok, mem_msg = cls.reload_language_server_in_memory(expected_email=expected_email)
+            if mem_ok:
+                return True, mem_msg
+
         if not force and cls.is_any_task_running():
             return False, "检测到当前有任务正在运行，已自动启用零中断保护，跳过重载以保护任务"
 

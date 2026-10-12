@@ -24,9 +24,21 @@ try:
 except ImportError:
     requests = None
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
+
+
+def _compute_token_expiry(expires_in: Any = 3599) -> str:
+    """计算符合 RFC3339 带时区偏移的未来 Token 过期时间，确保 language_server 正常识别有效状态"""
+    try:
+        sec = int(expires_in) if expires_in is not None else 3599
+    except (ValueError, TypeError):
+        sec = 3599
+    if sec <= 0:
+        sec = 3599
+    return (datetime.now(timezone.utc).astimezone() + timedelta(seconds=sec)).isoformat()
+
 
 
 # Windows API Types
@@ -314,22 +326,28 @@ class AccountPoolManager:
 
     @staticmethod
     def get_account_quota_pct(acc: Optional[Dict[str, Any]]) -> float:
-        """获取账号 5 小时剩余配额百分比 (0.0 - 100.0)，全面兼容多种配额字段格式"""
+        """获取账号 5 小时剩余配额百分比 (0.0 - 100.0)，取 Claude/Gemini/通用 5h 最低值以准确触发低额度切号"""
         if not acc:
             return 0.0
         q = acc.get("quota", {})
         if not isinstance(q, dict):
             return 0.0
-        # 1. 优先读取已计算好的百分比 (0-100)
-        for key in ("five_hour_percent", "gemini_5h_percent", "five_hour_pct"):
+        # 1. 优先读取已计算好的百分比 (0-100)，取所有已存在维度的木桶最小值
+        pct_vals = []
+        for key in ("five_hour_percent", "claude_5h_percent", "gemini_5h_percent", "five_hour_pct"):
             val = q.get(key)
             if val is not None and isinstance(val, (int, float)):
-                return float(val)
+                pct_vals.append(float(val))
+        if pct_vals:
+            return min(pct_vals)
         # 2. 尝试读取小数比例 (0.0-1.0)
-        for key in ("five_hour_fraction", "gemini_5h_fraction"):
+        frac_vals = []
+        for key in ("five_hour_fraction", "claude_5h_fraction", "gemini_5h_fraction"):
             val = q.get(key)
             if val is not None and isinstance(val, (int, float)):
-                return float(val) * 100.0
+                frac_vals.append(float(val) * 100.0)
+        if frac_vals:
+            return min(frac_vals)
         # 3. 若 status 为明确异常/耗尽状态
         if q.get("status") in ("EXHAUSTED", "EXPIRED", "FORBIDDEN"):
             return 0.0
@@ -337,30 +355,52 @@ class AccountPoolManager:
 
     @staticmethod
     def get_account_weekly_pct(acc: Optional[Dict[str, Any]]) -> float:
-        """获取账号周度剩余配额百分比 (0.0 - 100.0)"""
+        """获取账号周度剩余配额百分比 (0.0 - 100.0)，取各模型周度木桶最小值"""
         if not acc:
             return 0.0
         q = acc.get("quota", {})
         if not isinstance(q, dict):
             return 0.0
-        for key in ("weekly_percent", "gemini_weekly_percent", "weekly_pct"):
+        pct_vals = []
+        for key in ("weekly_percent", "claude_weekly_percent", "gemini_weekly_percent", "weekly_pct"):
             val = q.get(key)
             if val is not None and isinstance(val, (int, float)):
-                return float(val)
-        for key in ("weekly_fraction", "gemini_weekly_fraction"):
+                pct_vals.append(float(val))
+        if pct_vals:
+            return min(pct_vals)
+        frac_vals = []
+        for key in ("weekly_fraction", "claude_weekly_fraction", "gemini_weekly_fraction"):
             val = q.get(key)
             if val is not None and isinstance(val, (int, float)):
-                return float(val) * 100.0
+                frac_vals.append(float(val) * 100.0)
+        if frac_vals:
+            return min(frac_vals)
         if q.get("status") in ("EXHAUSTED", "EXPIRED", "FORBIDDEN"):
             return 0.0
         return 100.0
 
     def get_active_account_id(self) -> Optional[str]:
-        """获取当前系统凭据绑定的活跃账号 ID"""
+        """获取当前系统凭据绑定的活跃账号 ID（自动与 Windows 系统凭据对齐）"""
         self.load_pool()
-        return self._pool_cache.get("active_account_id")
+        active_id = self._pool_cache.get("active_account_id")
+        try:
+            has_active, current_cred, _ = self.read_system_credential()
+            if has_active and isinstance(current_cred, dict):
+                curr_rf = current_cred.get("token", {}).get("refresh_token")
+                if curr_rf:
+                    for acc in self._pool_cache.get("accounts", []):
+                        if acc.get("token", {}).get("refresh_token") == curr_rf:
+                            real_id = acc.get("id")
+                            if real_id and real_id != active_id:
+                                self._pool_cache["active_account_id"] = real_id
+                                self.save_pool()
+                            return real_id
+        except Exception:
+            pass
+        return active_id
 
     def __init__(self, data_dir: Optional[Path] = None):
+        self._is_default_data_dir = data_dir is None
         if data_dir is None:
             # 存放在 ~/.gemini/antigravity/orbit_accounts.json 确保多项目及打包后数据常驻且不丢失
             user_home = Path.home()
@@ -374,10 +414,11 @@ class AccountPoolManager:
         self._oauth_server: Optional[OAuthCallbackServer] = None
         self._is_refreshing_all = False
         self.load_pool()
-        self._start_auto_refresher(interval_seconds=300)
+        if self._is_default_data_dir:
+            self._start_auto_refresher(interval_seconds=300)
 
     def _start_auto_refresher(self, interval_seconds: int = 300):
-        """启动后台静默定时器，自动轮询刷新过期的账号配额 (单例锁保护，杜绝重复拉起)"""
+        """启动后台静默定时器，自动轮询刷新过期的账号配额并在低额度时自动触发无感热切号 (单例锁保护)"""
         with AccountPoolManager._auto_refresher_lock:
             if AccountPoolManager._auto_refresher_started:
                 return
@@ -388,15 +429,29 @@ class AccountPoolManager:
             while True:
                 try:
                     now = int(time.time())
+                    self.load_pool()
                     accounts = self._pool_cache.get("accounts", [])
                     need_refresh = any((now - a.get("quota", {}).get("last_refreshed", 0)) >= interval_seconds for a in accounts)
                     if need_refresh and not self._is_refreshing_all and accounts:
                         self.refresh_all_quotas()
+
+                    # 主动巡检当前活跃账号配额并在 <= 阈值时自动无感热切换
+                    from core.config import load_config
+                    cfg = load_config()
+                    custom = cfg.get("customization", {})
+                    if custom.get("auto_switch_on_low_quota", True):
+                        thresh = float(custom.get("low_quota_threshold_pct", 10))
+                        active_id = self.get_active_account_id()
+                        if active_id:
+                            curr_acc = next((a for a in self._pool_cache.get("accounts", []) if a.get("id") == active_id), None)
+                            if curr_acc and self.get_account_quota_pct(curr_acc) <= thresh:
+                                self.auto_switch_on_low_quota(threshold_pct=thresh)
                 except Exception:
                     pass
-                time.sleep(60)
+                time.sleep(45)
 
         threading.Thread(target=_loop, daemon=True).start()
+
 
 
     # ------------------------------------------------------------------
@@ -952,7 +1007,21 @@ class AccountPoolManager:
 
         # 综合评定健康度 (低于15%极低/耗尽，低于40%紧张，>=40%健康充足)
         if quota_result["status"] not in ["EXPIRED", "ERROR", "FORBIDDEN"]:
-            min_percent = min(quota_result["five_hour_percent"], quota_result["weekly_percent"], quota_result["claude_5h_percent"], quota_result["gemini_5h_percent"])
+            quota_result["five_hour_percent"] = min(
+                quota_result["five_hour_percent"],
+                quota_result["claude_5h_percent"],
+                quota_result["gemini_5h_percent"],
+            )
+            quota_result["five_hour_fraction"] = min(
+                quota_result["five_hour_fraction"],
+                quota_result["five_hour_percent"] / 100.0,
+            )
+            min_percent = min(
+                quota_result["five_hour_percent"],
+                quota_result["weekly_percent"],
+                quota_result["claude_5h_percent"],
+                quota_result["gemini_5h_percent"],
+            )
             if min_percent <= 0 or quota_result["status"] == "EXHAUSTED":
                 quota_result["status"] = "EXHAUSTED"
             elif min_percent < 15:
@@ -1112,7 +1181,11 @@ class AccountPoolManager:
         token_obj = cred_data.get("token", {})
         access_token = token_obj.get("access_token")
         refresh_token = token_obj.get("refresh_token")
+        id_token = token_obj.get("id_token", "")
         expiry = token_obj.get("expiry")
+        auth_method = cred_data.get("auth_method", "consumer")
+        if auth_method not in ("consumer", "gcp"):
+            auth_method = "consumer"
 
         if not refresh_token:
             return False, None, "系统凭据中未包含 refresh_token"
@@ -1135,8 +1208,10 @@ class AccountPoolManager:
                     "token": {
                         "access_token": access_token or "",
                         "refresh_token": refresh_token,
+                        "id_token": id_token,
                         "token_type": "Bearer",
-                        "expiry": expiry or "",
+                        "expiry": expiry or _compute_token_expiry(3599),
+                        "auth_method": auth_method,
                     },
                     "quota": {
                         "status": "HEALTHY",
@@ -1159,7 +1234,8 @@ class AccountPoolManager:
             if not ref_ok or not ref_data:
                 return False, None, f"刷新当前凭据 Token 失败: {ref_msg}"
             access_token = ref_data.get("access_token")
-            expiry = datetime.now(timezone.utc).isoformat()
+            id_token = ref_data.get("id_token") or id_token
+            expiry = _compute_token_expiry(ref_data.get("expires_in", 3599))
 
         # 获取用户信息
         user_ok, user_info, user_msg = self.fetch_user_info(access_token)
@@ -1180,7 +1256,10 @@ class AccountPoolManager:
                 acc["avatar"] = avatar
                 acc["token"]["access_token"] = access_token
                 acc["token"]["refresh_token"] = refresh_token
-                acc["token"]["expiry"] = expiry
+                acc["token"]["expiry"] = expiry or _compute_token_expiry(3599)
+                if id_token:
+                    acc["token"]["id_token"] = id_token
+                acc["token"]["auth_method"] = auth_method
                 acc["quota"] = quota_data
                 break
 
@@ -1195,8 +1274,10 @@ class AccountPoolManager:
                 "token": {
                     "access_token": access_token,
                     "refresh_token": refresh_token,
+                    "id_token": id_token,
                     "token_type": "Bearer",
-                    "expiry": expiry,
+                    "expiry": expiry or _compute_token_expiry(3599),
+                    "auth_method": auth_method,
                 },
                 "quota": quota_data
             }
@@ -1214,6 +1295,7 @@ class AccountPoolManager:
 
         refresh_token = ""
         access_token = ""
+        id_token = ""
         expiry = ""
         extracted_client_id = None
         extracted_client_secret = None
@@ -1290,6 +1372,10 @@ class AccountPoolManager:
                     target_token_obj.get("accessToken") or
                     target_token_obj.get("token") or ""
                 )
+                id_token = (
+                    target_token_obj.get("id_token") or
+                    target_token_obj.get("idToken") or ""
+                )
                 expiry = (
                     target_token_obj.get("expiry") or
                     target_token_obj.get("expires_at") or
@@ -1334,7 +1420,8 @@ class AccountPoolManager:
 
         if ref_ok and ref_data:
             access_token = ref_data.get("access_token") or access_token
-            expiry = datetime.now(timezone.utc).isoformat()
+            id_token = ref_data.get("id_token") or id_token
+            expiry = _compute_token_expiry(ref_data.get("expires_in", 3599))
             used_client_id = ref_data.get("_used_client_id") or used_client_id
             used_client_secret = ref_data.get("_used_client_secret") or used_client_secret
         else:
@@ -1370,8 +1457,10 @@ class AccountPoolManager:
                 acc["token"] = {
                     "access_token": access_token,
                     "refresh_token": refresh_token,
+                    "id_token": id_token or acc_tok.get("id_token", ""),
                     "token_type": "Bearer",
-                    "expiry": expiry,
+                    "expiry": expiry or _compute_token_expiry(3599),
+                    "auth_method": acc_tok.get("auth_method", "consumer"),
                     "client_id": used_client_id,
                     "client_secret": used_client_secret,
                 }
@@ -1389,8 +1478,10 @@ class AccountPoolManager:
                 "token": {
                     "access_token": access_token,
                     "refresh_token": refresh_token,
+                    "id_token": id_token,
                     "token_type": "Bearer",
-                    "expiry": expiry,
+                    "expiry": expiry or _compute_token_expiry(3599),
+                    "auth_method": "consumer",
                     "client_id": used_client_id,
                     "client_secret": used_client_secret,
                 },
@@ -1427,7 +1518,7 @@ class AccountPoolManager:
         return cockpit_list
 
     def switch_account(self, account_id: str, reload_session: bool = True, force_reload: bool = False) -> Tuple[bool, str]:
-        """一键极速切换到目标账号 (支持零中断保护与免重启平滑热重载反重力后台会话)"""
+        """一键极速切换到目标账号 (支持内存零中断热重载与长任务保护)"""
         self.load_pool()
         target_acc = None
         for acc in self._pool_cache.get("accounts", []):
@@ -1443,28 +1534,47 @@ class AccountPoolManager:
         cid = token_data.get("client_id")
         csec = token_data.get("client_secret")
 
-        # 校验并刷新 token 保证切换后处于可用状态
+        # 校验并刷新 token 保证切换后处于可用状态，且包含最新 id_token 与未来 expiry
         if refresh_token:
             ref_ok, ref_data, ref_msg = self.refresh_google_token(refresh_token, client_id=cid, client_secret=csec)
             if ref_ok and ref_data:
-                token_data["access_token"] = ref_data.get("access_token")
-                token_data["expiry"] = datetime.now(timezone.utc).isoformat()
+                token_data["access_token"] = ref_data.get("access_token") or token_data.get("access_token")
+                token_data["expiry"] = _compute_token_expiry(ref_data.get("expires_in", 3599))
+                if ref_data.get("id_token"):
+                    token_data["id_token"] = ref_data["id_token"]
                 if ref_data.get("_used_client_id"):
                     token_data["client_id"] = ref_data["_used_client_id"]
                     token_data["client_secret"] = ref_data.get("_used_client_secret", "")
 
         access_token = token_data.get("access_token")
         expiry = token_data.get("expiry")
+        if not expiry:
+            expiry = _compute_token_expiry(3599)
+        else:
+            try:
+                dt_exp = datetime.fromisoformat(str(expiry).replace("Z", "+00:00"))
+                if dt_exp <= datetime.now(timezone.utc):
+                    expiry = _compute_token_expiry(3599)
+            except Exception:
+                expiry = _compute_token_expiry(3599)
 
-        # 构建 Windows Credential Manager 目标载荷
+        auth_method = token_data.get("auth_method", "consumer")
+        if auth_method not in ("consumer", "gcp"):
+            auth_method = "consumer"
+
+        tok_payload: Dict[str, Any] = {
+            "access_token": access_token,
+            "token_type": "Bearer",
+            "refresh_token": refresh_token,
+            "expiry": expiry,
+        }
+        if token_data.get("id_token"):
+            tok_payload["id_token"] = token_data["id_token"]
+
+        # 构建 Windows Credential Manager 目标载荷 (严格匹配 Antigravity StoredToken 结构)
         payload = {
-            "token": {
-                "access_token": access_token,
-                "token_type": "Bearer",
-                "refresh_token": refresh_token,
-                "expiry": expiry,
-            },
-            "auth_method": "oauth"
+            "token": tok_payload,
+            "auth_method": auth_method,
         }
 
         # 写入系统凭据管理器
@@ -1481,14 +1591,20 @@ class AccountPoolManager:
             try:
                 from core.localization import LocalizationManager
                 if LocalizationManager.is_running():
-                    if not force_reload and LocalizationManager.is_any_task_running():
+                    r_ok, r_desc = LocalizationManager.reload_language_server(
+                        force=force_reload,
+                        expected_email=target_acc.get("email", ""),
+                    )
+                    if r_ok:
+                        self.set_pending_reload(False)
+                        reload_msg = f"（已无感热重载生效，反重力窗口保持打开：{r_desc}）"
+                    elif not force_reload and LocalizationManager.is_any_task_running():
                         self.set_pending_reload(True, email=target_acc.get("email", ""))
                         self._start_pending_reload_watcher()
                         reload_msg = "（检测到长任务正在运行，已启用零中断保护：系统凭据已更新，将在任务完成后自动无感重载生效）"
                     else:
                         self.set_pending_reload(False)
-                        r_ok, r_desc = LocalizationManager.reload_language_server()
-                        reload_msg = "（已无感热重载生效，反重力窗口保持打开）" if r_ok else f"（{r_desc}）"
+                        reload_msg = f"（{r_desc}）"
                 else:
                     self.set_pending_reload(False)
                     reload_msg = "（反重力未运行，下次启动将自动使用该账号）"
@@ -1523,8 +1639,8 @@ class AccountPoolManager:
             pct_5h = self.get_account_quota_pct(acc)
             pct_wk = self.get_account_weekly_pct(acc)
 
-            # 过滤掉已明确彻底耗尽的账号
-            if pct_5h <= 0.0 and pct_wk <= 0.0:
+            # 过滤掉已明确耗尽 0% 的账号
+            if pct_5h <= 0.0 or pct_wk <= 0.0:
                 continue
 
             # 综合健康评分 (0 ~ 100)
@@ -1535,6 +1651,8 @@ class AccountPoolManager:
                 score += 5.0
             elif status == "WARNING" or q_status == "LOW":
                 score -= 10.0
+            elif status == "EXHAUSTED" or q_status == "EXHAUSTED":
+                score -= 25.0
 
             candidates.append((score, acc))
 
@@ -1546,13 +1664,13 @@ class AccountPoolManager:
 
     def auto_switch_on_low_quota(self, threshold_pct: float = 10.0, force: bool = False) -> Tuple[bool, Optional[Dict[str, Any]], str]:
         """
-        低额度自动无感热切换账号 (免杀进程，纯热更新系统凭据)
+        低额度自动无感热切换账号 (免杀进程，内存级热更新系统凭据与会话)
         :param threshold_pct: 触发切号的额度百分比阈值 (例如 10.0 表示 5h 剩余额度 <= 10% 时切号)
         :param force: 是否强制切号 (如在 429 配额用尽告警时直接切号)
         :return: (是否切换成功, 切换到的新账号字典, 状态描述消息)
         """
         self.load_pool()
-        curr_id = self._pool_cache.get("active_account_id")
+        curr_id = self.get_active_account_id()
         accounts = self._pool_cache.get("accounts", [])
         curr_acc = next((a for a in accounts if a.get("id") == curr_id), None)
 
@@ -1572,6 +1690,9 @@ class AccountPoolManager:
         best_acc = self.find_best_healthy_account(exclude_account_id=curr_id)
         if not best_acc:
             return False, curr_acc, "账号池中暂无可用的健康备用账号 (全部账号额度偏低或凭据失效)"
+
+        if not force and self.get_account_quota_pct(best_acc) <= threshold_pct:
+            return False, curr_acc, f"账号池中备用账号额度均低于阈值 ({threshold_pct:.0f}%)，暂不切换"
 
         target_id = best_acc.get("id")
         ok, msg = self.switch_account(target_id)
@@ -1607,7 +1728,9 @@ class AccountPoolManager:
             if ref_ok and ref_data:
                 access_token = ref_data.get("access_token")
                 tok["access_token"] = access_token
-                tok["expiry"] = datetime.now(timezone.utc).isoformat()
+                tok["expiry"] = _compute_token_expiry(ref_data.get("expires_in", 3599))
+                if ref_data.get("id_token"):
+                    tok["id_token"] = ref_data["id_token"]
                 if ref_data.get("_used_client_id"):
                     tok["client_id"] = ref_data["_used_client_id"]
                     tok["client_secret"] = ref_data.get("_used_client_secret", "")
@@ -1664,7 +1787,9 @@ class AccountPoolManager:
                     if ref_ok and ref_data:
                         access_token = ref_data.get("access_token")
                         tok["access_token"] = access_token
-                        tok["expiry"] = datetime.now(timezone.utc).isoformat()
+                        tok["expiry"] = _compute_token_expiry(ref_data.get("expires_in", 3599))
+                        if ref_data.get("id_token"):
+                            tok["id_token"] = ref_data["id_token"]
                         if ref_data.get("_used_client_id"):
                             tok["client_id"] = ref_data["_used_client_id"]
                             tok["client_secret"] = ref_data.get("_used_client_secret", "")
@@ -1775,10 +1900,11 @@ class AccountPoolManager:
         """将换取或刷新的 Token 凭据装载为账号池实体"""
         access_token = token_data.get("access_token", "")
         refresh_token = token_data.get("refresh_token", "")
+        id_token = token_data.get("id_token", "")
         if not refresh_token:
             return False, None, "授权返回中未包含 refresh_token，请确保初次授权并已勾选所有权限"
 
-        expiry = datetime.now(timezone.utc).isoformat()
+        expiry = _compute_token_expiry(token_data.get("expires_in", 3599))
 
         # 获取用户信息
         user_ok, user_info, _ = self.fetch_user_info(access_token)
@@ -1800,8 +1926,10 @@ class AccountPoolManager:
                 acc["token"] = {
                     "access_token": access_token,
                     "refresh_token": refresh_token,
+                    "id_token": id_token or acc.get("token", {}).get("id_token", ""),
                     "token_type": "Bearer",
                     "expiry": expiry,
+                    "auth_method": "consumer",
                 }
                 acc["quota"] = quota_data
                 break
@@ -1817,8 +1945,10 @@ class AccountPoolManager:
                 "token": {
                     "access_token": access_token,
                     "refresh_token": refresh_token,
+                    "id_token": id_token,
                     "token_type": "Bearer",
                     "expiry": expiry,
+                    "auth_method": "consumer",
                 },
                 "quota": quota_data
             }

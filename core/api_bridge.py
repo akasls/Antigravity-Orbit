@@ -566,12 +566,12 @@ class OrbitApi:
             custom = cfg.get("customization", {})
             return {
                 "success": True,
-                "enabled": custom.get("auto_switch_on_low_quota", False),
+                "enabled": custom.get("auto_switch_on_low_quota", True),
                 "threshold": custom.get("low_quota_threshold_pct", 10),
                 "cooldown": custom.get("auto_switch_cooldown_sec", 60)
             }
         except Exception as e:
-            return {"success": False, "message": str(e), "enabled": False, "threshold": 10, "cooldown": 60}
+            return {"success": False, "message": str(e), "enabled": True, "threshold": 10, "cooldown": 60}
 
     def set_auto_switch_config(self, enabled: bool, threshold: int = 10) -> dict:
         """设置低额度自动热切换开关与阈值"""

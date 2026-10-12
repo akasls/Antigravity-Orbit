@@ -87,10 +87,10 @@ class AntigravityMonitor:
     def dispatch_notification(self, proj_display: str, status: str, summary: str):
         self.config = load_config()
 
-        # 检查是否为额度耗尽通知，如果是且开启了自动热切号，优先触发无感自动热切号接力
+        # 检查是否为额度耗尽或低额度预警通知，如果是且开启了自动热切号，优先触发无感自动热切号接力
         if "额度" in status or "耗尽" in status:
             custom = self.config.get("customization", {})
-            if custom.get("auto_switch_on_low_quota", False):
+            if custom.get("auto_switch_on_low_quota", True):
                 now_ts = time.time()
                 cooldown = custom.get("auto_switch_cooldown_sec", 60)
                 if now_ts - getattr(self, "_last_auto_switch_time", 0) >= cooldown:
@@ -170,8 +170,41 @@ class AntigravityMonitor:
 
                 # 2. 定期活跃账号额度巡检与低额度自动无感切号
                 custom = self.config.get("customization", {})
-                if custom.get("auto_switch_on_low_quota", False):
-                    poll_interval = 60.0  # 每 60 秒检查一次活跃账号额度
+                auto_switch_enabled = custom.get("auto_switch_on_low_quota", True)
+                if auto_switch_enabled:
+                    thresh = float(custom.get("low_quota_threshold_pct", 10))
+                    cooldown = float(custom.get("auto_switch_cooldown_sec", 60))
+
+                    # 2a. 本地进程级秒级实时配额嗅探 (每 15 秒通过本地回环 GetUserStatus 读取实时模型剩余比例，零外网开销)
+                    if now_ts - getattr(self, "_last_live_ls_poll_time", 0) >= 15.0:
+                        self._last_live_ls_poll_time = now_ts
+                        try:
+                            from core.localization import LocalizationManager
+                            from .account_pool import AccountPoolManager
+                            ls_info = LocalizationManager.get_live_language_server_info()
+                            if ls_info and isinstance(ls_info.get("user_status"), dict):
+                                us = ls_info["user_status"]
+                                configs = us.get("cascadeModelConfigData", {}).get("clientModelConfigs", [])
+                                min_live_pct = 100.0
+                                for c in configs:
+                                    q_info = c.get("quotaInfo")
+                                    if isinstance(q_info, dict) and "remainingFraction" in q_info:
+                                        frac = float(q_info.get("remainingFraction", 1.0))
+                                        min_live_pct = min(min_live_pct, max(0.0, min(100.0, frac * 100.0)))
+                                    elif isinstance(q_info, dict) and q_info.get("resetTime"):
+                                        min_live_pct = 0.0
+                                if min_live_pct <= thresh and (now_ts - getattr(self, "_last_auto_switch_time", 0) >= cooldown):
+                                    self._last_auto_switch_time = now_ts
+                                    if not hasattr(self, "_account_mgr") or not self._account_mgr:
+                                        self._account_mgr = AccountPoolManager()
+                                    sw_ok, new_acc, sw_desc = self._account_mgr.auto_switch_on_low_quota(threshold_pct=thresh, force=True)
+                                    if sw_ok and new_acc:
+                                        Logger.log(f"【实时进程额度预警】反重力当前账号额度已降至 ({min_live_pct:.0f}% <= {thresh:.0f}%)，{sw_desc}")
+                        except Exception:
+                            pass
+
+                    # 2b. 账号池远端配额同步巡检 (每 60 秒检查一次活跃账号额度)
+                    poll_interval = 60.0
                     if now_ts - getattr(self, "_last_quota_poll_time", 0) >= poll_interval:
                         self._last_quota_poll_time = now_ts
                         try:
@@ -183,10 +216,8 @@ class AntigravityMonitor:
                             if active_id:
                                 ref_ok, quota_data, _ = mgr.refresh_single_account_quota(active_id)
                                 if ref_ok and quota_data:
-                                    thresh = float(custom.get("low_quota_threshold_pct", 10))
                                     pct = mgr.get_account_quota_pct({"quota": quota_data})
                                     if pct <= thresh:
-                                        cooldown = custom.get("auto_switch_cooldown_sec", 60)
                                         if now_ts - getattr(self, "_last_auto_switch_time", 0) >= cooldown:
                                             self._last_auto_switch_time = now_ts
                                             sw_ok, new_acc, sw_desc = mgr.auto_switch_on_low_quota(threshold_pct=thresh)
@@ -196,7 +227,7 @@ class AntigravityMonitor:
                             Logger.log(f"自动额度巡检异常: {q_err}", echo=False)
 
                 active_notifiers = get_active_notifiers(self.config)
-                if not active_notifiers:
+                if not active_notifiers and not auto_switch_enabled:
                     time.sleep(self.config.get("scan_interval", 3.0))
                     continue
 
@@ -303,13 +334,13 @@ class AntigravityMonitor:
                                 p_name = (info.get("project_name") or info.get("title") or "默认工程") if info else "默认工程"
                                 now_ts = time.time()
 
-                                if is_quota and self.config.get("notify_on_quota_exhausted", False):
+                                if is_quota and (self.config.get("notify_on_quota_exhausted", False) or custom.get("notify_on_quota_exhausted", False) or auto_switch_enabled):
                                     # 10 分钟告警冷却防连续轰炸
                                     if now_ts - self.last_quota_alerts.get(conv_id, 0) >= 600:
                                         self.last_quota_alerts[conv_id] = now_ts
                                         Logger.log(f"检测到额度耗尽！会话={conv_id[:8]}, 工程={p_name}, Step={max_step}")
                                         self.dispatch_notification(p_name, "任务中断：额度已耗尽", error_text or "模型限额已达上限，任务暂停执行。")
-                                elif error_text and self.config.get("notify_on_error", False):
+                                elif error_text and (self.config.get("notify_on_error", False) or custom.get("notify_on_error", False)):
                                     Logger.log(f"检测到任务执行异常！会话={conv_id[:8]}, 工程={p_name}, Step={max_step}")
                                     self.dispatch_notification(p_name, "任务中断：执行异常", error_text[:300])
 

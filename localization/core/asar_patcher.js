@@ -578,6 +578,10 @@ class AsarPatcher {
                 }
             }
 
+            // 解除 Language Server 默认最多重启 5 次的限制，确保极端降级重启场景下永不熔断
+            lsContent = lsContent.replace(/const\s+MAX_RESTARTS\s*=\s*\d+\s*;/, 'const MAX_RESTARTS = 999999;');
+            lsContent = lsContent.replace(/const\s+RESTART_COOLDOWN_MS\s*=\s*\d+\s*;/, 'const RESTART_COOLDOWN_MS = 300;');
+
             fs.writeFileSync(lsPath, lsContent, 'utf-8');
         }
 

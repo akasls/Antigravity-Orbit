@@ -1008,7 +1008,7 @@ console.log('ALL_OK');
             self.assertFalse(LocalizationManager.is_any_task_running())
 
     def test_switch_account_zero_interruption_protection(self):
-        """测试 switch_account 在长任务运行中启用零中断保护（不杀进程，延时接力）"""
+        """测试 switch_account 内存零中断热重载与长任务降级保护机制"""
         import tempfile
         from unittest.mock import patch
         from core.account_pool import AccountPoolManager
@@ -1031,29 +1031,34 @@ console.log('ALL_OK');
                 ]
             }
 
+            # 1. 当内存零中断热重载不可用且长任务正在运行时，自动启用零中断延后保护
             with patch.object(mgr, "write_system_credential", return_value=(True, "OK")), \
-                 patch.object(mgr, "refresh_google_token", return_value=(True, {"access_token": "new_tok"}, "")), \
+                 patch.object(mgr, "refresh_google_token", return_value=(True, {"access_token": "new_tok", "id_token": "id_tok", "expires_in": 3599}, "")), \
                  patch("core.localization.LocalizationManager.is_running", return_value=True), \
                  patch("core.localization.LocalizationManager.is_any_task_running", return_value=True), \
-                 patch("core.localization.LocalizationManager.reload_language_server", return_value=(True, "OK")) as mock_reload:
+                 patch("core.localization.LocalizationManager.reload_language_server", return_value=(False, "零中断保护")):
 
-                # 1. 切换账号：长任务正在运行中，必须严禁调用 reload_language_server
                 ok, msg = mgr.switch_account("acc-2", reload_session=True, force_reload=False)
                 self.assertTrue(ok)
                 self.assertIn("零中断保护", msg)
                 self.assertTrue(mgr.has_pending_reload())
-                mock_reload.assert_not_called()
 
-                # 2. force_reload=True 强制重载模式下，应直接触发重载
-                ok_force, msg_force = mgr.switch_account("acc-2", reload_session=True, force_reload=True)
-                self.assertTrue(ok_force)
-                self.assertIn("已无感热重载生效", msg_force)
+            # 2. 当内存零中断热重载成功时，即使任务运行中也无需杀进程直接实时生效
+            with patch.object(mgr, "write_system_credential", return_value=(True, "OK")), \
+                 patch.object(mgr, "refresh_google_token", return_value=(True, {"access_token": "new_tok", "id_token": "id_tok", "expires_in": 3599}, "")), \
+                 patch("core.localization.LocalizationManager.is_running", return_value=True), \
+                 patch("core.localization.LocalizationManager.is_any_task_running", return_value=True), \
+                 patch("core.localization.LocalizationManager.reload_language_server", return_value=(True, "已通过内存零中断热切换实时生效")) as mock_reload:
+
+                ok_mem, msg_mem = mgr.switch_account("acc-2", reload_session=True, force_reload=False)
+                self.assertTrue(ok_mem)
+                self.assertIn("已无感热重载生效", msg_mem)
                 mock_reload.assert_called_once()
                 self.assertFalse(mgr.has_pending_reload())
 
     def test_pending_reload_auto_execution_on_idle(self):
         """测试长任务由 RUNNING 恢复为空闲 IDLE 时，自动触发平滑重载接力"""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
         from core.account_pool import AccountPoolManager
         from core.localization import LocalizationManager
 
@@ -1072,7 +1077,7 @@ console.log('ALL_OK');
 
     def test_monitor_periodic_quota_polling(self):
         """测试监控引擎定期巡检活跃账号额度并在低于阈值时触发自动热切换"""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock
         from core.monitor import AntigravityMonitor
 
         mon = AntigravityMonitor()
@@ -1091,7 +1096,6 @@ console.log('ALL_OK');
         mock_mgr.auto_switch_on_low_quota.return_value = (True, {"email": "switched@test.com"}, "OK")
 
         # 模拟执行周期逻辑
-        now_ts = 1000.0
         custom = mon.config["customization"]
         thresh = float(custom.get("low_quota_threshold_pct", 10))
         ref_ok, quota_data, _ = mock_mgr.refresh_single_account_quota("acc-low")
@@ -1103,7 +1107,7 @@ console.log('ALL_OK');
         self.assertEqual(new_acc["email"], "switched@test.com")
 
     def test_quota_calculation_accuracy(self):
-        """测试多版本配额格式的精准解析与归一化百分比计算"""
+        """测试多版本配额格式的精准解析与木桶最小值百分比计算"""
         from core.account_pool import AccountPoolManager
 
         # 1. 常见完整格式：含有 five_hour_percent 与 gemini_5h_percent
@@ -1126,15 +1130,28 @@ console.log('ALL_OK');
         self.assertEqual(AccountPoolManager.get_account_quota_pct({}), 0.0)
         self.assertEqual(AccountPoolManager.get_account_quota_pct({"quota": {}}), 100.0)
 
+        # 6. 混合配额维度时取木桶最小值 (例如 claude 100%, gemini 9%)
+        acc_mixed = {"quota": {"five_hour_percent": 100, "claude_5h_percent": 100, "gemini_5h_percent": 9}}
+        self.assertEqual(AccountPoolManager.get_account_quota_pct(acc_mixed), 9.0)
+
     def test_reload_language_server_safety_lock(self):
-        """测试 reload_language_server 内置零中断安全锁：只要任务在跑，严格拒绝杀进程"""
+        """测试 reload_language_server 优先内存热重载，降级时只要任务在跑严格拒绝杀进程"""
         from unittest.mock import patch
         from core.localization import LocalizationManager
 
-        with patch.object(LocalizationManager, "is_any_task_running", return_value=True), \
+        # 1. 内存级热重载成功时，绝不调用 _run_subp (taskkill)
+        with patch.object(LocalizationManager, "reload_language_server_in_memory", return_value=(True, "内存热切换成功")), \
+             patch.object(LocalizationManager, "_run_subp") as mock_subp:
+            ok_mem, msg_mem = LocalizationManager.reload_language_server(force=False)
+            self.assertTrue(ok_mem)
+            self.assertIn("内存热切换成功", msg_mem)
+            mock_subp.assert_not_called()
+
+        # 2. 内存级热重载不可用且任务正在运行时，触发零中断保护，严禁调用 _run_subp (taskkill)
+        with patch.object(LocalizationManager, "reload_language_server_in_memory", return_value=(False, "unavailable")), \
+             patch.object(LocalizationManager, "is_any_task_running", return_value=True), \
              patch.object(LocalizationManager, "_run_subp") as mock_subp:
 
-            # 未指定 force 时，探测到有任务在跑，必须直接拦截并返回 False
             ok, msg = LocalizationManager.reload_language_server(force=False)
             self.assertFalse(ok)
             self.assertIn("零中断保护", msg)
@@ -1169,10 +1186,10 @@ console.log('ALL_OK');
             }
 
             with patch.object(mgr, "write_system_credential", return_value=(True, "OK")), \
-                 patch.object(mgr, "refresh_google_token", return_value=(True, {"access_token": "new"}, "")), \
+                 patch.object(mgr, "refresh_google_token", return_value=(True, {"access_token": "new", "id_token": "id_jwt", "expires_in": 3599}, "")), \
                  patch.object(LocalizationManager, "is_running", return_value=True), \
                  patch.object(LocalizationManager, "is_any_task_running", return_value=True), \
-                 patch.object(LocalizationManager, "reload_language_server") as mock_reload:
+                 patch.object(LocalizationManager, "reload_language_server", return_value=(True, "已通过内存零中断热切换实时生效")) as mock_reload:
 
                 # 模拟任务（不管是 2 秒的短任务，还是 5 分钟的长任务）正在跑
                 ok, target, msg = mgr.auto_switch_on_low_quota(threshold_pct=10.0)
@@ -1182,16 +1199,63 @@ console.log('ALL_OK');
                 self.assertEqual(target["email"], "high_quota@test.com")
                 self.assertEqual(mgr._pool_cache["active_account_id"], "acc-high")
 
-                # 2. 绝不杀进程，长/短任务零中断保护生效
-                mock_reload.assert_not_called()
-                self.assertTrue(mgr.has_pending_reload())
-                self.assertIn("零中断保护", msg)
+                # 2. 通过内存零中断热重载生效，无需挂起等待
+                mock_reload.assert_called_once()
+                self.assertFalse(mgr.has_pending_reload())
+
+    def test_switch_account_stored_token_schema_and_pclntab(self):
+        """测试 switch_account 生成的 StoredToken 凭据结构 (consumer + id_token + 未来 expiry) 与 Go pclntab 补丁解析"""
+        import tempfile
+        from datetime import datetime, timezone
+        from unittest.mock import patch
+        from core.account_pool import AccountPoolManager
+        from core.localization import LocalizationManager
+
+        with tempfile.TemporaryDirectory() as td:
+            mgr = AccountPoolManager(data_dir=Path(td))
+            mgr._pool_cache = {
+                "active_account_id": None,
+                "accounts": [
+                    {
+                        "id": "acc-1",
+                        "email": "target@gmail.com",
+                        "token": {"access_token": "old_tok", "refresh_token": "1//rf_target"}
+                    }
+                ]
+            }
+            captured_payloads = []
+            def _fake_write(payload):
+                captured_payloads.append(payload)
+                return True, "OK"
+
+            with patch.object(mgr, "write_system_credential", side_effect=_fake_write), \
+                 patch.object(mgr, "refresh_google_token", return_value=(True, {"access_token": "ya29.fresh", "id_token": "eyJ_id_token", "expires_in": 3599}, "OK")), \
+                 patch.object(LocalizationManager, "is_running", return_value=False):
+                ok, _ = mgr.switch_account("acc-1", reload_session=False)
+                self.assertTrue(ok)
+                self.assertEqual(len(captured_payloads), 1)
+                p = captured_payloads[0]
+                self.assertEqual(p.get("auth_method"), "consumer")
+                tok = p.get("token", {})
+                self.assertEqual(tok.get("access_token"), "ya29.fresh")
+                self.assertEqual(tok.get("id_token"), "eyJ_id_token")
+                self.assertEqual(tok.get("refresh_token"), "1//rf_target")
+                dt_exp = datetime.fromisoformat(tok["expiry"])
+                self.assertGreater(dt_exp, datetime.now(timezone.utc))
+
+        # 若本机存在 language_server.exe，验证 Go pclntab 4 处补丁点解析完整
+        ls_exe = Path("D:/Programs/Antigravity/resources/bin/language_server.exe")
+        if ls_exe.exists():
+            spec = LocalizationManager._resolve_ls_hotreload_patches(ls_exe)
+            self.assertIsNotNone(spec)
+            self.assertEqual(len(spec.get("patches", [])), 4)
 
     def test_clean_sidebar_and_menu_config_and_version(self):
-        """测试 v3.3.16 版本号与极简侧栏顶栏配置项定义"""
+        """测试 v3.3.17 版本号与极简侧栏顶栏配置项定义"""
         from core.config import APP_VERSION, DEFAULT_CONFIG
-        self.assertEqual(APP_VERSION, "3.3.16")
+        self.assertEqual(APP_VERSION, "3.3.17")
         self.assertIn("clean_sidebar_and_menu", DEFAULT_CONFIG["customization"])
+        self.assertTrue(DEFAULT_CONFIG["customization"].get("auto_switch_on_low_quota"))
 
     def test_runtime_translation_isolation_and_clean_sidebar(self):
         """测试汉化引擎对代码/命令字词（如 apt update && apt install）的隔离保护与极简侧栏注入"""
@@ -1218,6 +1282,7 @@ console.log('ALL_OK');
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

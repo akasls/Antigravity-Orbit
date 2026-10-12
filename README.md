@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20x64-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11 x64" />
-  <img src="https://img.shields.io/badge/Release-v3.3.16-10B981?style=for-the-badge&logo=github&logoColor=white" alt="Release v3.3.16" />
+  <img src="https://img.shields.io/badge/Release-v3.3.17-10B981?style=for-the-badge&logo=github&logoColor=white" alt="Release v3.3.17" />
   <img src="https://img.shields.io/badge/Antigravity-2.0+-FF6F00?style=for-the-badge" alt="Antigravity 2.0+" />
   <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License MIT" />
 </p>
@@ -17,7 +17,7 @@
 | 👥 账号池与双周期额度看板 | ⚡ 极致性能调优与界面汉化 |
 | :---: | :---: |
 | <img src="resources/preview_accounts.png" width="100%" alt="账号池与双周期配额看板"> | <img src="resources/preview_perf.png" width="100%" alt="性能调优与界面汉化"> |
-| *多账号矩阵、Google OAuth 登录、实时 Claude/Gemini 5h & 周配额与一键热切号* | *GPU 硬件加速、4GB V8 堆内存扩展、全栈去遥测与纯净界面定制* |
+| *多账号矩阵、Google OAuth 登录、实时 Claude/Gemini 5h & 周配额与一键热切号* | *GPU 硬件加速、4GB V8 堆内存扩容、全栈去遥测与纯净界面定制* |
 | **📝 规则与专家提示词库** | **🌐 专属网络代理与自愈推送** |
 | <img src="resources/preview_prompts.png" width="100%" alt="规则与专家提示词库"> | <img src="resources/preview_proxy.png" width="100%" alt="专属网络代理服务"> |
 | *系统提示词 (AGENTS.md) 语法高亮编辑、专家角色库、裁剪说明型 Skills 省 10,000+ Token* | *专属 HTTP/SOCKS5 代理接管全流量、本地代理自动探测、长跑任务自愈与多通道告警* |
@@ -62,12 +62,12 @@ python main.py gui
 ## ✨ 核心特性介绍 (Core Features)
 
 ### 1. 👥 智能多账号池与毫秒级热切号
-- **Windows 原生凭据集成**：底层通过 Windows 原生 Credential Manager API 读写系统登录凭据（`gemini:antigravity`），与官方客户端完全无缝咬合。
+- **Windows 原生凭据集成**：底层通过 Windows 原生 Credential Manager API 读写系统登录凭据（`gemini:antigravity`），严格对齐 `authclient.StoredToken`（含 `consumer` 认证方式、`id_token` JWT 与未来 RFC3339 `expiry`），与官方客户端 100% 咬合。
 - **活跃账号始终置顶首位**：无论账号池如何排序或刷新，当前系统凭据管理器中激活生效的账号卡片始终稳定置于第一位，状态一目了然。
 - **一键读取当前账号**：点击即可一键将 Antigravity 客户端正在登录的账号同步至本地账号池。
 - **多途径批量导入与备份**：支持 Google 网页浏览器授权登录、Cockpit Tools 批量 JSON 导入、单条/多行 Refresh Token 批量校验，并支持一键导出备份。
 - **双周期额度看板**：全自动识别 Pro / Ultra / 免费计划等级，展示 Claude 3.5 Sonnet 与 Gemini 5小时滚动限额及周度配额，并精确倒计时。
-- **无感热切号与长任务零中断接力**：毫秒级替换系统凭据；当长任务运行中遇额度不足自动触发换号时，独创**零中断空闲接力保护**，静默排队延时生效，绝不中断任何长短任务！
+- **内存级零中断热切号 (Zero-Kill In-Memory Hot-Switch)**：无需重启反重力客户端窗口、无需强杀 `language_server.exe` 进程，直接通过 Go `pclntab` 动态符号解析在进程内存中触发 `tryRestoreToken` + `CodeAssistClient.ResetCaches()` 并通过 CDP 实时同步 React `PollingUserStatusProvider` 状态，无论手动切号还是低额度自动切号均在 1 秒内无感生效，100% 不打断正在执行的长短任务！
 - **受限诊断详情**：卡片状态胶囊支持一键点击呼出诊断弹窗，直观查看 Google 官方 API 拒绝访问 (403 Forbidden / 401) 的原始报错详情并支持一键复制。
 
 ### 2. ⚡ 极限性能调优与专属网络代理
@@ -98,11 +98,16 @@ python main.py gui
 
 ## 📝 更新日志 (Release Notes)
 
-### 📌 2026-10-12 重大功能迭代与体验调优 (v3.3.9 ~ v3.3.16)
+### 📌 2026-10-12 重大功能迭代与体验调优 (v3.3.9 ~ v3.3.17)
 
-> 💡 **核心更新速览**：本次集中迭代重点攻克了**极简顶栏与侧栏专注模式**、**汉化引擎代码与命令行双层防污染隔离**、**长任务零中断无感热切换**、**活跃账号置顶与 403 受限原生报错诊断**、**托盘前台极速唤醒**以及**界面视觉统一调优与 Skills 裁剪持久记忆**。
+> 💡 **核心更新速览**：本次集中迭代重点攻克了**内存级零中断热切号引擎 (Zero-Kill In-Memory Hot-Switch)**、**低额度秒级无感自动切号**、**极简顶栏与侧栏专注模式**、**汉化引擎代码与命令行双层防污染隔离**、**活跃账号置顶与 403 受限原生报错诊断**、**托盘前台极速唤醒**以及**界面视觉统一调优与 Skills 裁剪持久记忆**。
 
-#### 🚀 v3.3.16 (当前最新)
+#### 🔥 v3.3.17 (当前最新)
+- **内存级零中断热切号引擎 (`reload_language_server_in_memory`)**：彻底重构账号热切换底层机制，摒弃传统的强杀 `language_server` 进程方式；通过解析 Go 1.20+ `pclntab` 符号表在内存中驱动 `AuthClient.tryRestoreToken` 与 `CodeAssistClient.ResetCaches()` 原地刷新系统凭据与 7 大内部缓存，并通过 CDP 同步刷新前端 React `PollingUserStatusProvider` 状态，实现 **<1 秒免重启窗口、零进程中断、不打断任何运行中任务** 的真热切换。
+- **修复 Windows 凭据管理器 `StoredToken` 序列化格式 Bug**：修复切号写入 `gemini:antigravity` 时将 `auth_method` 误写为 `"oauth"`（应为 `"consumer"`）、缺失 `id_token` JWT（导致 `IDTokenClaims` 校验拒绝）以及 `expiry` 被写为已过期当前时间导致后台拒绝加载新凭据的核心缺陷。
+- **修复低额度自动热切号 (`auto_switch_on_low_quota`) 全链路触发**：修复多模型配额木桶最小值计算（取 `five_hour_percent`、`claude_5h_percent`、`gemini_5h_percent` 最小值），新增本地进程级回环 RPC 实时配额嗅探与账号池后台自动巡检，确保任务执行中一旦额度降至或低于设定阈值（如 10%）立即原地无感热切换至健康备用账号。
+
+#### 🚀 v3.3.16
 - **极简顶栏与侧栏模式 (`clean_sidebar_and_menu`)**：在「界面外观」设置中新增开关，支持一键去掉左上角「文件 / 视图 / 窗口」菜单，去掉左侧边栏顶部的反重力图标、展开/收缩侧边栏图标、前进/后退图标、辅助后台图标，以及去掉「新建对话 / 对话历史 / 计划任务」栏位，让左侧边栏专注显示项目列表与会话列表。
 - **设置按钮迁移至左上角原“文件”位置**：将左侧边栏底部的「设置」按钮优雅迁移至左上角顶栏原“文件”菜单所在位置，点击即可秒开 Antigravity 原生设置弹窗。
 - **修复汉化污染 AI 输出与命令行词条 Bug**：重构 `runtime_template.js` 禁区判定逻辑（采用 `.closest()` 无深度限制阻断 `pre`、`code`、`.font-mono`、`[data-testid*="run-command"]`、语法高亮 Token 等）并新增 `ISOLATED_UI_WORDS` 单字动词隔离保护，确保 `update`、`install`、`run` 等词汇仅在真实交互按钮/菜单中汉化，彻底解决 AI 输出 `apt update && apt install ...` 被误译为 `apt更新&& apt 安装 ...` 的问题。
