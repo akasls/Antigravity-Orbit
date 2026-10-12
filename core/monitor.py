@@ -176,20 +176,22 @@ class AntigravityMonitor:
                         self._last_quota_poll_time = now_ts
                         try:
                             from .account_pool import AccountPoolManager
-                            mgr = AccountPoolManager()
+                            if not hasattr(self, "_account_mgr") or not self._account_mgr:
+                                self._account_mgr = AccountPoolManager()
+                            mgr = self._account_mgr
                             active_id = mgr.get_active_account_id()
                             if active_id:
                                 ref_ok, quota_data, _ = mgr.refresh_single_account_quota(active_id)
                                 if ref_ok and quota_data:
                                     thresh = float(custom.get("low_quota_threshold_pct", 10))
-                                    g_5h = quota_data.get("gemini_5h_fraction")
-                                    if g_5h is not None and (g_5h * 100.0) <= thresh:
+                                    pct = mgr.get_account_quota_pct({"quota": quota_data})
+                                    if pct <= thresh:
                                         cooldown = custom.get("auto_switch_cooldown_sec", 60)
                                         if now_ts - getattr(self, "_last_auto_switch_time", 0) >= cooldown:
                                             self._last_auto_switch_time = now_ts
                                             sw_ok, new_acc, sw_desc = mgr.auto_switch_on_low_quota(threshold_pct=thresh)
                                             if sw_ok and new_acc:
-                                                Logger.log(f"【智能额度预警】当前账号额度已降至阈值 ({g_5h*100.0:.0f}% <= {thresh:.0f}%)，{sw_desc}")
+                                                Logger.log(f"【智能额度预警】当前账号额度已降至阈值 ({pct:.0f}% <= {thresh:.0f}%)，{sw_desc}")
                         except Exception as q_err:
                             Logger.log(f"自动额度巡检异常: {q_err}", echo=False)
 

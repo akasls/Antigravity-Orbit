@@ -266,12 +266,16 @@ class LocalizationManager:
             return False
 
     @classmethod
-    def reload_language_server(cls) -> Tuple[bool, str]:
+    def reload_language_server(cls, force: bool = False) -> Tuple[bool, str]:
         """
         通过平滑重载反重力后台服务 (language_server.exe)，实现免重启反重力窗口无感热切换账号。
         Antigravity 宿主窗口保持打开，Electron 主进程会自动拉起新实例并读取系统凭据管理器中的新 Token，
         随后自动刷新界面中的用户状态与额度。
+        【零中断安全锁】：默认情况下若探测到有任务（长任务或短任务）正在运行，严格禁止终止服务，保护任务完整执行。
         """
+        if not force and cls.is_any_task_running():
+            return False, "检测到当前有任务正在运行，已自动启用零中断保护，跳过重载以保护任务"
+
         try:
             if sys.platform == "win32":
                 res = cls._run_subp(["taskkill", "/F", "/IM", "language_server.exe"], capture_output=True)

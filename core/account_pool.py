@@ -309,6 +309,52 @@ class AccountPoolManager:
         t = threading.Thread(target=_watcher_worker, daemon=True, name="orbit-pending-reload-watcher")
         t.start()
 
+    _auto_refresher_started: bool = False
+    _auto_refresher_lock = threading.Lock()
+
+    @staticmethod
+    def get_account_quota_pct(acc: Optional[Dict[str, Any]]) -> float:
+        """获取账号 5 小时剩余配额百分比 (0.0 - 100.0)，全面兼容多种配额字段格式"""
+        if not acc:
+            return 0.0
+        q = acc.get("quota", {})
+        if not isinstance(q, dict):
+            return 0.0
+        # 1. 优先读取已计算好的百分比 (0-100)
+        for key in ("five_hour_percent", "gemini_5h_percent", "five_hour_pct"):
+            val = q.get(key)
+            if val is not None and isinstance(val, (int, float)):
+                return float(val)
+        # 2. 尝试读取小数比例 (0.0-1.0)
+        for key in ("five_hour_fraction", "gemini_5h_fraction"):
+            val = q.get(key)
+            if val is not None and isinstance(val, (int, float)):
+                return float(val) * 100.0
+        # 3. 若 status 为明确异常/耗尽状态
+        if q.get("status") in ("EXHAUSTED", "EXPIRED", "FORBIDDEN"):
+            return 0.0
+        return 100.0
+
+    @staticmethod
+    def get_account_weekly_pct(acc: Optional[Dict[str, Any]]) -> float:
+        """获取账号周度剩余配额百分比 (0.0 - 100.0)"""
+        if not acc:
+            return 0.0
+        q = acc.get("quota", {})
+        if not isinstance(q, dict):
+            return 0.0
+        for key in ("weekly_percent", "gemini_weekly_percent", "weekly_pct"):
+            val = q.get(key)
+            if val is not None and isinstance(val, (int, float)):
+                return float(val)
+        for key in ("weekly_fraction", "gemini_weekly_fraction"):
+            val = q.get(key)
+            if val is not None and isinstance(val, (int, float)):
+                return float(val) * 100.0
+        if q.get("status") in ("EXHAUSTED", "EXPIRED", "FORBIDDEN"):
+            return 0.0
+        return 100.0
+
     def get_active_account_id(self) -> Optional[str]:
         """获取当前系统凭据绑定的活跃账号 ID"""
         self.load_pool()
@@ -331,7 +377,12 @@ class AccountPoolManager:
         self._start_auto_refresher(interval_seconds=300)
 
     def _start_auto_refresher(self, interval_seconds: int = 300):
-        """启动后台静默定时器，自动轮询刷新过期的账号配额"""
+        """启动后台静默定时器，自动轮询刷新过期的账号配额 (单例锁保护，杜绝重复拉起)"""
+        with AccountPoolManager._auto_refresher_lock:
+            if AccountPoolManager._auto_refresher_started:
+                return
+            AccountPoolManager._auto_refresher_started = True
+
         def _loop():
             time.sleep(3)
             while True:
@@ -1454,32 +1505,25 @@ class AccountPoolManager:
                 continue
 
             status = acc.get("status", "HEALTHY")
-            if status == "AUTH_EXPIRED":
+            q = acc.get("quota", {})
+            q_status = q.get("status", "HEALTHY")
+            if status == "AUTH_EXPIRED" or q_status in ("EXPIRED", "FORBIDDEN"):
                 continue
 
-            q = acc.get("quota", {})
-            g_5h = q.get("gemini_5h_fraction")
-            g_wk = q.get("gemini_weekly_fraction")
+            pct_5h = self.get_account_quota_pct(acc)
+            pct_wk = self.get_account_weekly_pct(acc)
 
-            # 过滤掉已明确彻底耗尽的账号 (5h 剩余 <= 0 且 weekly 剩余 <= 0)
-            if g_5h is not None and g_5h <= 0.0 and g_wk is not None and g_wk <= 0.0:
+            # 过滤掉已明确彻底耗尽的账号
+            if pct_5h <= 0.0 and pct_wk <= 0.0:
                 continue
 
             # 综合健康评分 (0 ~ 100)
-            score = 50.0
-            if g_5h is not None:
-                score += g_5h * 40.0
-            else:
-                score += 20.0
-
-            if g_wk is not None:
-                score += g_wk * 10.0
-            else:
+            score = 30.0
+            score += (pct_5h / 100.0) * 50.0  # 5h 剩余额度权重最高
+            score += (pct_wk / 100.0) * 15.0  # 周度额度辅助权重
+            if status == "HEALTHY" and q_status == "HEALTHY":
                 score += 5.0
-
-            if status == "HEALTHY":
-                score += 5.0
-            elif status == "WARNING":
+            elif status == "WARNING" or q_status == "LOW":
                 score -= 10.0
 
             candidates.append((score, acc))
@@ -1505,11 +1549,9 @@ class AccountPoolManager:
         should_switch = force
         curr_desc = ""
         if curr_acc:
-            q = curr_acc.get("quota", {})
-            g_5h = q.get("gemini_5h_fraction")
-            pct = (g_5h * 100.0) if g_5h is not None else 100.0
+            pct = self.get_account_quota_pct(curr_acc)
             curr_desc = f"{curr_acc.get('email')} (剩余约 {pct:.0f}%)"
-            if g_5h is not None and (g_5h * 100.0) <= threshold_pct:
+            if pct <= threshold_pct:
                 should_switch = True
         else:
             should_switch = True
@@ -1526,9 +1568,8 @@ class AccountPoolManager:
         if not ok:
             return False, curr_acc, f"自动热切换失败: {msg}"
 
-        b_q = best_acc.get("quota", {})
-        b_fraction = b_q.get("gemini_5h_fraction")
-        b_pct_str = f"约 {b_fraction * 100.0:.0f}%" if b_fraction is not None else "充足"
+        b_pct = self.get_account_quota_pct(best_acc)
+        b_pct_str = f"约 {b_pct:.0f}%"
         pending_note = "（检测到长任务正在运行，已启用零中断保护，任务完成后自动无感重载）" if self.has_pending_reload() else ""
         return True, best_acc, f"已成功自动热切换至健康账号: {best_acc.get('email')} (剩余额度: {b_pct_str}){pending_note}"
 

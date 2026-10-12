@@ -1071,6 +1071,91 @@ console.log('ALL_OK');
         self.assertTrue(sw_ok)
         self.assertEqual(new_acc["email"], "switched@test.com")
 
+    def test_quota_calculation_accuracy(self):
+        """测试多版本配额格式的精准解析与归一化百分比计算"""
+        from core.account_pool import AccountPoolManager
+
+        # 1. 常见完整格式：含有 five_hour_percent 与 gemini_5h_percent
+        acc1 = {"quota": {"five_hour_percent": 85, "five_hour_fraction": 0.85}}
+        self.assertEqual(AccountPoolManager.get_account_quota_pct(acc1), 85.0)
+
+        # 2. 只有 gemini_5h_percent
+        acc2 = {"quota": {"gemini_5h_percent": 42}}
+        self.assertEqual(AccountPoolManager.get_account_quota_pct(acc2), 42.0)
+
+        # 3. 只有小数形式 five_hour_fraction (例如 0.08)
+        acc3 = {"quota": {"five_hour_fraction": 0.08}}
+        self.assertAlmostEqual(AccountPoolManager.get_account_quota_pct(acc3), 8.0, places=1)
+
+        # 4. 状态异常 (EXHAUSTED / EXPIRED)
+        acc4 = {"quota": {"status": "EXHAUSTED"}}
+        self.assertEqual(AccountPoolManager.get_account_quota_pct(acc4), 0.0)
+
+        # 5. 空配额默认值
+        self.assertEqual(AccountPoolManager.get_account_quota_pct({}), 0.0)
+        self.assertEqual(AccountPoolManager.get_account_quota_pct({"quota": {}}), 100.0)
+
+    def test_reload_language_server_safety_lock(self):
+        """测试 reload_language_server 内置零中断安全锁：只要任务在跑，严格拒绝杀进程"""
+        from unittest.mock import patch
+        from core.localization import LocalizationManager
+
+        with patch.object(LocalizationManager, "is_any_task_running", return_value=True), \
+             patch.object(LocalizationManager, "_run_subp") as mock_subp:
+
+            # 未指定 force 时，探测到有任务在跑，必须直接拦截并返回 False
+            ok, msg = LocalizationManager.reload_language_server(force=False)
+            self.assertFalse(ok)
+            self.assertIn("零中断保护", msg)
+            mock_subp.assert_not_called()
+
+    def test_auto_switch_on_low_quota_protects_short_and_long_tasks(self):
+        """测试额度低于阈值时，自动热切号在短任务与长任务执行中均能完整保护不中断"""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from core.account_pool import AccountPoolManager
+        from core.localization import LocalizationManager
+
+        with tempfile.TemporaryDirectory() as td:
+            mgr = AccountPoolManager(data_dir=Path(td))
+            mgr._pool_cache = {
+                "active_account_id": "acc-low",
+                "accounts": [
+                    {
+                        "id": "acc-low",
+                        "email": "low_quota@test.com",
+                        "token": {"access_token": "tok1", "refresh_token": "rf1"},
+                        "quota": {"five_hour_percent": 8}  # 8% <= 10%
+                    },
+                    {
+                        "id": "acc-high",
+                        "email": "high_quota@test.com",
+                        "token": {"access_token": "tok2", "refresh_token": "rf2"},
+                        "quota": {"five_hour_percent": 95}
+                    }
+                ]
+            }
+
+            with patch.object(mgr, "write_system_credential", return_value=(True, "OK")), \
+                 patch.object(mgr, "refresh_google_token", return_value=(True, {"access_token": "new"}, "")), \
+                 patch.object(LocalizationManager, "is_running", return_value=True), \
+                 patch.object(LocalizationManager, "is_any_task_running", return_value=True), \
+                 patch.object(LocalizationManager, "reload_language_server") as mock_reload:
+
+                # 模拟任务（不管是 2 秒的短任务，还是 5 分钟的长任务）正在跑
+                ok, target, msg = mgr.auto_switch_on_low_quota(threshold_pct=10.0)
+
+                # 1. 切号必须成功记录
+                self.assertTrue(ok)
+                self.assertEqual(target["email"], "high_quota@test.com")
+                self.assertEqual(mgr._pool_cache["active_account_id"], "acc-high")
+
+                # 2. 绝不杀进程，长/短任务零中断保护生效
+                mock_reload.assert_not_called()
+                self.assertTrue(mgr.has_pending_reload())
+                self.assertIn("零中断保护", msg)
+
 if __name__ == "__main__":
     unittest.main()
 
