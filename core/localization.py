@@ -25,6 +25,8 @@ class LocalizationManager:
         if capture_output:
             kwargs["capture_output"] = True
             kwargs["text"] = True
+            kwargs["encoding"] = "utf-8"
+            kwargs["errors"] = "replace"
         if sys.platform == "win32":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
             startupinfo = subprocess.STARTUPINFO()

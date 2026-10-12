@@ -38,6 +38,32 @@
                   .trim();
     }
 
+    // 常用单字动词/动作词白名单 (这些单词极易出现在命令行或代码中，如 apt update && apt install)
+    // 强制规则：此类单词仅允许在真正的 UI 按钮、菜单项等直接交互元素中被汉化，绝不污染普通正文与代码！
+    const ISOLATED_UI_WORDS = new Set([
+        'update', 'install', 'run', 'build', 'test', 'start', 'stop', 'open', 'close',
+        'save', 'add', 'edit', 'delete', 'copy', 'view', 'check', 'clear', 'new',
+        'next', 'back', 'exit', 'done', 'error', 'info', 'help', 'debug', 'exec',
+        'reset', 'undo', 'redo', 'apply', 'cancel', 'status', 'diff', 'format',
+        'search', 'filter', 'cut', 'paste', 'load', 'send', 'export', 'import'
+    ]);
+
+    /**
+     * 判断当前节点是否为直接交互型 UI 控件 (按钮、链接、选项等)
+     */
+    function isDirectUiControl(node) {
+        if (!node) return false;
+        const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+        if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+        const tag = el.tagName;
+        if (tag === 'BUTTON' || tag === 'A' || tag === 'OPTION' || tag === 'LABEL') return true;
+        const role = (el.getAttribute('role') || '').toLowerCase();
+        if (role === 'button' || role === 'menuitem' || role === 'tab' || role === 'option') return true;
+        const cls = typeof el.className === 'string' ? el.className.toLowerCase() : '';
+        if (cls.includes('btn') || cls.includes('button') || cls.includes('menu-item') || cls.includes('tab-item')) return true;
+        return false;
+    }
+
     /**
      * 判断当前节点是否属于菜单、弹出框、对话框等必须 100% 汉化的 UI 控件
      */
@@ -77,36 +103,66 @@
     }
 
     /**
-     * 智能判定是否位于需要保护的“代码/聊天正文禁区”
-     * 核心规则：如果是菜单、弹层或按钮控件，绝不阻断！只有真正的代码编辑器与消息正文内部才阻断。
+     * 智能判定是否位于需要保护的“代码/终端/消息正文禁区”
+     * 核心规则：
+     * 1. 任何代码 (pre/code)、等宽字体 (font-mono)、终端 (terminal/xterm)、Monaco、输入框、代码高亮标签绝对阻断！优先级最高，绝不被任何外部 UI 控制条绕过！
+     * 2. 聊天正文容器内部段落与文本非按钮类元素阻断，防止 AI 正常输出或用户提示词被污染！
      */
     function isInsideBlockedZone(node) {
         let curr = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
         if (!curr) return false;
 
-        // 1. 代码块、富文本编辑器绝对不能汉化，优先级最高
+        // 1. 代码块、富文本编辑器、终端、语法高亮与等宽字体绝对不能汉化，优先级最高！
+        if (curr.closest) {
+            if (curr.closest('code, pre, kbd, samp, var, textarea, input, svg, canvas, symbol, path, [contenteditable="true"], .monaco-editor, .view-lines, .xterm, .terminal, [data-testid*="terminal"], [data-testid*="run-command"], .font-mono, [class*="font-mono"], [class*="shiki"], [class*="prism"], [class*="hljs"], [class*="token"], [class*="code-block"], [class*="syntax"]')) {
+                return true;
+            }
+        }
+
+        // 兜底向上遍历 (处理 Shadow DOM 或 closest 边界)
         let checkEl = curr;
         let d = 0;
-        while (checkEl && d < 6) {
+        while (checkEl && d < 12) {
             if (checkEl.nodeType === Node.ELEMENT_NODE) {
                 const tag = checkEl.tagName;
                 if (BLOCKED_TAGS.has(tag)) return true;
                 if (checkEl.getAttribute('contenteditable') === 'true') return true;
                 const cls = checkEl.className;
-                if (typeof cls === 'string' && (cls.includes('monaco-editor') || cls.includes('view-lines') || cls.includes('xterm'))) {
+                if (typeof cls === 'string' && cls) {
+                    const cl = cls.toLowerCase();
+                    if (cl.includes('monaco-editor') || cl.includes('view-lines') || cl.includes('xterm') ||
+                        cl.includes('terminal') || cl.includes('font-mono') || cl.includes('code-block') ||
+                        cl.includes('syntax') || cl.includes('token') || cl.includes('shiki') ||
+                        cl.includes('prism') || cl.includes('hljs')) {
+                        return true;
+                    }
+                }
+                const testId = checkEl.getAttribute('data-testid');
+                if (testId && (testId.includes('terminal') || testId.includes('run-command') || testId.includes('code'))) {
                     return true;
                 }
             }
-            checkEl = checkEl.parentElement;
+            checkEl = checkEl.parentElement || (checkEl.parentNode && checkEl.parentNode.host);
             d++;
         }
 
-        // 2. 如果是 UI 控件、按钮、卡片头尾、工具调用栏、气泡工具条，允许汉化
+        // 2. 聊天正文区域与 Markdown 生成内容禁区 (AI 输出与用户消息段落，非 UI 控件)
+        if (curr.closest) {
+            const insideChat = curr.closest('[data-testid="conversation-view"], [data-testid="autoscroll-viewport"], .prose, .markdown-body, [data-role="message-body"]');
+            if (insideChat) {
+                const isInteractive = curr.closest('button, a, [role="button"], [role="menuitem"], [role="tab"], [role="switch"], [data-testid*="button"], [data-testid*="toggle"], [data-testid*="collapsible"]');
+                if (!isInteractive) {
+                    return true;
+                }
+            }
+        }
+
+        // 3. 检查类名白名单控件 (只有真正的按钮、菜单、弹层等 UI 控件才允许汉化)
         if (isUiControl(node)) {
             return false;
         }
 
-        // 3. 用户消息正文、智能体普通文字正文禁区
+        // 4. 用户消息正文、智能体普通文字正文禁区
         let depth = 0;
         while (curr && depth < 10) {
             if (curr.nodeType === Node.ELEMENT_NODE) {
@@ -162,10 +218,20 @@
     /**
      * 核心翻译算法：精确匹配 -> 规则匹配 -> 长句滑动替换
      */
-    function translateString(raw) {
+    function translateString(raw, node = null) {
         if (!raw || raw.length < 1) return null;
         const norm = normalize(raw);
         if (!norm) return null;
+
+        const lower = norm.toLowerCase();
+
+        // 关键隔离：常用单字动作词 (如 update, install, run) 极易出现在命令行或代码中 (如 apt update && apt install)
+        // 此类单字仅允许在真正的 UI 按钮、菜单项或属性中汉化，绝对禁止在普通文本/代码节点上触发！
+        if (ISOLATED_UI_WORDS.has(lower)) {
+            if (node && !isDirectUiControl(node)) {
+                return null;
+            }
+        }
 
         // 1. 快捷键检测
         const shortcut = translateShortcut(norm);
@@ -173,7 +239,6 @@
 
         // 2. 精确字典匹配
         if (exactMap.has(norm)) return exactMap.get(norm);
-        const lower = norm.toLowerCase();
         if (lowerMap.has(lower)) return lowerMap.get(lower);
 
         // 3. 动态模式规则匹配 (Pattern Matching)
@@ -364,7 +429,7 @@
             for (const attr of ['placeholder', 'title', 'aria-label', 'data-tooltip']) {
                 const val = el.getAttribute(attr);
                 if (val && !visitedNodes.has(el)) {
-                    const trans = translateString(val);
+                    const trans = translateString(val, el);
                     if (trans && trans !== val) {
                         el.setAttribute(attr, trans);
                     }
@@ -396,7 +461,7 @@
                 if (original.toLowerCase().includes('pack.info')) return;
                 if (isInsideBlockedZone(node)) return;
 
-                const trans = translateString(original);
+                const trans = translateString(original, node);
                 if (trans && trans !== original) {
                     node.nodeValue = trans;
                     visitedNodes.add(node);
@@ -453,9 +518,13 @@
      * 注入全局隐藏 IDE 按钮强力样式规则
      */
     function injectIdeHidingStyle(doc = document) {
-        if (!doc || !doc.head || doc.getElementById('antigravity-ide-hider-style')) return;
+        if (!doc) return;
+        const target = doc.head || doc;
+        if (!target) return;
+        if ((doc.getElementById && doc.getElementById('antigravity-ide-hider-style')) ||
+            (doc.querySelector && doc.querySelector('#antigravity-ide-hider-style'))) return;
         try {
-            const style = doc.createElement('style');
+            const style = (doc.ownerDocument || document).createElement('style');
             style.id = 'antigravity-ide-hider-style';
             style.textContent = `
                 [data-ide-hidden="true"],
@@ -483,7 +552,7 @@
                     pointer-events: none !important;
                 }
             `;
-            doc.head.appendChild(style);
+            target.appendChild(style);
         } catch (e) {}
     }
 
@@ -493,9 +562,13 @@
      * =========================================================================
      */
     function injectCompactUiStyle(doc = document) {
-        if (!doc || !doc.head || doc.getElementById('antigravity-compact-ui-style')) return;
+        if (!doc) return;
+        const target = doc.head || doc;
+        if (!target) return;
+        if ((doc.getElementById && doc.getElementById('antigravity-compact-ui-style')) ||
+            (doc.querySelector && doc.querySelector('#antigravity-compact-ui-style'))) return;
         try {
-            const style = doc.createElement('style');
+            const style = (doc.ownerDocument || document).createElement('style');
             style.id = 'antigravity-compact-ui-style';
             style.textContent = `
                 /* Antigravity Compact UI Mode - 紧凑代码视野排版模式 */
@@ -519,8 +592,128 @@
                     margin-bottom: 2px !important;
                 }
             `;
+            target.appendChild(style);
+        } catch (e) {}
+    }
+
+    /**
+     * =========================================================================
+     * 极简顶栏与侧栏模式 (Clean Sidebar and Top Menu)
+     * 1. 隐藏顶栏中的 文件、视图、窗口 菜单项
+     * 2. 隐藏左侧边栏顶部第一行：反重力图标、侧栏折叠按钮、前进/后退、后台/辅助面板图标
+     * 3. 隐藏左侧边栏快捷操作：新建对话、对话历史、计划任务及分割线
+     * 4. 隐藏左侧边栏底部的设置按钮，将设置按钮移至左上角原“文件”菜单所在位置
+     * =========================================================================
+     */
+    function injectCleanSidebarStyle(doc = document) {
+        if (!doc) return;
+        const target = doc.head || doc;
+        if (!target) return;
+        if ((doc.getElementById && doc.getElementById('antigravity-clean-sidebar-style')) ||
+            (doc.querySelector && doc.querySelector('#antigravity-clean-sidebar-style'))) return;
+        try {
+            const style = (doc.ownerDocument || document).createElement('style');
+            style.id = 'antigravity-clean-sidebar-style';
+            style.textContent = `
+                /* 1. 隐藏顶部菜单栏中的 文件、视图、窗口 菜单项 (保留第一个 Antigravity 及新设置按钮与额度胶囊) */
+                [data-testid="title-menu-bar"] > div.relative:not(:first-child):not(#antigravity-top-settings-wrapper):not(#antigravity-quota-root) {
+                    display: none !important;
+                }
+
+                /* 2. 隐藏侧边栏顶部第一行：反重力图标、侧栏折叠按钮、前进/后退、后台/辅助面板图标 */
+                .bg-sidebar.flex-col > div.shrink-0:first-child,
+                .bg-sidebar > div.shrink-0.flex.items-center.pr-2 {
+                    display: none !important;
+                }
+
+                /* 3. 隐藏侧边栏快捷操作：新建对话、对话历史、计划任务 */
+                .bg-sidebar.flex-col > div:has([data-testid="new-conversation-button"]),
+                .bg-sidebar.flex-col > div:has([data-testid="history-button"]),
+                .bg-sidebar.flex-col > div:has([data-testid="automations-button"]),
+                .bg-sidebar.flex-col > div:nth-child(2):has(button) {
+                    display: none !important;
+                }
+
+                /* 隐藏快捷操作与项目列表之间、以及项目列表与底部设置之间的分割线 */
+                .bg-sidebar.flex-col > div.h-px,
+                .bg-sidebar.flex-col > div.mx-2.h-px {
+                    display: none !important;
+                }
+
+                /* 4. 隐藏左侧边栏底部的设置按钮区域 (设置已迁移至左上角顶栏) */
+                .bg-sidebar.flex-col > div:has([data-testid="settings-button"]),
+                .bg-sidebar.flex-col > div:last-child:has([data-testid="settings-button"]) {
+                    display: none !important;
+                }
+
+                /* 5. 顶部设置按钮精致微调 */
+                #antigravity-top-settings-wrapper {
+                    display: inline-flex;
+                    align-items: center;
+                    position: relative;
+                    user-select: none;
+                    -webkit-app-region: no-drag;
+                }
+                #antigravity-top-settings-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                    padding: 2px 7px;
+                    height: 24px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    line-height: 1;
+                    cursor: pointer;
+                    background: transparent;
+                    border: none;
+                    outline: none;
+                    color: inherit;
+                    opacity: 0.85;
+                    transition: background-color 0.15s ease, opacity 0.15s ease;
+                }
+                #antigravity-top-settings-btn:hover {
+                    background-color: rgba(255, 255, 255, 0.09);
+                    opacity: 1;
+                }
+            `;
             doc.head.appendChild(style);
         } catch (e) {}
+    }
+
+    function mountTopSettingsButton(doc = document) {
+        const titleBar = doc.querySelector('[data-testid="title-menu-bar"]');
+        if (!titleBar) return;
+        if (doc.getElementById('antigravity-top-settings-wrapper')) return;
+
+        const firstItem = titleBar.querySelector('div.relative');
+        if (!firstItem) return;
+
+        const isTw = typeof IS_TRADITIONAL !== 'undefined' && IS_TRADITIONAL;
+        const wrapper = doc.createElement('div');
+        wrapper.id = 'antigravity-top-settings-wrapper';
+        wrapper.className = 'relative flex items-center';
+        wrapper.innerHTML = `
+            <button id="antigravity-top-settings-btn" type="button" title="打开设置 (Settings)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.9;">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+                <span>${isTw ? '設定' : '设置'}</span>
+            </button>
+        `;
+
+        firstItem.after(wrapper);
+
+        const btn = wrapper.querySelector('#antigravity-top-settings-btn');
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const realSettingsBtn = doc.querySelector('[data-testid="settings-button"]');
+            if (realSettingsBtn) {
+                realSettingsBtn.click();
+            } else {
+                window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, metaKey: true, bubbles: true }));
+            }
+        });
     }
 
     /**
@@ -1310,6 +1503,11 @@
             injectCompactUiStyle(document);
         }
 
+        if (cfg.clean_sidebar_and_menu === true) {
+            injectCleanSidebarStyle(document);
+            mountTopSettingsButton(document);
+        }
+
         if (cfg.show_quota_badge === true) {
             mountQuotaBadge();
         }
@@ -1320,6 +1518,14 @@
             }
             if (cfg.compact_ui_mode === true && !document.getElementById('antigravity-compact-ui-style')) {
                 injectCompactUiStyle(document);
+            }
+            if (cfg.clean_sidebar_and_menu === true) {
+                if (!document.getElementById('antigravity-clean-sidebar-style')) {
+                    injectCleanSidebarStyle(document);
+                }
+                if (!document.getElementById('antigravity-top-settings-wrapper')) {
+                    mountTopSettingsButton(document);
+                }
             }
             if (cfg.show_quota_badge === true && !document.getElementById('antigravity-quota-root')) {
                 mountQuotaBadge();
@@ -1355,6 +1561,9 @@
                 }
                 if (cfg.compact_ui_mode === true) {
                     injectCompactUiStyle(shadowRoot);
+                }
+                if (cfg.clean_sidebar_and_menu === true) {
+                    injectCleanSidebarStyle(shadowRoot);
                 }
                 observer.observe(shadowRoot, config);
                 translateNode(shadowRoot);

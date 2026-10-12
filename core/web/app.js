@@ -1,5 +1,5 @@
 /**
- * Antigravity Orbit - 现代桌面核心控制器 (v3.3.15)
+ * Antigravity Orbit - 现代桌面核心控制器 (v3.3.16)
  * 实时自动保存、Google OAuth 网页授权、Claude 与 Gemini 双列配额看板、
  * 后台自动定时刷新与无感切号。
  */
@@ -643,6 +643,7 @@ function renderConfigForm() {
   setSelect('custom-lang', custom.language || 'zh-CN');
   setCheckbox('custom-quota-badge', Boolean(custom.show_quota_badge));
   setCheckbox('custom-clean-ui', Boolean(custom.clean_ui || custom.hide_ide_buttons));
+  setCheckbox('custom-clean-sidebar', Boolean(custom.clean_sidebar_and_menu));
   setCheckbox('custom-start-maximized', Boolean(custom.start_maximized));
   setCheckbox('custom-prune-skills', Boolean(custom.prune_guide_skills));
 
@@ -1011,6 +1012,7 @@ function gatherCurrentConfig() {
   cfg.customization.show_quota_badge = getCheckbox('custom-quota-badge');
   cfg.customization.clean_ui = getCheckbox('custom-clean-ui');
   cfg.customization.hide_ide_buttons = cfg.customization.clean_ui;
+  cfg.customization.clean_sidebar_and_menu = getCheckbox('custom-clean-sidebar');
   cfg.customization.start_maximized = getCheckbox('custom-start-maximized');
   cfg.customization.prune_guide_skills = getCheckbox('custom-prune-skills');
 
@@ -2267,6 +2269,7 @@ function renderMockData() {
       expand_v8_memory: true,
       disable_telemetry: true,
       hide_ide_buttons: true,
+      clean_sidebar_and_menu: true,
       proxy_enabled: true,
       proxy_host: "127.0.0.1",
       proxy_port: 10808,

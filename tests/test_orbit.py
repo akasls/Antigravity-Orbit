@@ -1187,8 +1187,38 @@ console.log('ALL_OK');
                 self.assertTrue(mgr.has_pending_reload())
                 self.assertIn("零中断保护", msg)
 
+    def test_clean_sidebar_and_menu_config_and_version(self):
+        """测试 v3.3.16 版本号与极简侧栏顶栏配置项定义"""
+        from core.config import APP_VERSION, DEFAULT_CONFIG
+        self.assertEqual(APP_VERSION, "3.3.16")
+        self.assertIn("clean_sidebar_and_menu", DEFAULT_CONFIG["customization"])
+
+    def test_runtime_translation_isolation_and_clean_sidebar(self):
+        """测试汉化引擎对代码/命令字词（如 apt update && apt install）的隔离保护与极简侧栏注入"""
+        import subprocess
+        node_script = """
+        const { LocalizationEngine } = require('./localization/core/engine');
+        const engine = new LocalizationEngine();
+        const runtime = engine.generateRuntimeScript(false, { clean_sidebar_and_menu: true });
+        
+        if (!runtime.includes('ISOLATED_UI_WORDS')) throw new Error('ISOLATED_UI_WORDS missing');
+        if (!runtime.includes('injectCleanSidebarStyle')) throw new Error('injectCleanSidebarStyle missing');
+        if (!runtime.includes('mountTopSettingsButton')) throw new Error('mountTopSettingsButton missing');
+        if (!runtime.includes('clean_sidebar_and_menu')) throw new Error('clean_sidebar_and_menu missing');
+        
+        // 验证关键词清单
+        const words = ['update', 'install', 'run', 'build'];
+        for (const w of words) {
+            if (!runtime.includes(`'${w}'`)) throw new Error(`Keyword ${w} missing from isolation list`);
+        }
+        process.exit(0);
+        """
+        res = subprocess.run(["node", "-e", node_script], cwd=Path(__file__).parent.parent, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f"Node verification failed: {res.stderr}")
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

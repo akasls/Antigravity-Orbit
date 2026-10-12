@@ -60,7 +60,7 @@ STATE_FILE = BASE_DIR / "watch_state.json"
 LOG_FILE = BASE_DIR / "watch_log.txt"
 
 # 客户端全局版本号
-APP_VERSION = "3.3.15"
+APP_VERSION = "3.3.16"
 
 DEFAULT_CONFIG = {
     "enabled": True,
@@ -80,6 +80,7 @@ DEFAULT_CONFIG = {
         "disable_telemetry": False,      # 全栈关闭遥测与数据回传
         "hide_ide_buttons": False,       # 彻底隐藏右上角多余推广按钮
         "clean_ui": False,              # 净化界面多余横幅
+        "clean_sidebar_and_menu": True, # 极简顶栏与侧栏 (隐藏菜单与多余图标，专注项目与对话列表，设置移至左上角)
         "opt_gpu": False,
         "opt_max_heap": False,
         "opt_nosleep": False,

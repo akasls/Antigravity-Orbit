@@ -164,6 +164,8 @@ class LocalizationEngine {
             disable_telemetry: false,
             hide_ide_buttons: false,
             clean_ui: false,
+            clean_sidebar_and_menu: true,
+            compact_ui_mode: false,
             opt_gpu: false,
             opt_max_heap: false,
             opt_nosleep: false,
