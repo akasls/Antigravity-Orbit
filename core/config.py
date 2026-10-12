@@ -60,7 +60,7 @@ STATE_FILE = BASE_DIR / "watch_state.json"
 LOG_FILE = BASE_DIR / "watch_log.txt"
 
 # 客户端全局版本号
-APP_VERSION = "3.3.14"
+APP_VERSION = "3.3.15"
 
 DEFAULT_CONFIG = {
     "enabled": True,
@@ -93,7 +93,7 @@ DEFAULT_CONFIG = {
         "disable_auto_update": False,    # 锁定稳定版本，禁止后台静默更新导致补丁被覆盖
         "enable_smooth_scrolling": False,# 硬件级长文本平滑滚动与 60FPS 渲染
         "compact_ui_mode": False,       # 紧凑代码视野模式 (有效代码显示面积提升 35%~50%)
-        "prune_guide_skills": False,    # 裁剪内置说明型 Skills，节省前置 Token 预算
+        "prune_guide_skills": True,     # 裁剪内置说明型 Skills，节省前置 Token 预算 (默认开启并持久记忆)
         "auto_retry_on_error": False,        # 任务异常自动重试 (意外出错时自动点击重试继续工作)
         "notify_on_quota_exhausted": False,  # 额度用尽告警 (发送"任务中断：额度已耗尽")
         "notify_on_max_retry_failed": False, # 重试超限告警 (达到最大重试次数发送"任务失败")

@@ -744,22 +744,25 @@ console.log('ALL_OK');
             "start_maximized",
             "auto_retry_on_error",
             "notify_on_quota_exhausted",
-            "prune_guide_skills"
         ]
         for sw in switches:
             self.assertFalse(custom.get(sw, False), f"Default customization switch '{sw}' should be False!")
+
+        # 说明型 Skills 裁剪默认开启并持久记忆 (节省前置 Token 预算，杜绝重新安装后被自动关闭)
+        self.assertTrue(custom.get("prune_guide_skills", True))
 
         self.assertFalse(DEFAULT_CONFIG.get("close_to_tray", False))
         self.assertFalse(DEFAULT_CONFIG.get("app_autostart", False))
         self.assertFalse(DEFAULT_CONFIG.get("channels", {}).get("telegram", {}).get("enabled", False))
 
-        # 验证 config.example.json 中所有开关也是默认关闭
+        # 验证 config.example.json 中除 prune_guide_skills 之外开关也是默认关闭
         example_path = Path(__file__).parent.parent / "config.example.json"
         self.assertTrue(example_path.exists())
         example_cfg = json.loads(example_path.read_text(encoding="utf-8"))
         ex_custom = example_cfg.get("customization", {})
         for sw in switches:
             self.assertFalse(ex_custom.get(sw, False), f"config.example.json switch '{sw}' should be False!")
+        self.assertTrue(ex_custom.get("prune_guide_skills", True))
         self.assertFalse(example_cfg.get("close_to_tray", False))
         self.assertFalse(example_cfg.get("app_autostart", False))
 

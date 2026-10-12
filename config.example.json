@@ -29,7 +29,7 @@
     "disable_auto_update": false,
     "enable_smooth_scrolling": false,
     "compact_ui_mode": false,
-    "prune_guide_skills": false,
+    "prune_guide_skills": true,
     "auto_retry_on_error": false,
     "max_retry_count": 3,
     "notify_on_quota_exhausted": false,

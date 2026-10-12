@@ -53,16 +53,23 @@ class OrbitApi:
         daemon_auto = AutostartManager.is_enabled()
         app_auto = AutostartManager.is_app_autostart_enabled()
 
-        # 确保 skills 裁剪状态与物理磁盘状态完全同步
-        skills_opt = SkillsOptimizer.get_status()
-        is_pruned = skills_opt.get("is_pruned", False)
-        if custom.get("prune_guide_skills") != is_pruned:
-            custom["prune_guide_skills"] = is_pruned
-            cfg["customization"]["prune_guide_skills"] = is_pruned
+        # 确保用户设定的 skills 裁剪配置被优先尊重并自动同步应用到物理磁盘 (杜绝重新安装后被反向覆盖关闭)
+        prune_cfg = custom.get("prune_guide_skills")
+        if prune_cfg is None:
+            prune_cfg = True
+            custom["prune_guide_skills"] = True
+            cfg["customization"]["prune_guide_skills"] = True
             try:
                 save_config(cfg)
             except Exception:
                 pass
+
+        try:
+            SkillsOptimizer.set_pruned(bool(prune_cfg))
+        except Exception:
+            pass
+
+        skills_opt = SkillsOptimizer.get_status()
 
         # 存储分析 (启动时免全盘递归扫描，由前端异步按需懒加载)
         storage_info = None
