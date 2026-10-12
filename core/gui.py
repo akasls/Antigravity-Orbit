@@ -385,11 +385,10 @@ class OrbitWindowManager:
         except Exception:
             pass
 
-        # 4. 创建现代 Edge WebView2 窗口 (屏幕居中显示，使用版本号彻底破除 Chromium 本地文件缓存)
-        entry_url = f"{html_path.as_uri()}?v={APP_VERSION}"
+        # 4. 创建现代 Edge WebView2 窗口 (屏幕居中显示)
         self.window = webview.create_window(
             title="Antigravity Orbit",
-            url=entry_url,
+            url=str(html_path),
             js_api=self.api,
             width=win_w,
             height=win_h,
