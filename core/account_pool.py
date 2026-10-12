@@ -240,6 +240,80 @@ def _format_time_ago(timestamp: int) -> str:
 
 
 class AccountPoolManager:
+    _pending_session_reload: bool = False
+    _pending_account_email: str = ""
+    _watcher_running: bool = False
+    _watcher_lock = threading.Lock()
+
+    @classmethod
+    def set_pending_reload(cls, pending: bool, email: str = ""):
+        """设置或清除待重载标记 (同步至持久化状态与类属性)"""
+        cls._pending_session_reload = pending
+        cls._pending_account_email = email if pending else ""
+        try:
+            from core.config import load_state, save_state
+            state = load_state()
+            state["pending_session_reload"] = pending
+            state["pending_account_email"] = email if pending else ""
+            save_state(state)
+        except Exception:
+            pass
+
+    @classmethod
+    def has_pending_reload(cls) -> bool:
+        """检查是否有长任务完成后的待重载请求"""
+        if cls._pending_session_reload:
+            return True
+        try:
+            from core.config import load_state
+            state = load_state()
+            return bool(state.get("pending_session_reload", False))
+        except Exception:
+            return False
+
+    @classmethod
+    def _start_pending_reload_watcher(cls):
+        """启动后台线程监听正在运行的长任务，一旦长任务结束进入空闲状态，立即执行免重启平滑重载"""
+        with cls._watcher_lock:
+            if cls._watcher_running:
+                return
+            cls._watcher_running = True
+
+        def _watcher_worker():
+            try:
+                import time
+                from core.localization import LocalizationManager
+                from core.utils import Logger
+                Logger.log("【零中断保护】已启动后台长任务状态监听，等待任务完成平滑接力...")
+                while True:
+                    time.sleep(1.5)
+                    if not cls.has_pending_reload():
+                        break
+                    # 若反重力未运行，直接重置
+                    if not LocalizationManager.is_running():
+                        cls.set_pending_reload(False)
+                        break
+                    # 探测当前是否有活跃长任务在执行
+                    if not LocalizationManager.is_any_task_running():
+                        # 长任务已彻底完成并回到 IDLE 状态，安全执行平滑热重载
+                        r_ok, r_desc = LocalizationManager.reload_language_server()
+                        cls.set_pending_reload(False)
+                        Logger.log(f"【零中断长任务接力】长任务已完成，后台会话已平滑热重载新账号生效: {r_desc}")
+                        break
+            except Exception:
+                pass
+            finally:
+                with cls._watcher_lock:
+                    cls._watcher_running = False
+
+        t = threading.Thread(target=_watcher_worker, daemon=True, name="orbit-pending-reload-watcher")
+        t.start()
+
+    def get_active_account_id(self) -> Optional[str]:
+        """获取当前系统凭据绑定的活跃账号 ID"""
+        self.load_pool()
+        return self._pool_cache.get("active_account_id")
+
     def __init__(self, data_dir: Optional[Path] = None):
         if data_dir is None:
             # 存放在 ~/.gemini/antigravity/orbit_accounts.json 确保多项目及打包后数据常驻且不丢失
@@ -957,6 +1031,7 @@ class AccountPoolManager:
             "healthy": healthy,
             "low_or_exhausted": low_or_exhausted,
             "active_account_id": primary_active_id,
+            "pending_reload": self.has_pending_reload(),
             "accounts": accounts_list
         }
 
@@ -1290,8 +1365,8 @@ class AccountPoolManager:
                 })
         return cockpit_list
 
-    def switch_account(self, account_id: str, reload_session: bool = True) -> Tuple[bool, str]:
-        """一键极速切换到目标账号 (支持免重启平滑热重载反重力后台会话)"""
+    def switch_account(self, account_id: str, reload_session: bool = True, force_reload: bool = False) -> Tuple[bool, str]:
+        """一键极速切换到目标账号 (支持零中断保护与免重启平滑热重载反重力后台会话)"""
         self.load_pool()
         target_acc = None
         for acc in self._pool_cache.get("accounts", []):
@@ -1345,9 +1420,16 @@ class AccountPoolManager:
             try:
                 from core.localization import LocalizationManager
                 if LocalizationManager.is_running():
-                    r_ok, r_desc = LocalizationManager.reload_language_server()
-                    reload_msg = "（已无感热重载生效，反重力窗口保持打开）" if r_ok else f"（{r_desc}）"
+                    if not force_reload and LocalizationManager.is_any_task_running():
+                        self.set_pending_reload(True, email=target_acc.get("email", ""))
+                        self._start_pending_reload_watcher()
+                        reload_msg = "（检测到长任务正在运行，已启用零中断保护：系统凭据已更新，将在任务完成后自动无感重载生效）"
+                    else:
+                        self.set_pending_reload(False)
+                        r_ok, r_desc = LocalizationManager.reload_language_server()
+                        reload_msg = "（已无感热重载生效，反重力窗口保持打开）" if r_ok else f"（{r_desc}）"
                 else:
+                    self.set_pending_reload(False)
                     reload_msg = "（反重力未运行，下次启动将自动使用该账号）"
             except Exception as ex:
                 reload_msg = f"（热重载提示: {ex}）"
@@ -1447,7 +1529,8 @@ class AccountPoolManager:
         b_q = best_acc.get("quota", {})
         b_fraction = b_q.get("gemini_5h_fraction")
         b_pct_str = f"约 {b_fraction * 100.0:.0f}%" if b_fraction is not None else "充足"
-        return True, best_acc, f"已成功自动热切换至健康账号: {best_acc.get('email')} (剩余额度: {b_pct_str})"
+        pending_note = "（检测到长任务正在运行，已启用零中断保护，任务完成后自动无感重载）" if self.has_pending_reload() else ""
+        return True, best_acc, f"已成功自动热切换至健康账号: {best_acc.get('email')} (剩余额度: {b_pct_str}){pending_note}"
 
     def refresh_single_account_quota(self, account_id: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
         """刷新单个账号的最新额度"""

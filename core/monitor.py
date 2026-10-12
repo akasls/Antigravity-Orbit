@@ -154,6 +154,44 @@ class AntigravityMonitor:
                     time.sleep(self.config.get("scan_interval", 3.0))
                     continue
 
+                now_ts = time.time()
+
+                # 1. 检测是否有长任务完成后待执行的平滑热重载（零中断长任务智能接力）
+                try:
+                    from .account_pool import AccountPoolManager
+                    from core.localization import LocalizationManager
+                    if AccountPoolManager.has_pending_reload():
+                        if not LocalizationManager.is_any_task_running():
+                            r_ok, r_desc = LocalizationManager.reload_language_server()
+                            AccountPoolManager.set_pending_reload(False)
+                            Logger.log(f"【零中断长任务接力】长任务已结束并进入空闲，后台会话已平滑热重载生效: {r_desc}")
+                except Exception as p_err:
+                    Logger.log(f"零中断待重载巡检异常: {p_err}", echo=False)
+
+                # 2. 定期活跃账号额度巡检与低额度自动无感切号
+                custom = self.config.get("customization", {})
+                if custom.get("auto_switch_on_low_quota", False):
+                    poll_interval = 60.0  # 每 60 秒检查一次活跃账号额度
+                    if now_ts - getattr(self, "_last_quota_poll_time", 0) >= poll_interval:
+                        self._last_quota_poll_time = now_ts
+                        try:
+                            from .account_pool import AccountPoolManager
+                            mgr = AccountPoolManager()
+                            active_id = mgr.get_active_account_id()
+                            if active_id:
+                                ref_ok, quota_data, _ = mgr.refresh_single_account_quota(active_id)
+                                if ref_ok and quota_data:
+                                    thresh = float(custom.get("low_quota_threshold_pct", 10))
+                                    g_5h = quota_data.get("gemini_5h_fraction")
+                                    if g_5h is not None and (g_5h * 100.0) <= thresh:
+                                        cooldown = custom.get("auto_switch_cooldown_sec", 60)
+                                        if now_ts - getattr(self, "_last_auto_switch_time", 0) >= cooldown:
+                                            self._last_auto_switch_time = now_ts
+                                            sw_ok, new_acc, sw_desc = mgr.auto_switch_on_low_quota(threshold_pct=thresh)
+                                            if sw_ok and new_acc:
+                                                Logger.log(f"【智能额度预警】当前账号额度已降至阈值 ({g_5h*100.0:.0f}% <= {thresh:.0f}%)，{sw_desc}")
+                        except Exception as q_err:
+                            Logger.log(f"自动额度巡检异常: {q_err}", echo=False)
 
                 active_notifiers = get_active_notifiers(self.config)
                 if not active_notifiers:

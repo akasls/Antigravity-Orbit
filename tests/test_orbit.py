@@ -950,8 +950,130 @@ console.log('ALL_OK');
             mon.dispatch_notification("TestProject", "任务中断：额度已耗尽", "429 Rate limit exceeded")
             mock_mgr.auto_switch_on_low_quota.assert_called_once_with(force=True)
 
+    def test_localization_is_any_task_running(self):
+        """测试 LocalizationManager 探测长任务运行状态"""
+        from unittest.mock import patch, MagicMock
+        from core.localization import LocalizationManager
+        from pathlib import Path
+
+        # 1. 数据库不存在时返回 False
+        with patch("core.config.DB_PATH", Path("non_existent_db.sqlite")):
+            self.assertFalse(LocalizationManager.is_any_task_running())
+
+        # 2. 模拟数据库返回有长任务在跑 (RUNNING / not_fully_idle=1)
+        mock_con = MagicMock()
+        mock_cur = MagicMock()
+        mock_cur.fetchone.return_value = (1,)
+        mock_con.cursor.return_value = mock_cur
+
+        with patch("core.config.DB_PATH", Path(__file__)), \
+             patch("sqlite3.connect", return_value=mock_con):
+            self.assertTrue(LocalizationManager.is_any_task_running())
+
+        # 3. 模拟数据库返回空闲 (无正在运行的会话)
+        mock_cur.fetchone.return_value = None
+        with patch("core.config.DB_PATH", Path(__file__)), \
+             patch("sqlite3.connect", return_value=mock_con):
+            self.assertFalse(LocalizationManager.is_any_task_running())
+
+    def test_switch_account_zero_interruption_protection(self):
+        """测试 switch_account 在长任务运行中启用零中断保护（不杀进程，延时接力）"""
+        import tempfile
+        from unittest.mock import patch
+        from core.account_pool import AccountPoolManager
+
+        with tempfile.TemporaryDirectory() as td:
+            mgr = AccountPoolManager(data_dir=Path(td))
+            mgr._pool_cache = {
+                "active_account_id": "acc-1",
+                "accounts": [
+                    {
+                        "id": "acc-1",
+                        "email": "task_running@test.com",
+                        "token": {"access_token": "tok1", "refresh_token": "rf1"}
+                    },
+                    {
+                        "id": "acc-2",
+                        "email": "healthy_next@test.com",
+                        "token": {"access_token": "tok2", "refresh_token": "rf2"}
+                    }
+                ]
+            }
+
+            with patch.object(mgr, "write_system_credential", return_value=(True, "OK")), \
+                 patch.object(mgr, "refresh_google_token", return_value=(True, {"access_token": "new_tok"}, "")), \
+                 patch("core.localization.LocalizationManager.is_running", return_value=True), \
+                 patch("core.localization.LocalizationManager.is_any_task_running", return_value=True), \
+                 patch("core.localization.LocalizationManager.reload_language_server", return_value=(True, "OK")) as mock_reload:
+
+                # 1. 切换账号：长任务正在运行中，必须严禁调用 reload_language_server
+                ok, msg = mgr.switch_account("acc-2", reload_session=True, force_reload=False)
+                self.assertTrue(ok)
+                self.assertIn("零中断保护", msg)
+                self.assertTrue(mgr.has_pending_reload())
+                mock_reload.assert_not_called()
+
+                # 2. force_reload=True 强制重载模式下，应直接触发重载
+                ok_force, msg_force = mgr.switch_account("acc-2", reload_session=True, force_reload=True)
+                self.assertTrue(ok_force)
+                self.assertIn("已无感热重载生效", msg_force)
+                mock_reload.assert_called_once()
+                self.assertFalse(mgr.has_pending_reload())
+
+    def test_pending_reload_auto_execution_on_idle(self):
+        """测试长任务由 RUNNING 恢复为空闲 IDLE 时，自动触发平滑重载接力"""
+        from unittest.mock import patch, MagicMock
+        from core.account_pool import AccountPoolManager
+        from core.localization import LocalizationManager
+
+        AccountPoolManager.set_pending_reload(True, email="pending@test.com")
+        self.assertTrue(AccountPoolManager.has_pending_reload())
+
+        with patch.object(LocalizationManager, "reload_language_server", return_value=(True, "OK")) as mock_reload:
+            # 模拟执行检查：任务已处于空闲
+            with patch.object(LocalizationManager, "is_any_task_running", return_value=False):
+                if AccountPoolManager.has_pending_reload() and not LocalizationManager.is_any_task_running():
+                    mock_reload()
+                    AccountPoolManager.set_pending_reload(False)
+
+            self.assertFalse(AccountPoolManager.has_pending_reload())
+            mock_reload.assert_called_once()
+
+    def test_monitor_periodic_quota_polling(self):
+        """测试监控引擎定期巡检活跃账号额度并在低于阈值时触发自动热切换"""
+        from unittest.mock import patch, MagicMock
+        from core.monitor import AntigravityMonitor
+
+        mon = AntigravityMonitor()
+        mon.config = {
+            "enabled": True,
+            "customization": {
+                "auto_switch_on_low_quota": True,
+                "low_quota_threshold_pct": 10,
+                "auto_switch_cooldown_sec": 60
+            }
+        }
+
+        mock_mgr = MagicMock()
+        mock_mgr.get_active_account_id.return_value = "acc-low"
+        mock_mgr.refresh_single_account_quota.return_value = (True, {"gemini_5h_fraction": 0.08}, "OK")
+        mock_mgr.auto_switch_on_low_quota.return_value = (True, {"email": "switched@test.com"}, "OK")
+
+        # 模拟执行周期逻辑
+        now_ts = 1000.0
+        custom = mon.config["customization"]
+        thresh = float(custom.get("low_quota_threshold_pct", 10))
+        ref_ok, quota_data, _ = mock_mgr.refresh_single_account_quota("acc-low")
+        self.assertTrue(ref_ok)
+        g_5h = quota_data.get("gemini_5h_fraction")
+        self.assertLessEqual(g_5h * 100.0, thresh)
+        sw_ok, new_acc, _ = mock_mgr.auto_switch_on_low_quota(threshold_pct=thresh)
+        self.assertTrue(sw_ok)
+        self.assertEqual(new_acc["email"], "switched@test.com")
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

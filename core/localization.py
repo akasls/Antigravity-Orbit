@@ -224,6 +224,48 @@ class LocalizationManager:
             return False
 
     @classmethod
+    def is_any_task_running(cls) -> bool:
+        """
+        探测当前 Antigravity 客户端是否有长任务/智能体正在活跃执行中。
+        通过只读模式查询 conversation_summaries.db，若存在 RUNNING 状态或未完全空闲的会话，返回 True。
+        """
+        try:
+            from core.config import DB_PATH
+            if not DB_PATH.exists():
+                return False
+            import sqlite3
+            con = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=1.5)
+            cur = con.cursor()
+            cur.execute(
+                "SELECT 1 FROM conversation_summaries WHERE status = 'CASCADE_RUN_STATUS_RUNNING' OR not_fully_idle = 1 LIMIT 1;"
+            )
+            row = cur.fetchone()
+            con.close()
+            return bool(row)
+        except Exception:
+            return False
+
+    @classmethod
+    def is_task_running_for_conv(cls, conv_id: str) -> bool:
+        """检查指定会话是否正在运行长任务"""
+        try:
+            from core.config import DB_PATH
+            if not DB_PATH.exists():
+                return False
+            import sqlite3
+            con = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=1.5)
+            cur = con.cursor()
+            cur.execute(
+                "SELECT 1 FROM conversation_summaries WHERE conversation_id = ? AND (status = 'CASCADE_RUN_STATUS_RUNNING' OR not_fully_idle = 1) LIMIT 1;",
+                (conv_id,)
+            )
+            row = cur.fetchone()
+            con.close()
+            return bool(row)
+        except Exception:
+            return False
+
+    @classmethod
     def reload_language_server(cls) -> Tuple[bool, str]:
         """
         通过平滑重载反重力后台服务 (language_server.exe)，实现免重启反重力窗口无感热切换账号。

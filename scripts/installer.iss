@@ -2,7 +2,7 @@
 ; PrivilegesRequired=lowest ensures smooth user-level install without admin UAC popups
 
 #define MyAppName "Antigravity Orbit"
-#define MyAppVersion "3.3.11"
+#define MyAppVersion "3.3.12"
 #define MyAppPublisher "Antigravity Team"
 #define MyAppURL "https://github.com/akasls/Antigravity-Orbit"
 #define MyAppExeName "Antigravity-Orbit.exe"
