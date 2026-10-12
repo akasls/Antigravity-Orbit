@@ -2,7 +2,7 @@
 ; PrivilegesRequired=lowest ensures smooth user-level install without admin UAC popups
 
 #define MyAppName "Antigravity Orbit"
-#define MyAppVersion "3.3.8"
+#define MyAppVersion "3.3.9"
 #define MyAppPublisher "Antigravity Team"
 #define MyAppURL "https://github.com/akasls/Antigravity-Orbit"
 #define MyAppExeName "Antigravity-Orbit.exe"
@@ -42,7 +42,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "..\dist\Antigravity-Orbit\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "config.json,*.log,*.json"
+Source: "..\dist\Antigravity-Orbit\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "config.json,*.log"
 Source: "..\resources\*"; DestDir: "{app}\resources"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\config.example.json"; DestDir: "{app}"; DestName: "config.json"; Flags: onlyifdoesntexist
 
@@ -68,3 +68,24 @@ Type: filesandordirs; Name: "{app}\*.log"
 Type: filesandordirs; Name: "{app}\*.json"
 Type: filesandordirs; Name: "{app}\*.txt"
 Type: dirifempty; Name: "{app}"
+
+[Code]
+function InitializeSetup(): Boolean;
+var
+  ErrorCode: Integer;
+begin
+  // 安装前强制关闭正在运行的 Orbit（包含后台与托盘常驻），防止文件锁死导致升级覆盖失败
+  Exec('taskkill.exe', '/F /IM Antigravity-Orbit.exe /IM Antigravity-Orbit-Portable-x64.exe', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode);
+  Result := True;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+  begin
+    // 安装文件前清理 WebView2 静态磁盘缓存，确保不会加载旧版 HTML/CSS/JS 缓存
+    DelTree(ExpandConstant('{userappdata}\Antigravity-Orbit\webview_cache\EBWebView\Default\Cache'), True, True, True);
+    DelTree(ExpandConstant('{userappdata}\Antigravity-Orbit\webview_cache\EBWebView\Default\Code Cache'), True, True, True);
+  end;
+end;
+

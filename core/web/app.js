@@ -1,5 +1,5 @@
 /**
- * Antigravity Orbit - 现代桌面核心控制器 (v3.3.8)
+ * Antigravity Orbit - 现代桌面核心控制器 (v3.3.9)
  * 实时自动保存、Google OAuth 网页授权、Claude 与 Gemini 双列配额看板、
  * 后台自动定时刷新与无感切号。
  */
@@ -604,7 +604,7 @@ function renderAccountPool() {
           <div class="account-card-actions">
             ${acc.is_active 
               ? `<span class="badge-status-active"><span class="status-dot-pulse"></span> 使用中</span>`
-              : `<button class="btn btn-secondary btn-sm" onclick="handleSwitchAccount('${acc.id}')">切换</button>`
+              : `<button class="btn btn-secondary btn-sm" title="免重启热切换（安全无感，不杀反重力进程）" onclick="handleSwitchAccount('${acc.id}')">热切换</button>`
             }
             <button class="btn-icon" title="刷新该账号配额" onclick="handleRefreshSingleQuota('${acc.id}')">
               <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
@@ -655,6 +655,12 @@ function renderConfigForm() {
   setCheckbox('custom-auto-retry', Boolean(cfg.auto_retry_on_error));
   setInput('custom-max-retries', cfg.max_retry_count || 3);
   setCheckbox('custom-notify-quota', Boolean(cfg.notify_on_quota_exhausted));
+  setCheckbox('custom-auto-switch-quota', Boolean(custom.auto_switch_on_low_quota));
+  setSelect('custom-auto-switch-threshold', String(custom.low_quota_threshold_pct !== undefined ? custom.low_quota_threshold_pct : 10));
+  const rowThresh = document.getElementById('row-auto-switch-threshold');
+  if (rowThresh) {
+    rowThresh.style.display = custom.auto_switch_on_low_quota ? 'flex' : 'none';
+  }
 
   const tg = ch.telegram || {};
   setCheckbox('tg-enabled', Boolean(tg.enabled));
@@ -1019,6 +1025,8 @@ function gatherCurrentConfig() {
   cfg.auto_retry_on_error = getCheckbox('custom-auto-retry');
   cfg.max_retry_count = parseInt(getInput('custom-max-retries')) || 3;
   cfg.notify_on_quota_exhausted = getCheckbox('custom-notify-quota');
+  cfg.customization.auto_switch_on_low_quota = getCheckbox('custom-auto-switch-quota');
+  cfg.customization.low_quota_threshold_pct = parseInt(getSelect('custom-auto-switch-threshold')) || 10;
 
   cfg.channels.telegram = {
     enabled: getCheckbox('tg-enabled'),
@@ -1082,6 +1090,7 @@ function setupEvents() {
     'custom-prune-skills',
     'custom-proxy-enabled', 'custom-proxy-type',
     'custom-auto-retry', 'custom-notify-quota',
+    'custom-auto-switch-quota', 'custom-auto-switch-threshold',
     'tg-enabled', 'feishu-enabled', 'wecom-enabled',
     'custom-close-tray', 'custom-quota-refresh-active', 'custom-quota-refresh-idle'
   ];
@@ -1092,6 +1101,12 @@ function setupEvents() {
         triggerAutoSave(0);
         if (id === 'custom-quota-refresh-active' || id === 'custom-quota-refresh-idle') {
           startSmartQuotaScheduler();
+        }
+        if (id === 'custom-auto-switch-quota') {
+          const rowThresh = document.getElementById('row-auto-switch-threshold');
+          if (rowThresh) {
+            rowThresh.style.display = el.checked ? 'flex' : 'none';
+          }
         }
       });
     }
@@ -1189,6 +1204,11 @@ function setupEvents() {
   const btnRefreshAll = document.getElementById('btn-refresh-all-quotas');
   if (btnRefreshAll) {
     btnRefreshAll.addEventListener('click', handleRefreshAllQuotas);
+  }
+
+  const btnAutoSwitchNow = document.getElementById('btn-auto-switch-now');
+  if (btnAutoSwitchNow) {
+    btnAutoSwitchNow.addEventListener('click', handleAutoSwitchNow);
   }
 
   // 5. Google OAuth 网页登录弹窗
@@ -1588,8 +1608,8 @@ async function handleRefreshSingleQuota(accountId) {
 
 async function handleSwitchAccount(accountId) {
   if (!window.pywebview || !window.pywebview.api) return;
-  showToast("正在切换账号并重启反重力客户端...", "warning");
-  const res = await window.pywebview.api.switch_account(accountId, true);
+  showToast("正在执行免重启安全热切换...", "info");
+  const res = await window.pywebview.api.switch_account(accountId, false);
   showToast(res.message, res.success ? "success" : "error");
   if (res.success) {
     if (res.data) {
@@ -1602,6 +1622,18 @@ async function handleSwitchAccount(accountId) {
         appState.account_pool = data;
       }
     }
+    renderAccountPool();
+  }
+}
+
+async function handleAutoSwitchNow() {
+  if (!window.pywebview || !window.pywebview.api) return;
+  showToast("正在根据账号健康度与剩余配额自动择优热切换...", "info");
+  const thresh = parseInt(getSelect('custom-auto-switch-threshold')) || 10;
+  const res = await window.pywebview.api.auto_switch_account(thresh, true);
+  showToast(res.message, res.success ? "success" : "warning");
+  if (res.success && res.data) {
+    appState.account_pool = res.data;
     renderAccountPool();
   }
 }

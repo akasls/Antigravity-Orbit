@@ -290,6 +290,7 @@ class AccountPoolManager:
 
     def save_pool(self):
         try:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.db_path, "w", encoding="utf-8") as f:
                 json.dump(self._pool_cache, f, ensure_ascii=False, indent=2)
         except Exception as e:
@@ -1340,6 +1341,101 @@ class AccountPoolManager:
         self.save_pool()
 
         return True, f"已成功切换至账号: {target_acc.get('email')}"
+
+    def find_best_healthy_account(self, exclude_account_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """从账号池中智能挑选当前额度最充沛、状态最健康的最佳备用账号"""
+        self.load_pool()
+        accounts = self._pool_cache.get("accounts", [])
+        if not accounts:
+            return None
+
+        candidates = []
+        for acc in accounts:
+            acc_id = acc.get("id")
+            if exclude_account_id and acc_id == exclude_account_id:
+                continue
+
+            tok = acc.get("token", {})
+            if not tok.get("refresh_token"):
+                continue
+
+            status = acc.get("status", "HEALTHY")
+            if status == "AUTH_EXPIRED":
+                continue
+
+            q = acc.get("quota", {})
+            g_5h = q.get("gemini_5h_fraction")
+            g_wk = q.get("gemini_weekly_fraction")
+
+            # 过滤掉已明确彻底耗尽的账号 (5h 剩余 <= 0 且 weekly 剩余 <= 0)
+            if g_5h is not None and g_5h <= 0.0 and g_wk is not None and g_wk <= 0.0:
+                continue
+
+            # 综合健康评分 (0 ~ 100)
+            score = 50.0
+            if g_5h is not None:
+                score += g_5h * 40.0
+            else:
+                score += 20.0
+
+            if g_wk is not None:
+                score += g_wk * 10.0
+            else:
+                score += 5.0
+
+            if status == "HEALTHY":
+                score += 5.0
+            elif status == "WARNING":
+                score -= 10.0
+
+            candidates.append((score, acc))
+
+        if not candidates:
+            return None
+
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        return candidates[0][1]
+
+    def auto_switch_on_low_quota(self, threshold_pct: float = 10.0, force: bool = False) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+        """
+        低额度自动无感热切换账号 (免杀进程，纯热更新系统凭据)
+        :param threshold_pct: 触发切号的额度百分比阈值 (例如 10.0 表示 5h 剩余额度 <= 10% 时切号)
+        :param force: 是否强制切号 (如在 429 配额用尽告警时直接切号)
+        :return: (是否切换成功, 切换到的新账号字典, 状态描述消息)
+        """
+        self.load_pool()
+        curr_id = self._pool_cache.get("active_account_id")
+        accounts = self._pool_cache.get("accounts", [])
+        curr_acc = next((a for a in accounts if a.get("id") == curr_id), None)
+
+        should_switch = force
+        curr_desc = ""
+        if curr_acc:
+            q = curr_acc.get("quota", {})
+            g_5h = q.get("gemini_5h_fraction")
+            pct = (g_5h * 100.0) if g_5h is not None else 100.0
+            curr_desc = f"{curr_acc.get('email')} (剩余约 {pct:.0f}%)"
+            if g_5h is not None and (g_5h * 100.0) <= threshold_pct:
+                should_switch = True
+        else:
+            should_switch = True
+
+        if not should_switch:
+            return False, curr_acc, f"当前账号额度充足 ({curr_desc})，无需切换"
+
+        best_acc = self.find_best_healthy_account(exclude_account_id=curr_id)
+        if not best_acc:
+            return False, curr_acc, "账号池中暂无可用的健康备用账号 (全部账号额度偏低或凭据失效)"
+
+        target_id = best_acc.get("id")
+        ok, msg = self.switch_account(target_id)
+        if not ok:
+            return False, curr_acc, f"自动热切换失败: {msg}"
+
+        b_q = best_acc.get("quota", {})
+        b_fraction = b_q.get("gemini_5h_fraction")
+        b_pct_str = f"约 {b_fraction * 100.0:.0f}%" if b_fraction is not None else "充足"
+        return True, best_acc, f"已成功自动热切换至健康账号: {best_acc.get('email')} (剩余额度: {b_pct_str})"
 
     def refresh_single_account_quota(self, account_id: str) -> Tuple[bool, Optional[Dict[str, Any]], str]:
         """刷新单个账号的最新额度"""

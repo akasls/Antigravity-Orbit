@@ -796,7 +796,161 @@ console.log('ALL_OK');
             args = mock_popen.call_args[0][0]
             self.assertEqual(args[0], "xdg-open")
 
+    def test_account_pool_find_best_healthy_account(self):
+        """测试从账号池中智能挑选额度最健康充足的备用账号算法"""
+        import tempfile
+        from unittest.mock import patch
+        from core.account_pool import AccountPoolManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = AccountPoolManager(data_dir=Path(tmpdir))
+            mgr._pool_cache = {
+                "active_account_id": "acc-1",
+                "accounts": [
+                    {
+                        "id": "acc-1",
+                        "email": "low@test.com",
+                        "status": "WARNING",
+                        "token": {"refresh_token": "rf_1"},
+                        "quota": {"gemini_5h_fraction": 0.05, "gemini_weekly_fraction": 0.2}
+                    },
+                    {
+                        "id": "acc-2",
+                        "email": "exhausted@test.com",
+                        "status": "EXHAUSTED",
+                        "token": {"refresh_token": "rf_2"},
+                        "quota": {"gemini_5h_fraction": 0.0, "gemini_weekly_fraction": 0.0}
+                    },
+                    {
+                        "id": "acc-3",
+                        "email": "best@test.com",
+                        "status": "HEALTHY",
+                        "token": {"refresh_token": "rf_3"},
+                        "quota": {"gemini_5h_fraction": 0.95, "gemini_weekly_fraction": 0.9}
+                    },
+                    {
+                        "id": "acc-4",
+                        "email": "mid@test.com",
+                        "status": "HEALTHY",
+                        "token": {"refresh_token": "rf_4"},
+                        "quota": {"gemini_5h_fraction": 0.60, "gemini_weekly_fraction": 0.8}
+                    }
+                ]
+            }
+            mgr.save_pool()
+
+            best = mgr.find_best_healthy_account(exclude_account_id="acc-1")
+            self.assertIsNotNone(best)
+            self.assertEqual(best["email"], "best@test.com")
+            self.assertEqual(best["id"], "acc-3")
+
+            # 排除 acc-3 后，次优为 acc-4
+            second = mgr.find_best_healthy_account(exclude_account_id="acc-3")
+            self.assertEqual(second["email"], "mid@test.com")
+
+    def test_account_pool_auto_switch_on_low_quota(self):
+        """测试低额度自动无感热切换逻辑 (触发、跳过与强制切号)"""
+        import tempfile
+        from unittest.mock import patch
+        from core.account_pool import AccountPoolManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = AccountPoolManager(data_dir=Path(tmpdir))
+            mgr._pool_cache = {
+                "active_account_id": "acc-1",
+                "accounts": [
+                    {
+                        "id": "acc-1",
+                        "email": "current_low@test.com",
+                        "status": "WARNING",
+                        "token": {"refresh_token": "rf_1", "access_token": "acc_1"},
+                        "quota": {"gemini_5h_fraction": 0.08, "gemini_weekly_fraction": 0.5}
+                    },
+                    {
+                        "id": "acc-2",
+                        "email": "healthy_next@test.com",
+                        "status": "HEALTHY",
+                        "token": {"refresh_token": "rf_2", "access_token": "acc_2"},
+                        "quota": {"gemini_5h_fraction": 0.85, "gemini_weekly_fraction": 0.9}
+                    }
+                ]
+            }
+            mgr.save_pool()
+
+            with patch.object(mgr, "write_system_credential", return_value=(True, "OK")), \
+                 patch.object(mgr, "refresh_google_token", return_value=(True, {"access_token": "new_tok"}, "")):
+
+                # 1. 阈值 10%：当前 8% <= 10%，应成功切号
+                ok, target, msg = mgr.auto_switch_on_low_quota(threshold_pct=10.0)
+                self.assertTrue(ok)
+                self.assertEqual(target["email"], "healthy_next@test.com")
+                self.assertEqual(mgr._pool_cache["active_account_id"], "acc-2")
+
+                # 2. 当前已是 85%，再次执行不应触发切号
+                ok_skip, _, msg_skip = mgr.auto_switch_on_low_quota(threshold_pct=10.0)
+                self.assertFalse(ok_skip)
+                self.assertIn("额度充足", msg_skip)
+
+                # 3. 强制切号 force=True：即使额度充足也会切回最优可用备用号
+                ok_force, target_force, _ = mgr.auto_switch_on_low_quota(threshold_pct=10.0, force=True)
+                self.assertTrue(ok_force)
+                self.assertEqual(target_force["email"], "current_low@test.com")
+
+    def test_api_bridge_auto_switch_config_and_actions(self):
+        """测试 ApiBridge 低额度自动热切换接口与默认免重启配置"""
+        from unittest.mock import patch
+        api = OrbitApi()
+
+        # 1. switch_account 默认免重启 (restart_app=False)
+        with patch.object(api._account_mgr, "switch_account", return_value=(True, "OK")), \
+             patch("core.localization.LocalizationManager.kill_running_antigravity") as mock_kill:
+            res = api.switch_account("some_id", restart_app=False)
+            self.assertTrue(res["success"])
+            self.assertIn("免重启热切换", res["message"])
+            mock_kill.assert_not_called()
+
+        # 2. 读写自动热切换配置
+        with patch("core.api_bridge.load_config", return_value={"customization": {"auto_switch_on_low_quota": False, "low_quota_threshold_pct": 10}}), \
+             patch("core.api_bridge.save_config") as mock_save:
+            cfg_res = api.get_auto_switch_config()
+            self.assertTrue(cfg_res["success"])
+            self.assertFalse(cfg_res["enabled"])
+            self.assertEqual(cfg_res["threshold"], 10)
+
+            set_res = api.set_auto_switch_config(True, 15)
+            self.assertTrue(set_res["success"])
+            mock_save.assert_called_once()
+            saved_cfg = mock_save.call_args[0][0]
+            self.assertTrue(saved_cfg["customization"]["auto_switch_on_low_quota"])
+            self.assertEqual(saved_cfg["customization"]["low_quota_threshold_pct"], 15)
+
+    def test_monitor_dispatch_notification_auto_switch(self):
+        """测试监控引擎在捕获额度耗尽通知时自动无感切号接力"""
+        from unittest.mock import patch, MagicMock
+        from core.monitor import AntigravityMonitor
+
+        mon = AntigravityMonitor()
+        mon.config = {
+            "enabled": True,
+            "customization": {
+                "auto_switch_on_low_quota": True,
+                "auto_switch_cooldown_sec": 60
+            }
+        }
+
+        mock_mgr = MagicMock()
+        mock_mgr.auto_switch_on_low_quota.return_value = (True, {"email": "switched@test.com"}, "OK")
+
+        with patch("core.monitor.load_config", return_value=mon.config), \
+             patch("core.monitor.get_active_notifiers", return_value=[]), \
+             patch("core.account_pool.AccountPoolManager", return_value=mock_mgr):
+
+            # 触发额度耗尽通知
+            mon.dispatch_notification("TestProject", "任务中断：额度已耗尽", "429 Rate limit exceeded")
+            mock_mgr.auto_switch_on_low_quota.assert_called_once_with(force=True)
+
 if __name__ == "__main__":
     unittest.main()
+
 
 

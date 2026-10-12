@@ -86,6 +86,28 @@ class AntigravityMonitor:
 
     def dispatch_notification(self, proj_display: str, status: str, summary: str):
         self.config = load_config()
+
+        # 检查是否为额度耗尽通知，如果是且开启了自动热切号，优先触发无感自动热切号接力
+        if "额度" in status or "耗尽" in status:
+            custom = self.config.get("customization", {})
+            if custom.get("auto_switch_on_low_quota", False):
+                now_ts = time.time()
+                cooldown = custom.get("auto_switch_cooldown_sec", 60)
+                if now_ts - getattr(self, "_last_auto_switch_time", 0) >= cooldown:
+                    self._last_auto_switch_time = now_ts
+                    try:
+                        from .account_pool import AccountPoolManager
+                        mgr = AccountPoolManager()
+                        sw_ok, new_acc, sw_desc = mgr.auto_switch_on_low_quota(force=True)
+                        if sw_ok and new_acc:
+                            summary += f"\n【已自动热切换】已免重启热切换至健康账号 {new_acc.get('email')} 接力！"
+                            Logger.log(f"触发低额度自动热切换: {sw_desc}")
+                        else:
+                            summary += f"\n【自动切号提示】{sw_desc}"
+                            Logger.log(f"自动热切换提示: {sw_desc}")
+                    except Exception as sw_err:
+                        Logger.log(f"自动切号异常: {sw_err}")
+
         active_notifiers = get_active_notifiers(self.config)
         if not active_notifiers:
             Logger.log(f"未配置或未开启任何通知渠道，跳过推送 ({status})")

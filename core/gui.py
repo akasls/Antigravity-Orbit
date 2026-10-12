@@ -29,6 +29,7 @@ from core.config import (
     RESOURCE_DIR,
     BASE_DIR,
     load_config,
+    APP_VERSION,
 )
 from core.api_bridge import OrbitApi
 from core.monitor import AntigravityMonitor
@@ -365,9 +366,30 @@ class OrbitWindowManager:
             except Exception:
                 pass
 
+        # 3. 自动检测并清理 WebView2 旧版本磁盘强缓存 (彻底杜绝覆盖安装后界面残留旧版 HTML/JS)
+        cache_storage = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming"))) / "Antigravity-Orbit" / "webview_cache"
+        try:
+            cache_storage.mkdir(parents=True, exist_ok=True)
+            ver_marker = cache_storage / ".last_app_version"
+            last_ver = ver_marker.read_text(encoding="utf-8").strip() if ver_marker.exists() else ""
+            if last_ver != APP_VERSION:
+                import shutil
+                for sub_dir in ["Cache", "Code Cache"]:
+                    target = cache_storage / "EBWebView" / "Default" / sub_dir
+                    if target.exists():
+                        try:
+                            shutil.rmtree(str(target), ignore_errors=True)
+                        except Exception:
+                            pass
+                ver_marker.write_text(APP_VERSION, encoding="utf-8")
+        except Exception:
+            pass
+
+        # 4. 创建现代 Edge WebView2 窗口 (屏幕居中显示，使用版本号彻底破除 Chromium 本地文件缓存)
+        entry_url = f"{html_path.as_uri()}?v={APP_VERSION}"
         self.window = webview.create_window(
             title="Antigravity Orbit",
-            url=str(html_path),
+            url=entry_url,
             js_api=self.api,
             width=win_w,
             height=win_h,
@@ -381,15 +403,14 @@ class OrbitWindowManager:
             maximized=not self.start_in_tray,
         )
 
-        # 4. 挂载关闭拦截事件
+        # 5. 挂载关闭拦截事件
         self.window.events.closing += self.on_closing
 
-        # 5. 延迟注入 Win32 原生大/小图标到窗口句柄 (强化任务栏显示)
+        # 6. 延迟注入 Win32 原生大/小图标到窗口句柄 (强化任务栏显示)
         threading.Timer(0.5, self._apply_windows_icon).start()
         threading.Timer(1.5, self._apply_windows_icon).start()
 
-        # 6. 启动主循环
-        cache_storage = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming"))) / "Antigravity-Orbit" / "webview_cache"
+        # 7. 启动主循环
         start_kwargs = {
             "private_mode": False,
             "storage_path": str(cache_storage),

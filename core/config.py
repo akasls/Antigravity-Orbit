@@ -59,6 +59,9 @@ CONFIG_FILE = BASE_DIR / "config.json"
 STATE_FILE = BASE_DIR / "watch_state.json"
 LOG_FILE = BASE_DIR / "watch_log.txt"
 
+# 客户端全局版本号
+APP_VERSION = "3.3.9"
+
 DEFAULT_CONFIG = {
     "enabled": True,
     "scan_interval": 3.0,
@@ -94,6 +97,9 @@ DEFAULT_CONFIG = {
         "auto_retry_on_error": False,        # 任务异常自动重试 (意外出错时自动点击重试继续工作)
         "notify_on_quota_exhausted": False,  # 额度用尽告警 (发送"任务中断：额度已耗尽")
         "notify_on_max_retry_failed": False, # 重试超限告警 (达到最大重试次数发送"任务失败")
+        "auto_switch_on_low_quota": False,   # 低额度自动热切换账号 (额度低于阈值时自动免重启切换至健康账号)
+        "low_quota_threshold_pct": 10,       # 触发自动切号的 5h 剩余额度百分比阈值 (默认 10%)
+        "auto_switch_cooldown_sec": 60,      # 自动切号保护冷却 (秒，默认 60 秒，防止死循环切换)
         "start_maximized": False             # 启动时自动最大化反重力客户端窗口
     },
     "channels": {

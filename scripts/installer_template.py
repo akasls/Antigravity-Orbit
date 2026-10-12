@@ -15,7 +15,7 @@ from pathlib import Path
 
 DEFAULT_INSTALL_DIR = Path.home() / "AppData" / "Local" / "Programs" / "Antigravity-Orbit"
 APP_NAME = "Antigravity Orbit"
-APP_VERSION = "3.3.8"
+APP_VERSION = "3.3.9"
 APP_PUBLISHER = "Antigravity Team"
 EXE_NAME = "Antigravity-Orbit.exe"
 
@@ -154,6 +154,17 @@ def perform_installation(target_dir: Path, create_desktop: bool, create_start_me
     if progress_callback: progress_callback(10, "正在关闭可能运行中的旧实例...")
     subprocess.run(f"taskkill /F /IM {EXE_NAME} 2>nul", shell=True, capture_output=True)
     time.sleep(0.5)
+
+    # 清理旧版 WebView2 磁盘缓存，防止覆盖安装后界面残留旧版 HTML/JS
+    try:
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            cache_dir = Path(appdata) / "Antigravity-Orbit" / "webview_cache" / "EBWebView" / "Default" / "Cache"
+            code_cache = Path(appdata) / "Antigravity-Orbit" / "webview_cache" / "EBWebView" / "Default" / "Code Cache"
+            if cache_dir.exists(): shutil.rmtree(str(cache_dir), ignore_errors=True)
+            if code_cache.exists(): shutil.rmtree(str(code_cache), ignore_errors=True)
+    except Exception:
+        pass
 
     if progress_callback: progress_callback(20, "正在准备安装目录...")
     target_dir.mkdir(parents=True, exist_ok=True)

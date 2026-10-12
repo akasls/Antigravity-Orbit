@@ -518,8 +518,8 @@ class OrbitApi:
         except Exception as e:
             return {"success": False, "message": f"添加账号异常: {e}"}
 
-    def switch_account(self, account_id: str, restart_app: bool = True) -> dict:
-        """一键切换当前反重力账号并自动重启反重力客户端生效"""
+    def switch_account(self, account_id: str, restart_app: bool = False) -> dict:
+        """一键热切换当前反重力账号 (免杀进程，默认不重启反重力以保护正在执行的任务)"""
         try:
             ok, msg = self._account_mgr.switch_account(account_id)
             if not ok:
@@ -531,11 +531,54 @@ class OrbitApi:
                 time.sleep(0.8)
                 r_ok, r_msg = LocalizationManager.launch_antigravity()
                 restart_msg = "，已自动重启反重力客户端生效！" if r_ok else f"，重启客户端提示: {r_msg}"
+            else:
+                restart_msg = "（已完成免重启热切换，不影响当前任务）"
 
             pool = self._account_mgr.get_accounts_summary()
             return {"success": True, "message": f"{msg}{restart_msg}", "data": pool}
         except Exception as e:
             return {"success": False, "message": f"切换账号异常: {e}"}
+
+    def auto_switch_account(self, threshold_pct: float = 10.0, force: bool = False) -> dict:
+        """根据当前额度自动挑选最优账号进行热切换"""
+        try:
+            ok, best_acc, msg = self._account_mgr.auto_switch_on_low_quota(threshold_pct=threshold_pct, force=force)
+            pool = self._account_mgr.get_accounts_summary()
+            return {
+                "success": ok,
+                "message": msg,
+                "switched_account": best_acc.get("email") if best_acc else None,
+                "data": pool
+            }
+        except Exception as e:
+            return {"success": False, "message": f"自动热切换失败: {e}"}
+
+    def get_auto_switch_config(self) -> dict:
+        """获取低额度自动热切换配置"""
+        try:
+            cfg = load_config()
+            custom = cfg.get("customization", {})
+            return {
+                "success": True,
+                "enabled": custom.get("auto_switch_on_low_quota", False),
+                "threshold": custom.get("low_quota_threshold_pct", 10),
+                "cooldown": custom.get("auto_switch_cooldown_sec", 60)
+            }
+        except Exception as e:
+            return {"success": False, "message": str(e), "enabled": False, "threshold": 10, "cooldown": 60}
+
+    def set_auto_switch_config(self, enabled: bool, threshold: int = 10) -> dict:
+        """设置低额度自动热切换开关与阈值"""
+        try:
+            cfg = load_config()
+            if "customization" not in cfg:
+                cfg["customization"] = {}
+            cfg["customization"]["auto_switch_on_low_quota"] = bool(enabled)
+            cfg["customization"]["low_quota_threshold_pct"] = int(threshold)
+            save_config(cfg)
+            return {"success": True, "message": "自动热切号配置已更新并保存"}
+        except Exception as e:
+            return {"success": False, "message": f"保存配置失败: {e}"}
 
     def refresh_account_quota(self, account_id: str) -> dict:
         """刷新指定账号额度"""
