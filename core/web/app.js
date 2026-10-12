@@ -604,7 +604,9 @@ function renderAccountPool() {
           <div class="account-card-actions">
             ${acc.is_active 
               ? `<span class="badge-status-active"><span class="status-dot-pulse"></span> 使用中</span>`
-              : `<button class="btn btn-secondary btn-sm" title="免重启热切换（安全无感，不杀反重力进程）" onclick="handleSwitchAccount('${acc.id}')">热切换</button>`
+              : `<button class="btn-icon" title="免重启热切换至此账号" onclick="handleSwitchAccount('${acc.id}')">
+                  <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
+                </button>`
             }
             <button class="btn-icon" title="刷新该账号配额" onclick="handleRefreshSingleQuota('${acc.id}')">
               <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
@@ -1204,11 +1206,6 @@ function setupEvents() {
   const btnRefreshAll = document.getElementById('btn-refresh-all-quotas');
   if (btnRefreshAll) {
     btnRefreshAll.addEventListener('click', handleRefreshAllQuotas);
-  }
-
-  const btnAutoSwitchNow = document.getElementById('btn-auto-switch-now');
-  if (btnAutoSwitchNow) {
-    btnAutoSwitchNow.addEventListener('click', handleAutoSwitchNow);
   }
 
   // 5. Google OAuth 网页登录弹窗

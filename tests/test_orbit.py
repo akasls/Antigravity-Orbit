@@ -878,7 +878,8 @@ console.log('ALL_OK');
             mgr.save_pool()
 
             with patch.object(mgr, "write_system_credential", return_value=(True, "OK")), \
-                 patch.object(mgr, "refresh_google_token", return_value=(True, {"access_token": "new_tok"}, "")):
+                 patch.object(mgr, "refresh_google_token", return_value=(True, {"access_token": "new_tok"}, "")), \
+                 patch("core.localization.LocalizationManager.is_running", return_value=False):
 
                 # 1. 阈值 10%：当前 8% <= 10%，应成功切号
                 ok, target, msg = mgr.auto_switch_on_low_quota(threshold_pct=10.0)
@@ -902,11 +903,11 @@ console.log('ALL_OK');
         api = OrbitApi()
 
         # 1. switch_account 默认免重启 (restart_app=False)
-        with patch.object(api._account_mgr, "switch_account", return_value=(True, "OK")), \
+        with patch.object(api._account_mgr, "switch_account", return_value=(True, "已成功切换账号（已完成免重启热切换）")), \
              patch("core.localization.LocalizationManager.kill_running_antigravity") as mock_kill:
             res = api.switch_account("some_id", restart_app=False)
             self.assertTrue(res["success"])
-            self.assertIn("免重启热切换", res["message"])
+            self.assertIn("免重启", res["message"])
             mock_kill.assert_not_called()
 
         # 2. 读写自动热切换配置

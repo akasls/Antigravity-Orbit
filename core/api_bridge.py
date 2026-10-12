@@ -519,9 +519,10 @@ class OrbitApi:
             return {"success": False, "message": f"添加账号异常: {e}"}
 
     def switch_account(self, account_id: str, restart_app: bool = False) -> dict:
-        """一键热切换当前反重力账号 (免杀进程，默认不重启反重力以保护正在执行的任务)"""
+        """一键热切换当前反重力账号 (免关窗，平滑热重载后台服务)"""
         try:
-            ok, msg = self._account_mgr.switch_account(account_id)
+            reload_session = not restart_app
+            ok, msg = self._account_mgr.switch_account(account_id, reload_session=reload_session)
             if not ok:
                 return {"success": False, "message": msg}
 
@@ -530,9 +531,7 @@ class OrbitApi:
                 LocalizationManager.kill_running_antigravity()
                 time.sleep(0.8)
                 r_ok, r_msg = LocalizationManager.launch_antigravity()
-                restart_msg = "，已自动重启反重力客户端生效！" if r_ok else f"，重启客户端提示: {r_msg}"
-            else:
-                restart_msg = "（已完成免重启热切换，不影响当前任务）"
+                restart_msg = "，已全量重启反重力客户端！" if r_ok else f"，重启客户端提示: {r_msg}"
 
             pool = self._account_mgr.get_accounts_summary()
             return {"success": True, "message": f"{msg}{restart_msg}", "data": pool}

@@ -1290,8 +1290,8 @@ class AccountPoolManager:
                 })
         return cockpit_list
 
-    def switch_account(self, account_id: str) -> Tuple[bool, str]:
-        """一键极速切换到目标账号"""
+    def switch_account(self, account_id: str, reload_session: bool = True) -> Tuple[bool, str]:
+        """一键极速切换到目标账号 (支持免重启平滑热重载反重力后台会话)"""
         self.load_pool()
         target_acc = None
         for acc in self._pool_cache.get("accounts", []):
@@ -1340,7 +1340,19 @@ class AccountPoolManager:
         target_acc["last_used"] = int(time.time())
         self.save_pool()
 
-        return True, f"已成功切换至账号: {target_acc.get('email')}"
+        reload_msg = ""
+        if reload_session:
+            try:
+                from core.localization import LocalizationManager
+                if LocalizationManager.is_running():
+                    r_ok, r_desc = LocalizationManager.reload_language_server()
+                    reload_msg = "（已无感热重载生效，反重力窗口保持打开）" if r_ok else f"（{r_desc}）"
+                else:
+                    reload_msg = "（反重力未运行，下次启动将自动使用该账号）"
+            except Exception as ex:
+                reload_msg = f"（热重载提示: {ex}）"
+
+        return True, f"已成功切换至账号: {target_acc.get('email')}{reload_msg}"
 
     def find_best_healthy_account(self, exclude_account_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """从账号池中智能挑选当前额度最充沛、状态最健康的最佳备用账号"""

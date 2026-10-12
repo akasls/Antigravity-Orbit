@@ -224,6 +224,28 @@ class LocalizationManager:
             return False
 
     @classmethod
+    def reload_language_server(cls) -> Tuple[bool, str]:
+        """
+        通过平滑重载反重力后台服务 (language_server.exe)，实现免重启反重力窗口无感热切换账号。
+        Antigravity 宿主窗口保持打开，Electron 主进程会自动拉起新实例并读取系统凭据管理器中的新 Token，
+        随后自动刷新界面中的用户状态与额度。
+        """
+        try:
+            if sys.platform == "win32":
+                res = cls._run_subp(["taskkill", "/F", "/IM", "language_server.exe"], capture_output=True)
+                if res.returncode == 0:
+                    return True, "已成功触发反重力后台会话平滑热重载（窗口免重启）"
+                return False, "未发现运行中的反重力后台服务"
+            elif sys.platform == "darwin":
+                res = cls._run_subp(["pkill", "-f", "language_server"], capture_output=True)
+                if res.returncode == 0:
+                    return True, "已成功触发反重力后台会话平滑热重载"
+                return False, "未发现运行中的反重力后台服务"
+            return True, "当前系统无需单独重载后台服务"
+        except Exception as e:
+            return False, f"热重载后台服务异常: {e}"
+
+    @classmethod
     def launch_antigravity(cls, install_dir: Optional[str] = None) -> Tuple[bool, str]:
         """拉起启动 Antigravity 客户端 (杜绝 CREATE_NO_WINDOW 导致的 Chromium 白屏与卡死)"""
         target_dir = cls._fallback_detect_dir(install_dir)
