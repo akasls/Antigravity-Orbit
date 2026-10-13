@@ -2,7 +2,7 @@
 ; PrivilegesRequired=lowest ensures smooth user-level install without admin UAC popups
 
 #define MyAppName "Antigravity Orbit"
-#define MyAppVersion "3.3.19"
+#define MyAppVersion "3.3.20"
 #define MyAppPublisher "Antigravity Team"
 #define MyAppURL "https://github.com/akasls/Antigravity-Orbit"
 #define MyAppExeName "Antigravity-Orbit.exe"
@@ -62,11 +62,8 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\_internal"
-Type: filesandordirs; Name: "{app}\config.json"
 Type: filesandordirs; Name: "{app}\logs"
 Type: filesandordirs; Name: "{app}\*.log"
-Type: filesandordirs; Name: "{app}\*.json"
-Type: filesandordirs; Name: "{app}\*.txt"
 Type: dirifempty; Name: "{app}"
 
 [Code]
