@@ -1049,49 +1049,52 @@ function gatherCurrentConfig(isExplicitPerf = false) {
     cfg.customization.proxy_url = `${pType}://${cfg.customization.proxy_host}:${cfg.customization.proxy_port}`;
   }
 
-  // 3. 自愈与推送
-  const autoRetryEl = document.getElementById('custom-auto-retry');
-  if (autoRetryEl) {
-    cfg.auto_retry_on_error = autoRetryEl.checked;
-    cfg.customization.auto_retry_on_error = autoRetryEl.checked;
-    const maxRetries = parseInt(getInput('custom-max-retries')) || cfg.max_retry_count || 3;
-    cfg.max_retry_count = maxRetries;
-    cfg.customization.max_retry_count = maxRetries;
-    const notifyQuota = getCheckbox('custom-notify-quota');
-    cfg.notify_on_quota_exhausted = notifyQuota;
-    cfg.customization.notify_on_quota_exhausted = notifyQuota;
-    cfg.customization.auto_switch_on_low_quota = getCheckbox('custom-auto-switch-quota');
-    cfg.customization.low_quota_threshold_pct = parseInt(getSelect('custom-auto-switch-threshold')) || cfg.customization.low_quota_threshold_pct || 10;
-  }
+  // 3. 自愈与推送 (仅在当前处于「自愈推送」标签页时从 DOM 采集，彻底杜绝在其他标签页操作时误将未激活表单覆盖到 channels)
+  if (appState.activeTab === 'healing_notify') {
+    cfg._allow_clear_channels = true;
+    const autoRetryEl = document.getElementById('custom-auto-retry');
+    if (autoRetryEl) {
+      cfg.auto_retry_on_error = autoRetryEl.checked;
+      cfg.customization.auto_retry_on_error = autoRetryEl.checked;
+      const maxRetries = parseInt(getInput('custom-max-retries')) || cfg.max_retry_count || 3;
+      cfg.max_retry_count = maxRetries;
+      cfg.customization.max_retry_count = maxRetries;
+      const notifyQuota = getCheckbox('custom-notify-quota');
+      cfg.notify_on_quota_exhausted = notifyQuota;
+      cfg.customization.notify_on_quota_exhausted = notifyQuota;
+      cfg.customization.auto_switch_on_low_quota = getCheckbox('custom-auto-switch-quota');
+      cfg.customization.low_quota_threshold_pct = parseInt(getSelect('custom-auto-switch-threshold')) || cfg.customization.low_quota_threshold_pct || 10;
+    }
 
-  const tgEl = document.getElementById('tg-enabled');
-  if (tgEl) {
-    cfg.channels.telegram = {
-      enabled: tgEl.checked,
-      bot_token: getInput('tg-bot-token'),
-      chat_id: getInput('tg-chat-id'),
-      proxy: getInput('tg-proxy')
-    };
-  }
+    const tgEl = document.getElementById('tg-enabled');
+    if (tgEl) {
+      cfg.channels.telegram = {
+        enabled: tgEl.checked,
+        bot_token: getInput('tg-bot-token'),
+        chat_id: getInput('tg-chat-id'),
+        proxy: getInput('tg-proxy')
+      };
+    }
 
-  const feishuEl = document.getElementById('feishu-enabled');
-  if (feishuEl) {
-    const fsUrl = getInput('feishu-webhook');
-    cfg.channels.feishu = {
-      enabled: feishuEl.checked,
-      webhook: fsUrl,
-      webhook_url: fsUrl
-    };
-  }
+    const feishuEl = document.getElementById('feishu-enabled');
+    if (feishuEl) {
+      const fsUrl = getInput('feishu-webhook');
+      cfg.channels.feishu = {
+        enabled: feishuEl.checked,
+        webhook: fsUrl,
+        webhook_url: fsUrl
+      };
+    }
 
-  const wecomEl = document.getElementById('wecom-enabled');
-  if (wecomEl) {
-    const wcUrl = getInput('wecom-webhook');
-    cfg.channels.wecom = {
-      enabled: wecomEl.checked,
-      webhook: wcUrl,
-      webhook_url: wcUrl
-    };
+    const wecomEl = document.getElementById('wecom-enabled');
+    if (wecomEl) {
+      const wcUrl = getInput('wecom-webhook');
+      cfg.channels.wecom = {
+        enabled: wecomEl.checked,
+        webhook: wcUrl,
+        webhook_url: wcUrl
+      };
+    }
   }
 
   // 4. 系统设置

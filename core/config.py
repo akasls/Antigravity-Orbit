@@ -411,6 +411,7 @@ def load_config() -> dict:
 
 def save_config(cfg: dict):
     # 自动保障 proxy_url 与别名格式完整
+    allow_clear_channels = bool(cfg.pop("_allow_clear_channels", False))
     _sync_config_aliases(cfg)
     custom = cfg.get("customization", {})
     if custom.get("proxy_host") and custom.get("proxy_port"):
@@ -420,6 +421,34 @@ def save_config(cfg: dict):
         custom["proxy_url"] = f"{p_type}://{p_host}:{p_port}"
 
     canonical_file = get_canonical_config_file()
+
+    # 防误清空保护：若非用户在「自愈推送」页主动修改，当传入的推送凭据为空而磁盘或备份中已有有效凭据时，自动保留已有推送配置
+    if not allow_clear_channels:
+        for existing_path in (canonical_file, canonical_file.parent / "config.json.bak"):
+            if existing_path.exists() and existing_path.is_file():
+                try:
+                    existing_data = json.loads(existing_path.read_text(encoding="utf-8"))
+                    ex_ch = existing_data.get("channels", {}) if isinstance(existing_data, dict) else {}
+                    cur_ch = cfg.setdefault("channels", {})
+                    # Telegram 保护
+                    ex_tg = ex_ch.get("telegram", {})
+                    cur_tg = cur_ch.setdefault("telegram", {})
+                    if (is_placeholder(cur_tg.get("bot_token")) or is_placeholder(cur_tg.get("chat_id"))) and (
+                        not is_placeholder(ex_tg.get("bot_token")) and not is_placeholder(ex_tg.get("chat_id"))
+                    ):
+                        cur_ch["telegram"] = copy.deepcopy(ex_tg)
+                    # 飞书 / 企微保护
+                    for ch_key in ("feishu", "wecom"):
+                        ex_item = ex_ch.get(ch_key, {})
+                        cur_item = cur_ch.setdefault(ch_key, {})
+                        ex_url = ex_item.get("webhook_url") or ex_item.get("webhook") or ""
+                        cur_url = cur_item.get("webhook_url") or cur_item.get("webhook") or ""
+                        if not cur_url and ex_url:
+                            cur_ch[ch_key] = copy.deepcopy(ex_item)
+                    break
+                except Exception:
+                    pass
+
     _atomic_write_json(canonical_file, cfg)
 
     # 同步维护一份可靠的 .bak 快照
