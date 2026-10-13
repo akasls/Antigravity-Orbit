@@ -144,9 +144,27 @@ class LocalizationEngine {
      * 读取项目 config.json 中的自定义配置
      */
     loadCustomConfig(customConfigFile = null) {
-        const configPath = customConfigFile ? path.resolve(customConfigFile) : path.resolve(LOCALIZATION_ROOT, '..', 'config.json');
+        let configPath = customConfigFile ? path.resolve(customConfigFile) : null;
+        if (!configPath || !fs.existsSync(configPath)) {
+            const home = process.env.USERPROFILE || process.env.HOME || '';
+            const appdata = process.env.APPDATA || (home ? path.join(home, 'AppData', 'Roaming') : '');
+            const candidates = [
+                appdata ? path.join(appdata, 'Antigravity-Orbit', 'config.json') : null,
+                home ? path.join(home, '.antigravity-orbit', 'config.json') : null,
+                path.resolve(LOCALIZATION_ROOT, '..', 'config.json'),
+                path.resolve(process.cwd(), 'config.json'),
+                'D:/Antigravity-Orbit/config.json',
+                'C:/Antigravity-Orbit/config.json'
+            ].filter(Boolean);
+            for (const c of candidates) {
+                if (fs.existsSync(c)) {
+                    configPath = c;
+                    break;
+                }
+            }
+        }
         try {
-            if (fs.existsSync(configPath)) {
+            if (configPath && fs.existsSync(configPath)) {
                 const raw = fs.readFileSync(configPath, 'utf-8');
                 const cfg = JSON.parse(raw);
                 if (cfg && cfg.customization) {
@@ -195,7 +213,28 @@ class LocalizationEngine {
     const IS_TRADITIONAL = ${isTraditional ? 'true' : 'false'};
     const TRANSLATIONS_MAP = ${JSON.stringify(dict, null, 2)};
     const PHRASE_REPLACEMENTS = ${JSON.stringify(phraseEntries)};
-    const CUSTOM_CONFIG = ${JSON.stringify(cfg, null, 2)};
+    let CUSTOM_CONFIG = ${JSON.stringify(cfg, null, 2)};
+    try {
+        if (typeof require === 'function') {
+            const _fs = require('fs');
+            const _path = require('path');
+            const _home = process.env.USERPROFILE || process.env.HOME || '';
+            const _appdata = process.env.APPDATA || (_home ? _path.join(_home, 'AppData', 'Roaming') : '');
+            const _cands = [
+                _appdata ? _path.join(_appdata, 'Antigravity-Orbit', 'config.json') : '',
+                _home ? _path.join(_home, '.antigravity-orbit', 'config.json') : ''
+            ].filter(Boolean);
+            for (const _cp of _cands) {
+                if (_fs.existsSync(_cp)) {
+                    const _raw = JSON.parse(_fs.readFileSync(_cp, 'utf8'));
+                    if (_raw && _raw.customization) {
+                        CUSTOM_CONFIG = Object.assign({}, CUSTOM_CONFIG, _raw.customization);
+                        break;
+                    }
+                }
+            }
+        }
+    } catch (e) {}
 `;
         return template.replace('/* --- I18N_CONFIG_PLACEHOLDER --- */', configCode);
     }
@@ -224,14 +263,24 @@ class LocalizationEngine {
         let isLocalized = false;
         let lang = null;
         let hasBackup = fs.existsSync(bakPath);
+        let asarPatched = false;
+
+        if (fs.existsSync(asarPath)) {
+            try {
+                const buf = fs.readFileSync(asarPath);
+                asarPatched = buf.includes(Buffer.from('ANTIGRAVITY_LOCALIZATION_START')) ||
+                              buf.includes(Buffer.from('ANTIGRAVITY_DYNAMIC_PROXY_START')) ||
+                              buf.includes(Buffer.from('ANTIGRAVITY_OPTIMIZATION_START'));
+            } catch (e) {}
+        }
 
         if (fs.existsSync(metaPath)) {
             try {
                 const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
-                isLocalized = !!meta.localized;
+                isLocalized = !!meta.localized && asarPatched;
                 lang = meta.lang || 'zh-CN';
             } catch (e) {}
-        } else if (hasBackup) {
+        } else if (asarPatched) {
             isLocalized = true;
             lang = 'zh-CN';
         }

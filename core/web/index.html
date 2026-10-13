@@ -7,7 +7,7 @@
   <meta http-equiv="Expires" content="0">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Antigravity Orbit</title>
-  <link rel="stylesheet" href="app.css?v=3.3.19">
+  <link rel="stylesheet" href="app.css?v=3.3.20">
 </head>
 <body>
 
@@ -22,7 +22,7 @@
             <circle cx="12" cy="12" r="3"/>
           </svg>
           <span class="brand-title">Antigravity Orbit</span>
-          <span class="badge-version">v3.3.19</span>
+          <span class="badge-version">v3.3.20</span>
         </div>
       </div>
 
@@ -231,6 +231,19 @@
               <div class="row-ctrl">
                 <label class="switch">
                   <input type="checkbox" id="custom-opt-telemetry">
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <div class="row-info">
+                <div class="row-title">锁定版本禁止反重力自动更新</div>
+                <div class="row-desc">彻底阻断官方后台静默下载与版本强更，防止自动更新覆盖汉化、代理与性能补丁</div>
+              </div>
+              <div class="row-ctrl">
+                <label class="switch">
+                  <input type="checkbox" id="custom-disable-auto-update" checked>
                   <span class="slider"></span>
                 </label>
               </div>
@@ -856,7 +869,7 @@
               <div class="row-info">
                 <div class="row-title" style="display: flex; align-items: center; gap: 8px;">
                   <span>Antigravity Orbit</span>
-                  <span class="badge-version">v3.3.19</span>
+                  <span class="badge-version">v3.3.20</span>
                 </div>
                 <div class="row-desc" style="margin-top: 6px;">
                   全自动化 Antigravity 账号池管理、深度性能补丁、多语言界面本地化与任务自愈平台。
@@ -1113,6 +1126,6 @@
   <!-- 浮动无感 Toast 容器 -->
   <div class="toast-container" id="toast-container"></div>
 
-  <script src="app.js?v=3.3.19"></script>
+  <script src="app.js?v=3.3.20"></script>
 </body>
 </html>

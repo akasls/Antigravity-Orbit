@@ -65,13 +65,23 @@ class AsarPatcher {
             throw new Error(`未在目标目录找到 app.asar: ${this.resourcesDir}`);
         }
 
-        // 1. 安全备份
-        if (!fs.existsSync(this.bakPath)) {
-            console.log('[备份] 正在创建官方原始包备份: app.asar.bak ...');
+        // 1. 安全备份与版本同步校验：
+        // 若当前 app.asar 不含任何 Orbit 注入签名，说明它是刚安装或刚自动更新后的官方纯净新版 app.asar！
+        // 此时必须用当前新版 app.asar 更新 app.asar.bak，绝不能用旧版 .bak 覆盖新版 app.asar！
+        let isCurrentAsarPatched = false;
+        try {
+            const currentBuf = fs.readFileSync(this.asarPath);
+            isCurrentAsarPatched = currentBuf.includes(Buffer.from('ANTIGRAVITY_LOCALIZATION_START')) ||
+                                   currentBuf.includes(Buffer.from('ANTIGRAVITY_DYNAMIC_PROXY_START')) ||
+                                   currentBuf.includes(Buffer.from('ANTIGRAVITY_OPTIMIZATION_START'));
+        } catch (e) {}
+
+        if (!fs.existsSync(this.bakPath) || !isCurrentAsarPatched) {
+            console.log('[备份] 检测到官方原始包或更新后的新版 app.asar，正在同步创建官方备份: app.asar.bak ...');
             fs.copyFileSync(this.asarPath, this.bakPath);
             console.log('[备份] 官方备份完成！');
         } else {
-            // 用纯净备份重置当前 asar，以保证每次都是全新干净的注入
+            // 用同版本纯净备份重置当前 asar，以保证每次都是全新干净的注入
             try {
                 fs.copyFileSync(this.bakPath, this.asarPath);
                 console.log('[还原] 已重置为官方纯净备份，准备注入新版汉化...');
@@ -124,7 +134,7 @@ class AsarPatcher {
             fs.writeFileSync(this.metaPath, JSON.stringify({
                 localized: true,
                 lang: this.isTraditional ? 'zh-TW' : 'zh-CN',
-                version: '2.14.0',
+                version: '2.15.0',
                 engine: 'Antigravity-Custom-Localization',
                 updated_at: new Date().toISOString()
             }, null, 2), 'utf-8');
@@ -155,7 +165,10 @@ class AsarPatcher {
         const disabledYml = path.join(this.resourcesDir, 'app-update.yml.disabled');
         const origYml = path.join(this.resourcesDir, 'app-update.yml');
         if (fs.existsSync(disabledYml)) {
-            try { fs.renameSync(disabledYml, origYml); } catch (e) {}
+            try {
+                fs.copyFileSync(disabledYml, origYml);
+                fs.unlinkSync(disabledYml);
+            } catch (e) {}
         }
 
         this.resignMacApp();
@@ -171,14 +184,27 @@ class AsarPatcher {
         if (cfg.disable_auto_update !== false) {
             if (fs.existsSync(origYml)) {
                 try {
-                    fs.renameSync(origYml, disabledYml);
+                    fs.copyFileSync(origYml, disabledYml);
+                    fs.unlinkSync(origYml);
                     console.log('[锁定] app-update.yml 已重命名为 .disabled，阻断后台静默更新。');
                 } catch (e) {}
             }
+            // 清理已下载的后台待安装更新包，防止预下载的 installer.exe 强行覆盖
+            try {
+                const localAppData = process.env.LOCALAPPDATA || '';
+                if (localAppData) {
+                    const pendingDir = path.join(localAppData, 'antigravity-updater', 'pending');
+                    if (fs.existsSync(pendingDir)) {
+                        fs.rmSync(pendingDir, { recursive: true, force: true });
+                        console.log('[锁定] 已清理 antigravity-updater/pending 待更新安装包。');
+                    }
+                }
+            } catch (e) {}
         } else {
             if (fs.existsSync(disabledYml)) {
                 try {
-                    fs.renameSync(disabledYml, origYml);
+                    fs.copyFileSync(disabledYml, origYml);
+                    fs.unlinkSync(disabledYml);
                     console.log('[恢复] app-update.yml 已恢复。');
                 } catch (e) {}
             }
@@ -372,7 +398,7 @@ class AsarPatcher {
             content = content.replace(target, replacement);
         }
 
-        // 锁定版本，禁止后台自动检测与下载更新
+        // 锁定版本，全方位禁止后台自动检测、HostBridge 触发下载与静默安装更新
         if (cfg.disable_auto_update !== false) {
             const initTarget = "function initAutoUpdater(isHeadless, settingsService) {";
             if (content.includes(initTarget) && !content.includes('/* === AUTO_UPDATE_DISABLED === */')) {
@@ -381,6 +407,28 @@ class AsarPatcher {
             const checkTarget = "function startAutoUpdateChecks() {";
             if (content.includes(checkTarget) && !content.includes('/* === AUTO_CHECK_DISABLED === */')) {
                 content = content.replace(checkTarget, `${checkTarget}\n    /* === AUTO_CHECK_DISABLED === */\n    return;`);
+            }
+            const manualCheckTarget = "function checkForUpdates(isManual = false) {";
+            if (content.includes(manualCheckTarget) && !content.includes('/* === CHECK_FOR_UPDATES_DISABLED === */')) {
+                content = content.replace(manualCheckTarget, `${manualCheckTarget}\n    /* === CHECK_FOR_UPDATES_DISABLED === */\n    if (!isManual) return;`);
+            }
+            const quitInstallTarget = "function quitAndInstall() {";
+            if (content.includes(quitInstallTarget) && !content.includes('/* === QUIT_INSTALL_DISABLED === */')) {
+                content = content.replace(quitInstallTarget, `${quitInstallTarget}\n    /* === QUIT_INSTALL_DISABLED === */\n    console.log('[AutoUpdater] quitAndInstall 已由 Orbit 安全拦截');\n    return;`);
+            }
+            const hostApplyTarget = "function applyHostUpdate() {";
+            if (content.includes(hostApplyTarget) && !content.includes('/* === HOST_UPDATE_DISABLED === */')) {
+                content = content.replace(hostApplyTarget, `${hostApplyTarget}\n    /* === HOST_UPDATE_DISABLED === */\n    console.log('[AutoUpdater] applyHostUpdate 已由 Orbit 安全拦截');\n    return false;`);
+            }
+
+            // 同步修改 settingsService.js 默认值，将 AUTO_CHECK_FOR_UPDATES 默认设为 false
+            const settingsSvcPath = path.join(this.tempDir, 'dist', 'services', 'settingsService.js');
+            if (fs.existsSync(settingsSvcPath)) {
+                try {
+                    let sContent = fs.readFileSync(settingsSvcPath, 'utf-8');
+                    sContent = sContent.replace('[SettingKey.AUTO_CHECK_FOR_UPDATES, true]', '[SettingKey.AUTO_CHECK_FOR_UPDATES, false]');
+                    fs.writeFileSync(settingsSvcPath, sContent, 'utf-8');
+                } catch (e) {}
             }
         }
 
@@ -469,12 +517,13 @@ function _getOrbitProxyConfig() {
                 return {
                     enabled: !!custom.proxy_enabled,
                     proxyUrl: proxyUrl,
-                    bypass: bypass
+                    bypass: bypass,
+                    custom: custom
                 };
             }
         }
     } catch (e) {}
-    return { enabled: false, proxyUrl: '', bypass: '' };
+    return { enabled: false, proxyUrl: '', bypass: '', custom: {} };
 }
 const _initProxy = _getOrbitProxyConfig();
 if (_initProxy.enabled && _initProxy.proxyUrl) {
@@ -488,6 +537,31 @@ if (_initProxy.enabled && _initProxy.proxyUrl) {
     process.env['all_proxy'] = _initProxy.proxyUrl;
     process.env['NO_PROXY'] = 'localhost,127.0.0.1,::1,127.0.0.0/8';
     process.env['no_proxy'] = 'localhost,127.0.0.1,::1,127.0.0.0/8';
+}
+if (_initProxy.custom && (_initProxy.custom.opt_gpu || _initProxy.custom.enable_gpu_acceleration)) {
+    electron_1.app.commandLine.appendSwitch('enable-gpu-rasterization');
+    electron_1.app.commandLine.appendSwitch('enable-zero-copy');
+    electron_1.app.commandLine.appendSwitch('ignore-gpu-blocklist');
+    electron_1.app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');
+}
+if (_initProxy.custom && (_initProxy.custom.opt_max_heap || _initProxy.custom.expand_v8_memory)) {
+    electron_1.app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
+}
+if (_initProxy.custom && (_initProxy.custom.opt_nosleep || _initProxy.custom.disable_background_throttling)) {
+    electron_1.app.commandLine.appendSwitch('disable-background-timer-throttling');
+    electron_1.app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+    electron_1.app.commandLine.appendSwitch('disable-renderer-backgrounding');
+}
+if (_initProxy.custom && (_initProxy.custom.opt_telemetry || _initProxy.custom.disable_telemetry)) {
+    electron_1.app.commandLine.appendSwitch('disable-metrics');
+    electron_1.app.commandLine.appendSwitch('disable-telemetry');
+    electron_1.app.commandLine.appendSwitch('disable-breakpad');
+    electron_1.app.commandLine.appendSwitch('disable-component-update');
+    electron_1.app.commandLine.appendSwitch('no-report-upload');
+    electron_1.app.commandLine.appendSwitch('disable-domain-reliability');
+}
+if (_initProxy.custom && _initProxy.custom.start_maximized) {
+    electron_1.app.commandLine.appendSwitch('start-maximized');
 }
 /* === ANTIGRAVITY_DYNAMIC_PROXY_END === */
 `;

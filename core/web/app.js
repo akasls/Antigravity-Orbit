@@ -1,5 +1,5 @@
 /**
- * Antigravity Orbit - 现代桌面核心控制器 (v3.3.19)
+ * Antigravity Orbit - 现代桌面核心控制器 (v3.3.20)
  * 实时自动保存、Google OAuth 网页授权、Claude 与 Gemini 双列配额看板、
  * 后台自动定时刷新与无感切号。
  */
@@ -21,19 +21,23 @@ let oauthPollTimer = null;
 let autoSaveTimer = null;
 let autoRefreshTimer = null;
 let isAppInitializing = true;
+let hasInitializedApp = false;
+let tabsBound = false;
+let eventsBound = false;
 
 // 监听 pywebview 原生桥接就绪
 window.addEventListener('pywebviewready', () => {
   initApp();
 });
 
-// 脱机降级或浏览器直接预览兜底
+// 脱机降级或浏览器直接预览兜底 (严禁在 pywebview 桥接尚未注入的 0ms 抢跑渲染假数据或重复绑定事件)
 document.addEventListener('DOMContentLoaded', () => {
-  const tryInitMock = () => {
-    if (!window.pywebview) {
-      setupTabs();
-      setupEvents();
+  setupTabs();
+  setupEvents();
+  setTimeout(() => {
+    if (!window.pywebview && !hasInitializedApp) {
       renderMockData();
+      isAppInitializing = false;
       try {
         const params = new URLSearchParams(window.location.search);
         const targetTab = params.get('tab');
@@ -42,13 +46,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       } catch (e) {}
     }
-  };
-  // 浏览器直接打开时即刻就绪，WebView 环境保留容错延时
-  tryInitMock();
-  setTimeout(tryInitMock, 200);
+  }, 600);
 });
 
 async function initApp() {
+  if (hasInitializedApp) return;
+  hasInitializedApp = true;
   setupTabs();
   setupEvents();
   await loadInitialData();
@@ -59,6 +62,8 @@ async function initApp() {
  * 侧边栏 5 大工作区分组切换
  */
 function setupTabs() {
+  if (tabsBound) return;
+  tabsBound = true;
   const navItems = document.querySelectorAll('.nav-item');
   navItems.forEach(item => {
     item.addEventListener('click', () => {
@@ -638,17 +643,18 @@ function renderConfigForm() {
   const custom = cfg.customization || {};
   const ch = cfg.channels || {};
 
-  // 1. 性能汉化 (不实时自动保存，初次安装默认全关由用户自主开启)
+  // 1. 性能汉化
   setCheckbox('custom-opt-gpu', Boolean(custom.opt_gpu || custom.enable_gpu_acceleration));
   setCheckbox('custom-opt-max-heap', Boolean(custom.opt_max_heap || custom.expand_v8_memory));
   setCheckbox('custom-opt-nosleep', Boolean(custom.opt_nosleep || custom.disable_background_throttling));
   setCheckbox('custom-opt-telemetry', Boolean(custom.opt_telemetry || custom.disable_telemetry));
+  setCheckbox('custom-disable-auto-update', custom.disable_auto_update !== false);
   setSelect('custom-lang', custom.language || 'zh-CN');
   setCheckbox('custom-quota-badge', Boolean(custom.show_quota_badge));
   setCheckbox('custom-clean-ui', Boolean(custom.clean_ui || custom.hide_ide_buttons));
-  setCheckbox('custom-clean-sidebar', Boolean(custom.clean_sidebar_and_menu));
+  setCheckbox('custom-clean-sidebar', custom.clean_sidebar_and_menu !== false);
   setCheckbox('custom-start-maximized', Boolean(custom.start_maximized));
-  setCheckbox('custom-prune-skills', Boolean(custom.prune_guide_skills));
+  setCheckbox('custom-prune-skills', custom.prune_guide_skills !== false);
 
   // 2. 专属网络代理
   setCheckbox('custom-proxy-enabled', Boolean(custom.proxy_enabled));
@@ -658,14 +664,14 @@ function renderConfigForm() {
   setInput('custom-proxy-bypass', custom.proxy_bypass || 'localhost, 127.0.0.1, *.local');
 
   // 3. 自愈与推送
-  setCheckbox('custom-auto-retry', Boolean(cfg.auto_retry_on_error));
-  setInput('custom-max-retries', cfg.max_retry_count || 3);
-  setCheckbox('custom-notify-quota', Boolean(cfg.notify_on_quota_exhausted));
-  setCheckbox('custom-auto-switch-quota', Boolean(custom.auto_switch_on_low_quota));
+  setCheckbox('custom-auto-retry', Boolean(cfg.auto_retry_on_error || custom.auto_retry_on_error));
+  setInput('custom-max-retries', custom.max_retry_count || cfg.max_retry_count || 3);
+  setCheckbox('custom-notify-quota', Boolean(cfg.notify_on_quota_exhausted || custom.notify_on_quota_exhausted));
+  setCheckbox('custom-auto-switch-quota', custom.auto_switch_on_low_quota !== false);
   setSelect('custom-auto-switch-threshold', String(custom.low_quota_threshold_pct !== undefined ? custom.low_quota_threshold_pct : 10));
   const rowThresh = document.getElementById('row-auto-switch-threshold');
   if (rowThresh) {
-    rowThresh.style.display = custom.auto_switch_on_low_quota ? 'flex' : 'none';
+    rowThresh.style.display = (custom.auto_switch_on_low_quota !== false) ? 'flex' : 'none';
   }
 
   const tg = ch.telegram || {};
@@ -1012,6 +1018,11 @@ function gatherCurrentConfig(isExplicitPerf = false) {
     cfg.customization.opt_telemetry = getCheckbox('custom-opt-telemetry');
     cfg.customization.disable_telemetry = cfg.customization.opt_telemetry;
 
+    const disableUpdateEl = document.getElementById('custom-disable-auto-update');
+    if (disableUpdateEl) {
+      cfg.customization.disable_auto_update = disableUpdateEl.checked;
+    }
+
     cfg.customization.language = getSelect('custom-lang') || cfg.customization.language || 'zh-CN';
     cfg.customization.show_quota_badge = getCheckbox('custom-quota-badge');
     cfg.customization.clean_ui = getCheckbox('custom-clean-ui');
@@ -1042,8 +1053,13 @@ function gatherCurrentConfig(isExplicitPerf = false) {
   const autoRetryEl = document.getElementById('custom-auto-retry');
   if (autoRetryEl) {
     cfg.auto_retry_on_error = autoRetryEl.checked;
-    cfg.max_retry_count = parseInt(getInput('custom-max-retries')) || cfg.max_retry_count || 3;
-    cfg.notify_on_quota_exhausted = getCheckbox('custom-notify-quota');
+    cfg.customization.auto_retry_on_error = autoRetryEl.checked;
+    const maxRetries = parseInt(getInput('custom-max-retries')) || cfg.max_retry_count || 3;
+    cfg.max_retry_count = maxRetries;
+    cfg.customization.max_retry_count = maxRetries;
+    const notifyQuota = getCheckbox('custom-notify-quota');
+    cfg.notify_on_quota_exhausted = notifyQuota;
+    cfg.customization.notify_on_quota_exhausted = notifyQuota;
     cfg.customization.auto_switch_on_low_quota = getCheckbox('custom-auto-switch-quota');
     cfg.customization.low_quota_threshold_pct = parseInt(getSelect('custom-auto-switch-threshold')) || cfg.customization.low_quota_threshold_pct || 10;
   }
@@ -1060,17 +1076,21 @@ function gatherCurrentConfig(isExplicitPerf = false) {
 
   const feishuEl = document.getElementById('feishu-enabled');
   if (feishuEl) {
+    const fsUrl = getInput('feishu-webhook');
     cfg.channels.feishu = {
       enabled: feishuEl.checked,
-      webhook: getInput('feishu-webhook')
+      webhook: fsUrl,
+      webhook_url: fsUrl
     };
   }
 
   const wecomEl = document.getElementById('wecom-enabled');
   if (wecomEl) {
+    const wcUrl = getInput('wecom-webhook');
     cfg.channels.wecom = {
       enabled: wecomEl.checked,
-      webhook: getInput('wecom-webhook')
+      webhook: wcUrl,
+      webhook_url: wcUrl
     };
   }
 
@@ -1127,6 +1147,8 @@ async function handleAutoSaveConfig() {
  * 事件挂载与实时监听
  */
 function setupEvents() {
+  if (eventsBound) return;
+  eventsBound = true;
   // 1. 仅对代理服务、自愈推送、系统设置、Skills裁剪等项绑定实时自动保存 (性能汉化页面明确不实时生效！)
   const autoSaveChecks = [
     'custom-prune-skills',

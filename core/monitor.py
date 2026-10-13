@@ -168,6 +168,17 @@ class AntigravityMonitor:
                 except Exception as p_err:
                     Logger.log(f"零中断待重载巡检异常: {p_err}", echo=False)
 
+                # 1b. 自动更新后补丁丢失自愈巡检 (每 30 秒极速校验一次 app.asar 签名，若被官方更新覆盖则无感自动恢复)
+                if now_ts - getattr(self, "_last_patch_heal_check", 0) >= 30.0:
+                    self._last_patch_heal_check = now_ts
+                    try:
+                        from core.localization import LocalizationManager
+                        healed, heal_msg = LocalizationManager.auto_heal_if_updated(self.config)
+                        if healed:
+                            Logger.log(f"【补丁无感自愈】{heal_msg}")
+                    except Exception as h_err:
+                        Logger.log(f"补丁自愈巡检异常: {h_err}", echo=False)
+
                 # 2. 定期活跃账号额度巡检与低额度自动无感切号
                 custom = self.config.get("customization", {})
                 auto_switch_enabled = custom.get("auto_switch_on_low_quota", True)

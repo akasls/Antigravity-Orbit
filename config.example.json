@@ -27,7 +27,7 @@
     "proxy_port": 10808,
     "proxy_type": "socks5",
     "proxy_bypass": "<local>;localhost;127.0.0.1;::1;127.0.0.0/8;*.local",
-    "disable_auto_update": false,
+    "disable_auto_update": true,
     "enable_smooth_scrolling": false,
     "compact_ui_mode": false,
     "prune_guide_skills": true,

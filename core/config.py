@@ -54,6 +54,11 @@ def get_resource_dir() -> Path:
 
 def get_canonical_config_file() -> Path:
     """获取系统规范唯一的持久化配置文件路径 (彻底解决多处候选配置文件抢占覆盖问题)"""
+    env_dir = os.environ.get("ORBIT_CONFIG_DIR")
+    if env_dir:
+        p = Path(env_dir) / "config.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
     if platform.system().lower() == "windows":
         appdata = os.environ.get("APPDATA")
         if appdata:
@@ -90,7 +95,7 @@ STATE_FILE = BASE_DIR / "watch_state.json"
 LOG_FILE = BASE_DIR / "watch_log.txt"
 
 # 客户端全局版本号
-APP_VERSION = "3.3.19"
+APP_VERSION = "3.3.20"
 
 DEFAULT_CONFIG = {
     "enabled": True,
@@ -98,6 +103,9 @@ DEFAULT_CONFIG = {
     "lock_port": 49222,
     "close_to_tray": False,          # 默认点击关闭窗口时彻底退出，由用户自主开启托盘常驻
     "app_autostart": False,         # Orbit 客户端开机静默驻留托盘
+    "auto_retry_on_error": False,
+    "max_retry_count": 3,
+    "notify_on_quota_exhausted": False,
     "customization": {
         "language": "zh-CN",            # "zh-CN" (简体), "zh-TW" (繁体), "en" (原版英文)
         "show_quota_badge": False,       # 是否在顶栏显示模型额度胶囊徽章
@@ -121,11 +129,12 @@ DEFAULT_CONFIG = {
         "proxy_type": "socks5",
         "proxy_url": "",                # 代理地址 (支持 http/socks5)
         "proxy_bypass": "<local>;localhost;127.0.0.1;::1;127.0.0.0/8;*.local",
-        "disable_auto_update": False,    # 锁定稳定版本，禁止后台静默更新导致补丁被覆盖
+        "disable_auto_update": True,     # 默认开启：锁定稳定版本，禁止反重力后台静默更新导致汉化/代理/优化补丁被覆盖
         "enable_smooth_scrolling": False,# 硬件级长文本平滑滚动与 60FPS 渲染
         "compact_ui_mode": False,       # 紧凑代码视野模式 (有效代码显示面积提升 35%~50%)
         "prune_guide_skills": True,     # 裁剪内置说明型 Skills，节省前置 Token 预算 (默认开启并持久记忆)
         "auto_retry_on_error": False,        # 任务异常自动重试 (意外出错时自动点击重试继续工作)
+        "max_retry_count": 3,                # 最大重试次数
         "notify_on_quota_exhausted": False,  # 额度用尽告警 (发送"任务中断：额度已耗尽")
         "notify_on_max_retry_failed": False, # 重试超限告警 (达到最大重试次数发送"任务失败")
         "auto_switch_on_low_quota": True,    # 低额度自动热切换账号 (额度低于阈值时自动免重启切换至健康账号)
@@ -153,6 +162,10 @@ DEFAULT_CONFIG = {
 
 def get_config_search_paths() -> list:
     """返回配置文件的候选探测路径列表，按优先级排序"""
+    env_dir = os.environ.get("ORBIT_CONFIG_DIR")
+    if env_dir:
+        return [Path(env_dir) / "config.json"]
+
     paths = []
     # 0. Windows AppData 目录 (保证打包版与源码版共享最新用户设定)
     if platform.system().lower() == "windows":
@@ -189,6 +202,31 @@ def get_config_search_paths() -> list:
     return unique
 
 
+def _atomic_write_json(target: Path, data: dict):
+    """原子化写入 JSON 配置文件，杜绝并发读写或意外断电导致 0 字节截断与配置丢失"""
+    import threading
+    target.parent.mkdir(parents=True, exist_ok=True)
+    serialized = json.dumps(data, ensure_ascii=False, indent=2)
+    tmp_file = target.parent / f".{target.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+    try:
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            f.write(serialized)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except Exception:
+                pass
+        os.replace(str(tmp_file), str(target))
+    except Exception:
+        try:
+            if tmp_file.exists():
+                tmp_file.unlink()
+        except Exception:
+            pass
+        with open(target, "w", encoding="utf-8") as f:
+            f.write(serialized)
+
+
 def find_active_config_file() -> Path:
     """寻找实际生效的配置文件，始终保证规范路径唯一性并自动平滑迁移旧路径配置"""
     canonical = get_canonical_config_file()
@@ -197,6 +235,19 @@ def find_active_config_file() -> Path:
             content = canonical.read_text(encoding="utf-8").strip()
             if content and content != "{}":
                 return canonical
+        except Exception:
+            pass
+
+    # 若规范路径为空或损坏，优先检查规范路径同级 .bak 备份
+    bak_file = canonical.parent / "config.json.bak"
+    if bak_file.exists() and bak_file.is_file():
+        try:
+            content = bak_file.read_text(encoding="utf-8").strip()
+            if content and content != "{}":
+                data = json.loads(content)
+                if isinstance(data, dict) and (data.get("customization") or data.get("channels")):
+                    _atomic_write_json(canonical, data)
+                    return canonical
         except Exception:
             pass
 
@@ -235,36 +286,80 @@ def is_placeholder(val: any) -> bool:
     return s in ("", "YOUR_TELEGRAM_BOT_TOKEN", "YOUR_CHAT_ID", "xxxxxxxx")
 
 
+def _sync_config_aliases(merged: dict, user_config: dict | None = None):
+    """双向同步根级与 customization 别名字段，防止前后端或不同模块读取不一致"""
+    custom = merged.setdefault("customization", {})
+    for a, b in [
+        ("opt_gpu", "enable_gpu_acceleration"),
+        ("opt_max_heap", "expand_v8_memory"),
+        ("opt_nosleep", "disable_background_throttling"),
+        ("opt_telemetry", "disable_telemetry"),
+        ("clean_ui", "hide_ide_buttons"),
+    ]:
+        if custom.get(a) or custom.get(b):
+            custom[a] = True
+            custom[b] = True
+
+    # 同步 auto_retry_on_error / notify_on_quota_exhausted / max_retry_count
+    for field in ("auto_retry_on_error", "notify_on_quota_exhausted"):
+        val = bool(merged.get(field) or custom.get(field))
+        merged[field] = val
+        custom[field] = val
+
+    max_retries = custom.get("max_retry_count") or merged.get("max_retry_count") or 3
+    merged["max_retry_count"] = int(max_retries)
+    custom["max_retry_count"] = int(max_retries)
+
+    if user_config is not None:
+        u_custom = user_config.get("customization", {}) if isinstance(user_config.get("customization"), dict) else {}
+        if "quota_refresh_active_interval" not in u_custom:
+            custom["quota_refresh_active_interval"] = u_custom.get("quota_refresh_interval", 60)
+        if "quota_refresh_idle_interval" not in u_custom:
+            custom["quota_refresh_idle_interval"] = 900
+        # 若旧版配置未显式关闭 disable_auto_update，确保升级后默认开启防自动更新保护
+        if "disable_auto_update" not in u_custom:
+            custom["disable_auto_update"] = True
+
+
 def load_config() -> dict:
     active_file = find_active_config_file()
     merged = copy.deepcopy(DEFAULT_CONFIG)
     user_config = {}
+    read_failed = False
 
     if active_file.exists():
-        try:
-            with open(active_file, "r", encoding="utf-8") as f:
-                loaded = json.load(f)
-                if isinstance(loaded, dict):
-                    user_config = loaded
-                    deep_merge(merged, user_config)
-                    # 确保别名开关双向联动一致，杜绝不同模块读取单一别名时失效
-                    custom = merged.get("customization", {})
-                    for a, b in [
-                        ("opt_gpu", "enable_gpu_acceleration"),
-                        ("opt_max_heap", "expand_v8_memory"),
-                        ("opt_nosleep", "disable_background_throttling"),
-                        ("opt_telemetry", "disable_telemetry"),
-                        ("clean_ui", "hide_ide_buttons"),
-                    ]:
-                        if custom.get(a) or custom.get(b):
-                            custom[a] = True
-                            custom[b] = True
-                    if "quota_refresh_active_interval" not in user_config.get("customization", {}):
-                        merged["customization"]["quota_refresh_active_interval"] = user_config.get("customization", {}).get("quota_refresh_interval", 60)
-                    if "quota_refresh_idle_interval" not in user_config.get("customization", {}):
-                        merged["customization"]["quota_refresh_idle_interval"] = 900
-        except Exception:
-            merged = copy.deepcopy(DEFAULT_CONFIG)
+        loaded = None
+        for attempt in range(2):
+            try:
+                with open(active_file, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict) and loaded:
+                    break
+            except Exception:
+                if attempt == 0:
+                    import time
+                    time.sleep(0.04)
+
+        # 若主文件因异常损坏或读取失败，尝试从 .bak 或镜像候选路径恢复完整配置
+        if not isinstance(loaded, dict) or not loaded:
+            read_failed = True
+            bak_file = active_file.parent / "config.json.bak"
+            recovery_candidates = [bak_file] + [p for p in get_config_search_paths() if p != active_file]
+            for cand in recovery_candidates:
+                if cand.exists() and cand.is_file():
+                    try:
+                        cand_data = json.loads(cand.read_text(encoding="utf-8"))
+                        if isinstance(cand_data, dict) and (cand_data.get("customization") or cand_data.get("channels")):
+                            loaded = cand_data
+                            read_failed = False
+                            break
+                    except Exception:
+                        pass
+
+        if isinstance(loaded, dict) and loaded:
+            user_config = loaded
+            deep_merge(merged, user_config)
+            _sync_config_aliases(merged, user_config)
 
     # 自动探测与迁移：如果当前生效配置中缺少有效的 Telegram 或其它推送凭据，自动从历史候选路径中合并提取
     migrated = False
@@ -304,8 +399,8 @@ def load_config() -> dict:
         tg_conf["proxy"] = f"http://127.0.0.1:{tg_proxy}"
         migrated = True
 
-    # 若发生了自动继承或规范化，写回生效文件以长久保持
-    if migrated:
+    # 若发生了自动继承或规范化（且未发生读取异常），写回生效文件以长久保持
+    if migrated and not read_failed:
         try:
             save_config(merged)
         except Exception:
@@ -315,7 +410,8 @@ def load_config() -> dict:
 
 
 def save_config(cfg: dict):
-    # 自动保障 proxy_url 格式完整
+    # 自动保障 proxy_url 与别名格式完整
+    _sync_config_aliases(cfg)
     custom = cfg.get("customization", {})
     if custom.get("proxy_host") and custom.get("proxy_port"):
         p_type = (custom.get("proxy_type") or "http").lower()
@@ -324,9 +420,18 @@ def save_config(cfg: dict):
         custom["proxy_url"] = f"{p_type}://{p_host}:{p_port}"
 
     canonical_file = get_canonical_config_file()
-    canonical_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(canonical_file, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    _atomic_write_json(canonical_file, cfg)
+
+    # 同步维护一份可靠的 .bak 快照
+    try:
+        bak_file = canonical_file.parent / "config.json.bak"
+        _atomic_write_json(bak_file, cfg)
+    except Exception:
+        pass
+
+    # 若在测试隔离目录中运行，切勿镜像污染真实系统目录
+    if os.environ.get("ORBIT_CONFIG_DIR"):
+        return
 
     # 镜像同步到源码/应用目录、AppData 及全局家目录与安装目录，彻底杜绝不同工作目录/启动方式下读取到旧配置
     sync_targets = [
@@ -355,9 +460,7 @@ def save_config(cfg: dict):
             if t_key in seen:
                 continue
             seen.add(t_key)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with open(target, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, ensure_ascii=False, indent=2)
+            _atomic_write_json(target, cfg)
         except Exception:
             pass
 

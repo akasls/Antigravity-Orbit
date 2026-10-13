@@ -15,7 +15,7 @@ from pathlib import Path
 
 DEFAULT_INSTALL_DIR = Path.home() / "AppData" / "Local" / "Programs" / "Antigravity-Orbit"
 APP_NAME = "Antigravity Orbit"
-APP_VERSION = "3.3.19"
+APP_VERSION = "3.3.20"
 APP_PUBLISHER = "Antigravity Team"
 EXE_NAME = "Antigravity-Orbit.exe"
 
@@ -187,6 +187,16 @@ def perform_installation(target_dir: Path, create_desktop: bool, create_start_me
                     continue
 
                 dest_file = target_dir.joinpath(*rel_parts)
+                if dest_file.name.lower() in (
+                    "config.json",
+                    "config.json.bak",
+                    "watch_state.json",
+                    "account_pool.json",
+                    "prompt_templates.json",
+                ) and dest_file.exists():
+                    # 升级覆盖安装时严格保护已有配置、账号池与状态，绝不覆盖用户个人设置
+                    continue
+
                 if member.is_dir():
                     dest_file.mkdir(parents=True, exist_ok=True)
                 else:

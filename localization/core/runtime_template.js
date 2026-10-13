@@ -1417,8 +1417,16 @@
         }
     }
 
+    // 若通过 CDP 热重载重新注入，先安全清理旧实例的定时器与 Observer
+    try {
+        if (typeof window.__orbitRuntimeCleanup === 'function') {
+            window.__orbitRuntimeCleanup();
+        }
+    } catch (e) {}
+
     // 启动智能自愈周期轮询 (每秒检测一次)
-    setInterval(runHealingCheckCycle, 1000);
+    const healingTimer = setInterval(runHealingCheckCycle, 1000);
+    let activeObserver = null;
 
     /**
      * 向 Language Server 独立发起额度查询请求
@@ -1461,6 +1469,12 @@
 
     try {
         window.__agRefreshQuota = fetchQuotaSummary;
+        window.__orbitRuntimeActive = true;
+        window.__orbitRuntimeCleanup = () => {
+            try { clearInterval(healingTimer); } catch (e) {}
+            try { if (quotaPollTimer) { clearInterval(quotaPollTimer); quotaPollTimer = null; } } catch (e) {}
+            try { if (activeObserver) { activeObserver.disconnect(); activeObserver = null; } } catch (e) {}
+        };
     } catch (e) {}
 
     /**
@@ -1546,27 +1560,55 @@
 
         const cfg = (typeof CUSTOM_CONFIG !== 'undefined' ? CUSTOM_CONFIG : {}) || {};
 
+        // 同步通过 nativeStorage 禁用后台自动检查更新，实时阻断运行中实例的定时更新器
+        try {
+            if (cfg.disable_auto_update !== false && window.nativeStorage && typeof window.nativeStorage.updateItems === 'function') {
+                window.nativeStorage.updateItems({ autoCheckForUpdates: 'false' });
+            }
+        } catch (e) {}
+
         if (cfg.hide_ide_buttons === true || cfg.clean_ui === true) {
             injectIdeHidingStyle(document);
             removeIdeHeaderButtons(root);
+        } else {
+            const oldIdeStyle = document.getElementById('antigravity-ide-hide-style');
+            if (oldIdeStyle) oldIdeStyle.remove();
         }
 
         if (cfg.compact_ui_mode === true) {
             injectCompactUiStyle(document);
+        } else {
+            const oldCompact = document.getElementById('antigravity-compact-ui-style');
+            if (oldCompact) oldCompact.remove();
         }
 
         if (cfg.clean_sidebar_and_menu === true) {
             injectCleanSidebarStyle(document);
             mountTopSettingsButton(document);
+        } else {
+            const oldSidebarStyle = document.getElementById('antigravity-clean-sidebar-style');
+            if (oldSidebarStyle) oldSidebarStyle.remove();
+            const oldSettingsBtn = document.getElementById('antigravity-top-settings-wrapper');
+            if (oldSettingsBtn) oldSettingsBtn.remove();
         }
 
         if (cfg.show_quota_badge === true) {
             mountQuotaBadge();
-        } else if (cfg.auto_switch_on_low_quota !== false || cfg.notify_on_quota_exhausted === true) {
-            ensureQuotaPolling();
+        } else {
+            const oldQuota = document.getElementById('antigravity-quota-root');
+            if (oldQuota) oldQuota.remove();
+            if (cfg.auto_switch_on_low_quota !== false || cfg.notify_on_quota_exhausted === true) {
+                ensureQuotaPolling();
+            }
         }
 
-        const observer = new MutationObserver((mutations) => {
+        try {
+            translateNode(root);
+        } catch (e) {}
+
+        if (activeObserver) return;
+
+        activeObserver = new MutationObserver((mutations) => {
             if (cfg.hide_ide_buttons === true || cfg.clean_ui === true) {
                 removeIdeHeaderButtons(root);
             }
@@ -1600,30 +1642,32 @@
 
         const config = { childList: true, subtree: true, characterData: true };
         try {
-            observer.observe(root, config);
-            translateNode(root);
+            activeObserver.observe(root, config);
         } catch (e) {}
 
-        // Shadow DOM 穿透拦截
-        const originalAttachShadow = Element.prototype.attachShadow;
-        Element.prototype.attachShadow = function(...args) {
-            const shadowRoot = originalAttachShadow.apply(this, args);
-            try {
-                if (cfg.hide_ide_buttons === true || cfg.clean_ui === true) {
-                    injectIdeHidingStyle(shadowRoot);
-                    removeIdeHeaderButtons(shadowRoot);
-                }
-                if (cfg.compact_ui_mode === true) {
-                    injectCompactUiStyle(shadowRoot);
-                }
-                if (cfg.clean_sidebar_and_menu === true) {
-                    injectCleanSidebarStyle(shadowRoot);
-                }
-                observer.observe(shadowRoot, config);
-                translateNode(shadowRoot);
-            } catch (e) {}
-            return shadowRoot;
-        };
+        // Shadow DOM 穿透拦截 (仅首次挂载)
+        if (!Element.prototype.__orbitShadowHooked) {
+            Element.prototype.__orbitShadowHooked = true;
+            const originalAttachShadow = Element.prototype.attachShadow;
+            Element.prototype.attachShadow = function(...args) {
+                const shadowRoot = originalAttachShadow.apply(this, args);
+                try {
+                    if (cfg.hide_ide_buttons === true || cfg.clean_ui === true) {
+                        injectIdeHidingStyle(shadowRoot);
+                        removeIdeHeaderButtons(shadowRoot);
+                    }
+                    if (cfg.compact_ui_mode === true) {
+                        injectCompactUiStyle(shadowRoot);
+                    }
+                    if (cfg.clean_sidebar_and_menu === true) {
+                        injectCleanSidebarStyle(shadowRoot);
+                    }
+                    if (activeObserver) activeObserver.observe(shadowRoot, config);
+                    translateNode(shadowRoot);
+                } catch (e) {}
+                return shadowRoot;
+            };
+        }
     }
 
     // 页面生命周期挂载

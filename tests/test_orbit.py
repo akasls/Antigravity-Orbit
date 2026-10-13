@@ -13,6 +13,35 @@ from core.api_bridge import OrbitApi
 
 
 class TestOrbitCore(unittest.TestCase):
+    def setUp(self):
+        import os
+        import tempfile
+        from unittest.mock import patch
+        from core.skills_optimizer import SkillsOptimizer
+        from core.localization import LocalizationManager
+
+        self._tmp_cfg_dir = tempfile.TemporaryDirectory()
+        self._old_orbit_cfg_dir = os.environ.get("ORBIT_CONFIG_DIR")
+        os.environ["ORBIT_CONFIG_DIR"] = self._tmp_cfg_dir.name
+
+        self._patcher_skills = patch.object(SkillsOptimizer, "set_pruned", return_value=(True, "Mocked"))
+        self._patcher_heal = patch.object(LocalizationManager, "auto_heal_if_updated", return_value=(False, "Mocked"))
+        self._patcher_skills.start()
+        self._patcher_heal.start()
+
+    def tearDown(self):
+        import os
+        self._patcher_heal.stop()
+        self._patcher_skills.stop()
+        if self._old_orbit_cfg_dir is None:
+            os.environ.pop("ORBIT_CONFIG_DIR", None)
+        else:
+            os.environ["ORBIT_CONFIG_DIR"] = self._old_orbit_cfg_dir
+        try:
+            self._tmp_cfg_dir.cleanup()
+        except Exception:
+            pass
+
     def test_config_loading(self):
         cfg = load_config()
         self.assertIsInstance(cfg, dict)
@@ -1253,8 +1282,9 @@ console.log('ALL_OK');
     def test_clean_sidebar_and_menu_config_and_version(self):
         """测试客户端版本号与极简侧栏顶栏配置项定义"""
         from core.config import APP_VERSION, DEFAULT_CONFIG
-        self.assertEqual(APP_VERSION, "3.3.19")
+        self.assertEqual(APP_VERSION, "3.3.20")
         self.assertIn("clean_sidebar_and_menu", DEFAULT_CONFIG["customization"])
+        self.assertTrue(DEFAULT_CONFIG["customization"].get("disable_auto_update"))
         self.assertTrue(DEFAULT_CONFIG["customization"].get("auto_switch_on_low_quota"))
         self.assertEqual(DEFAULT_CONFIG["customization"].get("proxy_port"), 10808)
 
@@ -1292,6 +1322,9 @@ console.log('ALL_OK');
         self.assertIn("_getOrbitProxyConfig", patcher_code)
         self.assertIn("MAX_RESTARTS = 999999", patcher_code)
         self.assertIn("RESTART_COOLDOWN_MS = 300", patcher_code)
+        self.assertIn("applyHostUpdate", patcher_code)
+        self.assertIn("antigravity-updater", patcher_code)
+
     def test_config_deep_merge_and_zombie_recovery(self):
         """测试 deep_merge 保护开关不丢失、app.js 初始化防覆盖守卫及僵尸进程清理恢复机制"""
         from core.config import deep_merge, get_canonical_config_file
@@ -1333,6 +1366,54 @@ console.log('ALL_OK');
         self.assertIn("taskkill", loc_py)
         self.assertIn("Antigravity.exe", loc_py)
         self.assertIn("lockfile", loc_py)
+
+    def test_update_resilience_and_auto_heal(self):
+        """测试反重力自动更新后的补丁签名检测、免杀进程无感自愈、零中断保存及配置文件损坏 .bak 恢复"""
+        import tempfile
+        from unittest.mock import patch
+        from core.localization import LocalizationManager
+        from core.config import save_config, load_config, get_canonical_config_file
+
+        # 1. 验证 app.asar 物理补丁签名检测
+        with tempfile.TemporaryDirectory() as td:
+            asar_file = Path(td) / "app.asar"
+            asar_file.write_bytes(b"OFFICIAL_UNPATCHED_ELECTRON_ARCHIVE_DATA")
+            self.assertFalse(LocalizationManager.is_asar_patched(asar_file))
+
+            asar_file.write_bytes(b"HEADER... /* --- ANTIGRAVITY_LOCALIZATION_START --- */ ...FOOTER")
+            self.assertTrue(LocalizationManager.is_asar_patched(asar_file))
+
+        # 2. 验证任务运行中点击「保存并重启」时触发零中断免杀热注入，绝不强杀反重力进程
+        api = OrbitApi()
+        with patch.object(LocalizationManager, "is_any_task_running", return_value=True), \
+             patch.object(LocalizationManager, "kill_running_antigravity") as mock_kill, \
+             patch.object(LocalizationManager, "install", return_value=(True, "Installed")) as mock_install, \
+             patch.object(LocalizationManager, "hot_inject_runtime_via_cdp", return_value=(True, "Hot injected")) as mock_cdp, \
+             patch.object(LocalizationManager, "sync_electron_session_proxy_via_cdp", return_value=(True, "Proxy synced")):
+            res = api.save_and_restart({"customization": {"language": "zh-CN", "opt_gpu": True}})
+            self.assertTrue(res.get("success"))
+            self.assertIn("零掉线", res.get("message", ""))
+            mock_kill.assert_not_called()
+            mock_install.assert_called_once()
+            self.assertTrue(mock_install.call_args.kwargs.get("no_kill"))
+            mock_cdp.assert_called_once()
+
+        # 3. 验证配置文件被意外截断为 0 字节时自动从 config.json.bak 无损恢复
+        cfg = load_config()
+        cfg["customization"]["opt_gpu"] = True
+        cfg["customization"]["proxy_enabled"] = True
+        cfg["customization"]["show_quota_badge"] = True
+        save_config(cfg)
+
+        canonical = get_canonical_config_file()
+        self.assertTrue((canonical.parent / "config.json.bak").exists())
+        # 模拟意外断电或并发截断导致主配置变为空文件
+        canonical.write_text("", encoding="utf-8")
+        recovered = load_config()
+        self.assertTrue(recovered["customization"]["opt_gpu"])
+        self.assertTrue(recovered["customization"]["proxy_enabled"])
+        self.assertTrue(recovered["customization"]["show_quota_badge"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -54,6 +54,14 @@ class OrbitApi:
         daemon_auto = AutostartManager.is_enabled()
         app_auto = AutostartManager.is_app_autostart_enabled()
 
+        # 若检测到反重力客户端已安装但补丁因官方自动更新而丢失，后台立即执行免重启无感自愈恢复
+        if loc.get("installed") and not loc.get("is_localized"):
+            threading.Thread(
+                target=LocalizationManager.auto_heal_if_updated,
+                args=(cfg,),
+                daemon=True
+            ).start()
+
         # 确保用户设定的 skills 裁剪配置被优先尊重并自动同步应用到物理磁盘 (杜绝重新安装后被反向覆盖关闭)
         prune_cfg = custom.get("prune_guide_skills")
         if prune_cfg is None:
@@ -99,6 +107,8 @@ class OrbitApi:
                 "installed": loc.get("installed", False),
                 "install_dir": loc.get("install_dir", ""),
                 "is_localized": loc.get("is_localized", False),
+                "asar_patched": loc.get("asar_patched", False),
+                "has_backup": loc.get("has_backup", False),
                 "lang": loc.get("lang", "zh-CN"),
                 "daemon_running": daemon_running,
                 "daemon_pid": daemon_pid,
@@ -150,7 +160,7 @@ class OrbitApi:
         return self.get_initial_data()
 
     def save_and_apply(self, new_cfg: dict) -> dict:
-        """保存配置并实时生效 (支持正在运行中的客户端秒级动态生效代理)"""
+        """保存配置并实时生效 (支持正在运行中的客户端秒级动态生效代理与补丁)"""
         try:
             cfg = load_config()
             deep_merge(cfg, new_cfg)
@@ -169,9 +179,14 @@ class OrbitApi:
             except Exception:
                 pass
 
+            lang = custom.get("language", "zh-CN")
+            is_tw = (lang == "zh-TW")
+            is_en = (lang == "en")
+
             # 核心机制：
             # 1. 代理、自愈、推送、自启动等后台服务配置写入后即刻生效；
-            # 2. 若 Antigravity 正在运行中：通过 CDP 实时触发 Electron session 动态更新代理设置，免杀进程秒级生效！
+            # 2. 若 Antigravity 正在运行中：通过 CDP 实时触发 Electron session 动态更新代理与前端运行时补丁，免杀进程秒级生效；
+            #    若同时检测到 app.asar 未含补丁（如刚经历了自动更新），后台免杀进程静默写回 app.asar。
             # 3. 若 Antigravity 处于未运行状态：静默注入最新补丁到 app.asar。
             is_running = LocalizationManager.is_running()
             if is_running:
@@ -179,10 +194,18 @@ class OrbitApi:
                     LocalizationManager.sync_electron_session_proxy_via_cdp()
                 except Exception:
                     pass
+                try:
+                    LocalizationManager.hot_inject_runtime_via_cdp(cfg)
+                except Exception:
+                    pass
+                st = LocalizationManager.get_status(fast=True)
+                if st.get("installed") and not st.get("asar_patched"):
+                    threading.Thread(
+                        target=LocalizationManager.install,
+                        kwargs={"tw": is_tw, "en": is_en, "no_kill": True, "stream_output": False},
+                        daemon=True
+                    ).start()
             else:
-                lang = custom.get("language", "zh-CN")
-                is_tw = (lang == "zh-TW")
-                is_en = (lang == "en")
                 LocalizationManager.install(tw=is_tw, en=is_en, no_kill=True, stream_output=False)
 
             return {
@@ -203,14 +226,31 @@ class OrbitApi:
         except Exception as e:
             return {"success": False, "message": f"还原异常: {e}"}
 
+    def launch_antigravity(self) -> dict:
+        """唤醒或拉起 Antigravity 客户端"""
+        try:
+            ok, msg = LocalizationManager.launch_antigravity()
+            return {"success": ok, "message": msg}
+        except Exception as e:
+            return {"success": False, "message": f"启动客户端异常: {e}"}
+
     def restart_antigravity(self) -> dict:
-        """重启 Antigravity 客户端并同步最新补丁"""
+        """重启 Antigravity 客户端并同步最新补丁 (若正在执行任务则自动转为免重启热注入，防止掉线)"""
         try:
             cfg = load_config()
             custom = cfg.get("customization", {})
             lang = custom.get("language", "zh-CN")
             is_tw = (lang == "zh-TW")
             is_en = (lang == "en")
+
+            if LocalizationManager.is_any_task_running():
+                LocalizationManager.install(tw=is_tw, en=is_en, no_kill=True, stream_output=False)
+                LocalizationManager.hot_inject_runtime_via_cdp(cfg)
+                LocalizationManager.sync_electron_session_proxy_via_cdp()
+                return {
+                    "success": True,
+                    "message": "检测到反重力正在执行任务，为防止掉线已自动转为【免重启热注入】并同步磁盘补丁！"
+                }
 
             LocalizationManager.kill_running_antigravity()
             time.sleep(0.8)
@@ -228,7 +268,7 @@ class OrbitApi:
             return {"success": False, "message": f"重启异常: {e}"}
 
     def save_and_restart(self, new_cfg: dict) -> dict:
-        """保存「性能汉化」各项设定，并重启 Antigravity 客户端以注入生效"""
+        """保存「性能汉化」各项设定，并应用生效 (若检测到任务运行中则免重启热注入，绝不掉线)"""
         try:
             cfg = load_config()
             deep_merge(cfg, new_cfg)
@@ -250,6 +290,16 @@ class OrbitApi:
             is_tw = (lang == "zh-TW")
             is_en = (lang == "en")
 
+            # 零中断保护：若反重力当前有对话任务正在运行，严禁强杀进程，直接免杀写盘 + CDP 实时热注入
+            if LocalizationManager.is_any_task_running():
+                LocalizationManager.install(tw=is_tw, en=is_en, no_kill=True, stream_output=False)
+                LocalizationManager.hot_inject_runtime_via_cdp(cfg)
+                LocalizationManager.sync_electron_session_proxy_via_cdp()
+                return {
+                    "success": True,
+                    "message": "配置已保存！检测到反重力正在执行任务，已免重启热注入汉化与代理（零掉线），底层补丁已同步写入磁盘！"
+                }
+
             LocalizationManager.kill_running_antigravity()
             time.sleep(0.8)
 
@@ -267,9 +317,10 @@ class OrbitApi:
     def reset_antigravity_full(self) -> dict:
         """彻底初始化 Antigravity 客户端：终止进程、恢复官方原版英文、清空冗余死缓存、重置所有个性化补丁为默认"""
         try:
-            # 1. 终止运行中客户端
-            LocalizationManager.kill_running_antigravity()
-            time.sleep(0.8)
+            # 1. 终止运行中客户端 (若当前有活跃任务则跳过强杀，保护任务不掉线)
+            if not LocalizationManager.is_any_task_running():
+                LocalizationManager.kill_running_antigravity()
+                time.sleep(0.8)
 
             # 2. 还原官方原生英文备份
             LocalizationManager.restore(stream_output=False)
@@ -283,6 +334,8 @@ class OrbitApi:
                 "language": "zh-CN",
                 "show_quota_badge": False,
                 "clean_ui": False,
+                "clean_sidebar_and_menu": True,
+                "disable_auto_update": True,
                 "opt_gpu": False,
                 "opt_max_heap": False,
                 "opt_nosleep": False,
@@ -828,7 +881,9 @@ class OrbitApi:
     def open_config_dir(self) -> dict:
         """在系统文件资源管理器中打开 Orbit 配置与数据目录"""
         try:
-            cfg_dir = Path.home() / ".gemini" / "antigravity"
+            from core.config import get_canonical_config_file
+            cfg_file = get_canonical_config_file()
+            cfg_dir = cfg_file.parent
             cfg_dir.mkdir(parents=True, exist_ok=True)
             if platform.system().lower() == "windows":
                 os.startfile(str(cfg_dir))
