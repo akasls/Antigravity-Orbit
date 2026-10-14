@@ -5,6 +5,7 @@ Antigravity Orbit - Core Unit Tests
 
 import unittest
 import json
+import subprocess
 from pathlib import Path
 from core.account_pool import AccountPoolManager
 from core.prompt_manager import PromptManager
@@ -1282,7 +1283,7 @@ console.log('ALL_OK');
     def test_clean_sidebar_and_menu_config_and_version(self):
         """测试客户端版本号与极简侧栏顶栏配置项定义"""
         from core.config import APP_VERSION, DEFAULT_CONFIG
-        self.assertEqual(APP_VERSION, "3.3.20")
+        self.assertEqual(APP_VERSION, "3.3.21")
         self.assertIn("clean_sidebar_and_menu", DEFAULT_CONFIG["customization"])
         self.assertTrue(DEFAULT_CONFIG["customization"].get("disable_auto_update"))
         self.assertTrue(DEFAULT_CONFIG["customization"].get("auto_switch_on_low_quota"))
@@ -1324,6 +1325,56 @@ console.log('ALL_OK');
         self.assertIn("RESTART_COOLDOWN_MS = 300", patcher_code)
         self.assertIn("applyHostUpdate", patcher_code)
         self.assertIn("antigravity-updater", patcher_code)
+        self.assertIn("ORBIT_SAFE_UPDATER", patcher_code)
+        self.assertIn("ORBIT_SAFE_IPC_UPDATER", patcher_code)
+        self.assertIn("ANTIGRAVITY_EXCEPTION_GUARD_START", patcher_code)
+        self.assertIn("builder-util-runtime", patcher_code)
+        self.assertIn("--unpack-dir", patcher_code)
+        self.assertIn("bakUnpackedDir", patcher_code)
+
+    def test_asar_patcher_updater_and_builder_util_runtime_stubs(self):
+        """测试 asar_patcher.js 安全更新桩注入与 builder-util-runtime 物理与逻辑双容错机制"""
+        node_script = """
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { AsarPatcher } = require('./localization/core/asar_patcher');
+
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-test-'));
+const resourcesDir = path.join(tmpDir, 'resources');
+fs.mkdirSync(resourcesDir, { recursive: true });
+const patcher = new AsarPatcher(resourcesDir, { customConfig: { disable_auto_update: true } });
+fs.mkdirSync(path.join(patcher.tempDir, 'dist', 'services'), { recursive: true });
+fs.mkdirSync(path.join(patcher.tempDir, 'node_modules', 'electron-updater', 'out'), { recursive: true });
+fs.mkdirSync(path.join(patcher.tempDir, 'node_modules', 'builder-util-runtime'), { recursive: true });
+
+fs.writeFileSync(path.join(patcher.tempDir, 'dist', 'updater.js'), 'const electron_updater_1 = require("electron-updater");\\nfunction initAutoUpdater() {}\\nfunction startAutoUpdateChecks() {}\\nfunction checkForUpdates() {}\\nfunction quitAndInstall() {}\\nfunction applyHostUpdate() {}');
+fs.writeFileSync(path.join(patcher.tempDir, 'dist', 'ipcHandlers.js'), 'const electron_updater_1 = require("electron-updater");');
+fs.writeFileSync(path.join(patcher.tempDir, 'dist', 'main.js'), 'const ipcHandlers_1 = require("./ipcHandlers");\\nconst gotTheLock = electron_1.app.requestSingleInstanceLock();');
+fs.writeFileSync(path.join(patcher.tempDir, 'node_modules', 'electron-updater', 'out', 'AppUpdater.js'), 'const builder_util_runtime_1 = require("builder-util-runtime");');
+
+patcher._patchUpdater();
+patcher._patchPerformanceAndTelemetry();
+
+const upd = fs.readFileSync(path.join(patcher.tempDir, 'dist', 'updater.js'), 'utf8');
+const ipc = fs.readFileSync(path.join(patcher.tempDir, 'dist', 'ipcHandlers.js'), 'utf8');
+const main = fs.readFileSync(path.join(patcher.tempDir, 'dist', 'main.js'), 'utf8');
+const appUpd = fs.readFileSync(path.join(patcher.tempDir, 'node_modules', 'electron-updater', 'out', 'AppUpdater.js'), 'utf8');
+const nestedExists = fs.existsSync(path.join(patcher.tempDir, 'node_modules', 'electron-updater', 'node_modules', 'builder-util-runtime'));
+
+fs.rmSync(tmpDir, { recursive: true, force: true });
+
+if (!upd.includes('ORBIT_SAFE_UPDATER')) throw new Error('ORBIT_SAFE_UPDATER missing');
+if (!ipc.includes('ORBIT_SAFE_IPC_UPDATER')) throw new Error('ORBIT_SAFE_IPC_UPDATER missing');
+if (!main.includes('ANTIGRAVITY_EXCEPTION_GUARD_START')) throw new Error('ANTIGRAVITY_EXCEPTION_GUARD_START missing');
+if (!appUpd.includes('builder_util_runtime_1 = require("../../builder-util-runtime")')) throw new Error('fallback require missing');
+if (!nestedExists) throw new Error('nested builder-util-runtime missing');
+
+console.log('OK');
+"""
+        res = subprocess.run(["node", "-e", node_script], cwd=Path(__file__).parent.parent, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        self.assertEqual(res.returncode, 0, f"Asar patcher verification failed: {res.stderr}\n{res.stdout}")
+        self.assertIn("OK", res.stdout)
 
     def test_config_deep_merge_and_zombie_recovery(self):
         """测试 deep_merge 保护开关不丢失、app.js 初始化防覆盖守卫及僵尸进程清理恢复机制"""

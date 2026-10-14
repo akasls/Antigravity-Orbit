@@ -90,6 +90,19 @@ class AsarPatcher {
             }
         }
 
+        // 同步维护 app.asar.unpacked 与 app.asar.bak.unpacked 软链接，防止 asar 提取时因缺少 bak.unpacked 报错
+        const unpackedDir = path.join(this.resourcesDir, 'app.asar.unpacked');
+        const bakUnpackedDir = path.join(this.resourcesDir, 'app.asar.bak.unpacked');
+        if (fs.existsSync(unpackedDir) && !fs.existsSync(bakUnpackedDir)) {
+            try {
+                if (process.platform === 'win32') {
+                    fs.symlinkSync(unpackedDir, bakUnpackedDir, 'junction');
+                } else {
+                    fs.symlinkSync(unpackedDir, bakUnpackedDir, 'dir');
+                }
+            } catch (e) {}
+        }
+
         // 2. 清理并解包
         if (fs.existsSync(this.tempDir)) {
             fs.rmSync(this.tempDir, { recursive: true, force: true });
@@ -117,9 +130,9 @@ class AsarPatcher {
             throw e;
         }
 
-        // 4. 打包重装
+        // 4. 打包重装 (保留 unpacked 目录，避免 MCP 外部子进程及大二进制文件丢失)
         console.log('[打包] 正在将修改后的资源重新封装回 app.asar...');
-        const packCmd = `npx -y @electron/asar pack "${this.tempDir}" "${this.asarPath}"`;
+        const packCmd = `npx -y @electron/asar pack "${this.tempDir}" "${this.asarPath}" --unpack-dir "**/chrome-devtools-mcp/**"`;
         const packRes = AsarPatcher.runCmd(packCmd);
 
         // 清理临时工作目录
@@ -160,6 +173,11 @@ class AsarPatcher {
 
         if (fs.existsSync(this.metaPath)) {
             try { fs.unlinkSync(this.metaPath); } catch (e) {}
+        }
+
+        const bakUnpackedDir = path.join(this.resourcesDir, 'app.asar.bak.unpacked');
+        if (fs.existsSync(bakUnpackedDir)) {
+            try { fs.rmSync(bakUnpackedDir, { recursive: true, force: true }); } catch (e) {}
         }
 
         const disabledYml = path.join(this.resourcesDir, 'app-update.yml.disabled');
@@ -430,7 +448,85 @@ class AsarPatcher {
                     fs.writeFileSync(settingsSvcPath, sContent, 'utf-8');
                 } catch (e) {}
             }
+
+            // 安全桩替换 updater.js 中的 electron-updater 顶层引用，杜绝加载 builder-util-runtime
+            const updaterReq = 'const electron_updater_1 = require("electron-updater");';
+            const updaterSafeStub = `/* === ORBIT_SAFE_UPDATER === */
+const electron_updater_1 = {
+    autoUpdater: {
+        channel: '',
+        forceDevUpdateConfig: false,
+        updateConfigPath: '',
+        requestHeaders: {},
+        autoDownload: false,
+        autoInstallOnAppQuit: false,
+        on: () => {},
+        checkForUpdates: () => Promise.resolve(),
+        quitAndInstall: () => { console.log('[AutoUpdater] quitAndInstall 已由 Orbit 安全拦截'); }
+    }
+};`;
+            if (content.includes(updaterReq)) {
+                content = content.replace(updaterReq, updaterSafeStub);
+            }
+
+            // 同步对 dist/ipcHandlers.js 进行安全桩注入，切断 ipcMain.handle('updater:quit-and-install') 对 electron-updater 的强依赖
+            const ipcPath = path.join(this.tempDir, 'dist', 'ipcHandlers.js');
+            if (fs.existsSync(ipcPath)) {
+                try {
+                    let ipcContent = fs.readFileSync(ipcPath, 'utf-8');
+                    const ipcUpdaterReq = 'const electron_updater_1 = require("electron-updater");';
+                    const ipcUpdaterStub = `/* === ORBIT_SAFE_IPC_UPDATER === */
+const electron_updater_1 = {
+    autoUpdater: {
+        quitAndInstall: () => { console.log('[AutoUpdater] ipc quitAndInstall 已由 Orbit 安全拦截'); },
+        checkForUpdates: () => Promise.resolve(),
+        on: () => {}
+    }
+};`;
+                    if (ipcContent.includes(ipcUpdaterReq)) {
+                        ipcContent = ipcContent.replace(ipcUpdaterReq, ipcUpdaterStub);
+                        fs.writeFileSync(ipcPath, ipcContent, 'utf-8');
+                        console.log('[注入] ipcHandlers.js 更新安全桩注入成功。');
+                    }
+                } catch (e) {}
+            }
         }
+
+        // 模块级物理容错：为 node_modules/electron-updater/out/AppUpdater.js 增加加载 fallback
+        const appUpdaterPath = path.join(this.tempDir, 'node_modules', 'electron-updater', 'out', 'AppUpdater.js');
+        if (fs.existsSync(appUpdaterPath)) {
+            try {
+                let auContent = fs.readFileSync(appUpdaterPath, 'utf-8');
+                const bTarget = 'const builder_util_runtime_1 = require("builder-util-runtime");';
+                const bReplacement = `let builder_util_runtime_1;
+try {
+    builder_util_runtime_1 = require("builder-util-runtime");
+} catch (e) {
+    try {
+        builder_util_runtime_1 = require("../../builder-util-runtime");
+    } catch (e2) {
+        builder_util_runtime_1 = { newError: (msg, code) => new Error(msg) };
+    }
+}`;
+                if (auContent.includes(bTarget)) {
+                    auContent = auContent.replace(bTarget, bReplacement);
+                    fs.writeFileSync(appUpdaterPath, auContent, 'utf-8');
+                    console.log('[注入] AppUpdater.js builder-util-runtime 模块容错注入成功。');
+                }
+            } catch (e) {}
+        }
+
+        // 补齐 electron-updater 的本地 node_modules 目录结构，保证 Node CJS 逐级向上探测时必中
+        try {
+            const topBuilder = path.join(this.tempDir, 'node_modules', 'builder-util-runtime');
+            const nestedModules = path.join(this.tempDir, 'node_modules', 'electron-updater', 'node_modules');
+            const nestedBuilderUtil = path.join(nestedModules, 'builder-util-runtime');
+            if (fs.existsSync(topBuilder) && !fs.existsSync(nestedBuilderUtil)) {
+                fs.mkdirSync(nestedModules, { recursive: true });
+                fs.cpSync(topBuilder, nestedBuilderUtil, { recursive: true });
+                console.log('[优化] 已为 electron-updater 补齐 builder-util-runtime 本地依赖目录。');
+            }
+        } catch (e) {}
 
         fs.writeFileSync(updaterPath, content, 'utf-8');
         console.log('[注入] updater.js 更新机制与文案注入成功。');
@@ -444,6 +540,27 @@ class AsarPatcher {
         const mainPath = path.join(this.tempDir, 'dist', 'main.js');
         if (fs.existsSync(mainPath)) {
             let mContent = fs.readFileSync(mainPath, 'utf-8');
+
+            // 顶层全局未捕获异常防御桩，防止更新模块或外部 CJS 加载偶发异常弹出 Windows 原生错误弹窗
+            const globalGuardTarget = 'const ipcHandlers_1 = require("./ipcHandlers");';
+            const globalGuardCode = `/* === ANTIGRAVITY_EXCEPTION_GUARD_START === */
+try {
+    process.on('uncaughtException', function(err) {
+        const msg = (err && err.message) ? err.message : String(err || '');
+        if (msg.includes('builder-util-runtime') || msg.includes('electron-updater')) {
+            console.warn('[Orbit] 安全拦截主进程更新模块异常:', msg);
+            return;
+        }
+        console.error('[Antigravity Main Process Uncaught]', err);
+    });
+} catch (e) {}
+/* === ANTIGRAVITY_EXCEPTION_GUARD_END === */
+` + globalGuardTarget;
+
+            if (mContent.includes(globalGuardTarget) && !mContent.includes('ANTIGRAVITY_EXCEPTION_GUARD_START')) {
+                mContent = mContent.replace(globalGuardTarget, globalGuardCode);
+            }
+
             const targetLock = "const gotTheLock = electron_1.app.requestSingleInstanceLock();";
             
             let switchLines = [];

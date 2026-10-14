@@ -95,7 +95,7 @@ STATE_FILE = BASE_DIR / "watch_state.json"
 LOG_FILE = BASE_DIR / "watch_log.txt"
 
 # 客户端全局版本号
-APP_VERSION = "3.3.20"
+APP_VERSION = "3.3.21"
 
 DEFAULT_CONFIG = {
     "enabled": True,
